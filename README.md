@@ -2,7 +2,7 @@
 A strong dotnet UCI Chess engine 
 
 > [!NOTE]  
-> iBlunder is still in active development so will so expect certain features to be missing or experimental.
+> iBlunder is still in active development so will so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 6 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
 
 Play it here -> https://iblunder.com/
 
