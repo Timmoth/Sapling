@@ -8,6 +8,9 @@ Play it here -> https://iblunder.com/
 
 Or challenge it on Lichess -> https://lichess.org/@/iblunder-bot
 
+## Releases
+You can download the latest version for windows, linux or mac [here](https://github.com/Timmoth/iBlunder/releases)
+
 ## Requirements
 - iBlunder makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
 - The releases come with a bundled version of the dotnet runtime, however if you want to run from source you'll need the dotnet 8 SDK installed.
