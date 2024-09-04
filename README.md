@@ -35,6 +35,49 @@ dotnet run --project .\iBlunder\iBlunder.csproj --configuration Release
 - `go eval` : [Dev] returns the static evaluation of the current position
 - `datagen` : [Dev] starts generating data in the bullet format, used when training a new NNUE network
 
+## Features
+
+<details>
+<Summary>General</Summary>
+  
+- Bitboards 
+- NNUE 768->256
+- Transposition table
+- Lazy SMP
+- Pondering
+</details>
+
+<details>
+<Summary>Search</Summary>
+  
+- Negamax
+- Quiescence
+- Alpha-Beta pruning
+- Iterative Deepening
+- Asperation windows
+- Null move pruning
+- Late Move Pruning
+- Futility Pruning
+- Razoring
+- Principal Variation Search
+- Check extensions
+- Internal Iterative Reduction
+- Late Move Reductions
+</details>
+
+<details>
+<Summary>Move generation / ordering</Summary>
+
+- Pseudo-legal movegen
+- Static exchange evaluation
+- Killer move heuristic
+- Counter move heuristic
+- History heuristic with malus
+- Incremental sorting
+- Magic bitboards
+- PEXT bitboards
+</details>
+
 ## SPRT
 After any changes to the engine a SPRT test must be ran to ensure that the changes have a positive effect.
 
@@ -42,3 +85,8 @@ There is a script `sprt.bat` which contains the command to run a cutechess-cli S
 
 ## NNUE
 I'm in the process of training a 768->256 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/iBlunder/tree/main/iBlunder.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch the training logs.
+
+## Resources:
+- [Chess Programming Wiki](https://www.chessprogramming.org/)
+- [Talk Chess Forum](https://talkchess.com/)
+- [Coding Adventure](https://www.youtube.com/watch?v=U4ogK0MIzqk)
