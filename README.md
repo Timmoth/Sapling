@@ -35,4 +35,4 @@ After any changes to the engine a SPRT test must be ran to ensure that the chang
 There is a script `sprt.bat` which contains the command to run a cutechess-cli SPRT test. Ensure that you've configured CuteChess to point to both engines before hand, and also update the opening book + endgame table base to point to one on your system.
 
 ## NNUE
-I'm in the process of training a 768->256 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/iBlunder/tree/main/iBlunder.Engine\Resources\WeightsHistory) to see the sequence of networks starting from scratch the training logs.
+I'm in the process of training a 768->256 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/iBlunder/tree/main/iBlunder.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch the training logs.
