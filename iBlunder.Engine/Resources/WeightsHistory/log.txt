@@ -1,0 +1,72 @@
+----------------------------------
+random.bin
+----------------------------------
+Data: randomly generated weights
+```python
+import os
+
+file_size = 394816  # Size in bytes
+output_file = "random.bin"
+
+with open(output_file, "wb") as f:
+    f.write(os.urandom(file_size))
+```
+WDL: 1.0
+LR: 0.001, 0.3, 6
+SuperBatches: 24
+
+----------------------------------
+weights_1.bin
+----------------------------------
+Data: 10m positions
+WDL: 1.0
+LR: 0.001, 0.3, 6
+SuperBatches: 24
+
+----------------------------------
+weights_2.bin
+----------------------------------
+Data: 15m positions
+WDL: 0.9
+LR: 0.001, 0.3, 6
+SuperBatches: 24
+
+----------------------------------
+weights_3.bin
+----------------------------------
+Data: 20m positions
+WDL: 0.9
+LR: 0.001, 0.3, 6
+SuperBatches: 24
+
+----------------------------------
+weights_4.bin
+----------------------------------
+Data: 30m positions
+WDL: 0.9
+LR: 0.001, 0.3, 6
+SuperBatches: 24
+
+----------------------------------
+weights_5.bin
+----------------------------------
+Data: 55m positions
+WDL: 0.8
+LR: 0.001, 0.3, 12
+SuperBatches: 48
+
+----------------------------------
+[Current] weights_6.bin
+----------------------------------
+Data: 110m positions
+WDL: 0.75
+LR: 0.001, 0.3, 16
+SuperBatches: 64
+
+----------------------------------
+[NEXT] weights_7.bin
+----------------------------------
+Data: 200m positions
+WDL: 0.7
+LR: 0.001, 0.3, 20
+SuperBatches: 80
