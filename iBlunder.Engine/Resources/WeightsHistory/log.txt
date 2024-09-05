@@ -56,7 +56,7 @@ LR: 0.001, 0.3, 12
 SuperBatches: 48
 
 ----------------------------------
-[Current] weights_6.bin
+weights_6.bin
 ----------------------------------
 Data: 110m positions
 WDL: 0.75
@@ -64,9 +64,17 @@ LR: 0.001, 0.3, 16
 SuperBatches: 64
 
 ----------------------------------
-[NEXT] weights_7.bin
+[Current] weights_7.bin
+----------------------------------
+Data: 175m positions
+WDL: 0.7
+LR: 0.001, 0.3, 16
+SuperBatches: 64
+
+----------------------------------
+[Next] weights_8.bin
 ----------------------------------
 Data: 200m positions
 WDL: 0.7
-LR: 0.001, 0.3, 20
-SuperBatches: 80
+LR: 0.001, 0.3, 16
+SuperBatches: 64

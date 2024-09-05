@@ -130,7 +130,7 @@ public class DataGenerator
                         throw new Exception("Failed to apply move.");
                     }
 
-                    if (Math.Abs(score) >= 1500)
+                    if (Math.Abs(score) >= 2000)
                     {
                         if (++adjudicationCounter > 4 && score > 0)
                         {
