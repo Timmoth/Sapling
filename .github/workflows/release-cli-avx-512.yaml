@@ -1,0 +1,60 @@
+name: Release CLI toolkit
+
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: iBlunder
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build and Package
+        run: |
+          dotnet restore
+          dotnet build -c Release
+          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512"
+          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512"
+          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512"
+
+      - name: Generate release tags
+        id: tag
+        run: |
+          echo "::set-output name=windows_release_tag::windows_avx512_$(date +"%Y-%m-%d_%H-%M")"
+          echo "::set-output name=linux_release_tag::linux_avx512_$(date +"%Y-%m-%d_%H-%M")"
+          echo "::set-output name=osx_release_tag::osx_avx512_$(date +"%Y-%m-%d_%H-%M")"
+      - name: Create windows release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.windows_release_tag }}
+          files: |
+            iBlunder/bin/Release/net8.0/win-x64/publish/iBlunder.exe
+      - name: Create linux release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.linux_release_tag }}
+          files: |
+            iBlunder/bin/Release/net8.0/linux-x64/publish/iBlunder
+      - name: Create osx release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.osx_release_tag }}
+          files: |
+            iBlunder/bin/Release/net8.0/osx-x64/publish/iBlunder
