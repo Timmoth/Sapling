@@ -17,7 +17,7 @@ public sealed class BoardState
     public CastleRights CastleRights = Constants.AllCastleRights;
     public byte EnPassantFile;
     public NnueEvaluator Evaluator = default!;
-    public int FiftyMoveCounter;
+    public int HalfMoveClock;
     public ulong Hash;
 
     public bool InCheck = false;

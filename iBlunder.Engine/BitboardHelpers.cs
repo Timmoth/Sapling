@@ -9,8 +9,7 @@ public static class BitboardHelpers
     public static byte PopLSB(this ref ulong b)
     {
         var i = (byte)Bmi1.X64.TrailingZeroCount(b);
-        //b &= b - 1;
-        b = Bmi1.X64.ResetLowestSetBit(b);
+        b &= b - 1;
 
         return i;
     }

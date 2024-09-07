@@ -129,7 +129,7 @@ public unsafe partial class Searcher
         var prevInCheck = Board.InCheck;
 
         var prevCastleRights = Board.CastleRights;
-        var prevFiftyMoveCounter = Board.FiftyMoveCounter;
+        var prevFiftyMoveCounter = Board.HalfMoveClock;
 
         // Get killer move
         var killerA = killers[0 * 2];

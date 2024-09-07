@@ -21,7 +21,7 @@ public static class BoardStateExtensions
             PieceCount = other.PieceCount,
             Hash = other.Hash,
             InCheck = other.InCheck,
-            FiftyMoveCounter = other.FiftyMoveCounter,
+            HalfMoveClock = other.HalfMoveClock,
             TurnCount = other.TurnCount,
             RepetitionPositionHistory = new Stack<ulong>(other.RepetitionPositionHistory),
             WhiteToMove = other.WhiteToMove,
@@ -57,7 +57,7 @@ public static class BoardStateExtensions
         board.PieceCount = other.PieceCount;
         board.Hash = other.Hash;
         board.InCheck = other.InCheck;
-        board.FiftyMoveCounter = other.FiftyMoveCounter;
+        board.HalfMoveClock = other.HalfMoveClock;
         board.TurnCount = other.TurnCount;
         board.RepetitionPositionHistory = new Stack<ulong>(other.RepetitionPositionHistory);
         board.WhiteToMove = other.WhiteToMove;
@@ -732,11 +732,11 @@ public static class BoardStateExtensions
 
         if (m.IsReset())
         {
-            board.FiftyMoveCounter = 0;
+            board.HalfMoveClock = 0;
         }
         else
         {
-            board.FiftyMoveCounter++;
+            board.HalfMoveClock++;
         }
     }
 
@@ -745,12 +745,12 @@ public static class BoardStateExtensions
     {
         if (move.IsReset())
         {
-            board.FiftyMoveCounter = 0;
+            board.HalfMoveClock = 0;
             board.RepetitionPositionHistory.Clear();
         }
         else
         {
-            board.FiftyMoveCounter++;
+            board.HalfMoveClock++;
         }
 
         board.RepetitionPositionHistory.Push(board.Hash);
@@ -768,7 +768,7 @@ public static class BoardStateExtensions
         board.EnPassantFile = oldEnpassant;
         board.TurnCount--;
         board.WhiteToMove = !board.WhiteToMove;
-        board.FiftyMoveCounter = prevFiftyMoveCounter;
+        board.HalfMoveClock = prevFiftyMoveCounter;
         board.Hash = oldHash;
 
         var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
@@ -1010,37 +1010,6 @@ public static class BoardStateExtensions
         board.UpdateCheckStatus();
         board.FinishApply(move, prevEnpassant, prevCastleRights);
         board.UpdateRepetitions(move);
-    }
-
-    public static bool IsSame(this BoardState board, BoardState other)
-    {
-        var whiteBitBoardEquality = board.WhitePieces == other.WhitePieces && board.WhitePawns == other.WhitePawns &&
-                                    board.WhiteKnights == other.WhiteKnights &&
-                                    board.WhiteBishops == other.WhiteBishops && board.WhiteRooks == other.WhiteRooks &&
-                                    board.WhiteQueens == other.WhiteQueens && board.WhiteKings == other.WhiteKings;
-        var blackBitBoardEquality = board.BlackPieces == other.BlackPieces && board.BlackPawns == other.BlackPawns &&
-                                    board.BlackKnights == other.BlackKnights &&
-                                    board.BlackBishops == other.BlackBishops && board.BlackRooks == other.BlackRooks &&
-                                    board.BlackQueens == other.BlackQueens && board.BlackKings == other.BlackKings;
-
-        var piecesEqual = board.Pieces.SequenceEqual(other.Pieces);
-
-        return board.Hash == other.Hash &&
-               board.InCheck == other.InCheck &&
-               board.PieceCount == other.PieceCount &&
-               board.FiftyMoveCounter == other.FiftyMoveCounter &&
-               board.TurnCount == other.TurnCount &&
-               board.WhiteToMove == other.WhiteToMove &&
-               whiteBitBoardEquality &&
-               blackBitBoardEquality &&
-               board.Occupancy == other.Occupancy &&
-               piecesEqual &&
-               board.WhiteKingSquare == other.WhiteKingSquare &&
-               board.BlackKingSquare == other.BlackKingSquare &&
-               board.CastleRights == other.CastleRights &&
-               board.EnPassantFile == other.EnPassantFile &&
-               board.Evaluator.IsSame(other.Evaluator) &&
-               board.RepetitionPositionHistory.SequenceEqual(other.RepetitionPositionHistory);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

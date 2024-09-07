@@ -80,7 +80,7 @@ public partial class Searcher
         var prevInCheck = Board.InCheck;
 
         var prevCastleRights = Board.CastleRights;
-        var prevFiftyMoveCounter = Board.FiftyMoveCounter;
+        var prevFiftyMoveCounter = Board.HalfMoveClock;
         var evaluationBound = TranspositionTableFlag.Alpha;
 
         uint bestMove = default;

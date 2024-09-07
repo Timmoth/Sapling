@@ -9,7 +9,7 @@ public class DataGenerator
 {
     public const int Iterations = 10000;
     public const int MaxGames = 20;
-    public const int MaxTurnCount = 100;
+    public const int MaxTurnCount = 300;
     public static readonly BoardState InitialBoard = BoardStateExtensions.CreateBoardFromArray(Constants.InitialState);
     private static readonly object OutputLock = new();
     public int Draws;
@@ -19,6 +19,12 @@ public class DataGenerator
 
     public void Start()
     {
+        #if AVX512
+            Console.WriteLine("Using Avx-512");
+        #else
+            Console.WriteLine("Using Avx-256");
+        #endif
+
         using var fileStream = new FileStream("./out.bullet", FileMode.Append, FileAccess.Write);
         using var writer = new BinaryWriter(fileStream);
 
@@ -95,10 +101,10 @@ public class DataGenerator
         try
         {
             var boardState = InitialBoard.Clone();
-
             Span<bool> turns = stackalloc bool[MaxTurnCount];
             Span<BulletFormat> dataGenPositions = stackalloc BulletFormat[MaxTurnCount];
             var gameState = new GameState(boardState);
+            var initialLegalMoves = gameState.Moves.ToArray();
 
             for (var i = 0; i < MaxGames; i++)
             {
@@ -109,7 +115,7 @@ public class DataGenerator
                 while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount)
                 {
                     uint move = default;
-                    if (randomMoveCount <= 8)
+                    if (randomMoveCount < 8)
                     {
                         move = gameState.Moves[Random.Shared.Next(0, gameState.Moves.Count)];
                         randomMoveCount++;
@@ -158,7 +164,7 @@ public class DataGenerator
 
                 Output(writer, dataGenPositions, positions, result);
 
-                gameState.ResetTo(InitialBoard);
+                gameState.ResetTo(InitialBoard, initialLegalMoves);
             }
         }
         catch (Exception ex)

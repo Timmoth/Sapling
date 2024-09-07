@@ -44,10 +44,7 @@ public class ParallelSearcher
     public (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) NodeBoundSearch(
         BoardState state, int nodeLimit, int maxDepth)
     {
-        var newSearchId = Guid.NewGuid();
-        _prevSearchId = newSearchId;
-
-        Searchers[0].Init(0, state);
+        Searchers[0].Board = state;
 
         var start = DateTime.Now;
         var searchResult = Searchers[0].Search(nodeLimit, maxDepth);

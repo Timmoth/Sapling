@@ -30,6 +30,16 @@ public sealed class GameState
 
         Board.ResetTo(board);
         Board.GenerateLegalMoves(Moves, false);
+    }   
+    
+    public void ResetTo(BoardState board, uint[] legalMoves)
+    {
+        History.Clear();
+        TakenPieces.Clear();
+
+        Board.ResetTo(board);
+        Moves.Clear();
+        Moves.AddRange(legalMoves);
     }
 
     public bool Apply(uint move)
@@ -54,7 +64,7 @@ public sealed class GameState
 
     public bool GameOver()
     {
-        return Moves.Count == 0 || Board.FiftyMoveCounter >= 50 || Board.InsufficientMatingMaterial();
+        return Moves.Count == 0 || Board.HalfMoveClock >= 100 || Board.InsufficientMatingMaterial();
     }
 
     public byte WinDrawLoose()

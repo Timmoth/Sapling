@@ -15,7 +15,7 @@ public static class Perft
         var oldEnpassant = board.EnPassantFile;
         var prevInCheck = board.InCheck;
         var prevCastleRights = board.CastleRights;
-        var prevFiftyMoveCounter = board.FiftyMoveCounter;
+        var prevFiftyMoveCounter = board.HalfMoveClock;
 
         ulong nodeCount = 0;
         for (var index = 0; index < moveCount; index++)

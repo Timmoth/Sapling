@@ -18,6 +18,8 @@ public class NNUETests
         // Given
         var moveList = moves.Split(' ');
         var board = BoardStateExtensions.CreateBoardFromArray(Constants.InitialState);
+        var originalFen = board.ToFen();
+
         var searcher = new Searcher(Array.Empty<Transposition>());
         searcher.Init(0, board);
 
@@ -26,7 +28,7 @@ public class NNUETests
 
         // Then
         var initialState = BoardStateExtensions.CreateBoardFromArray(Constants.InitialState);
-        board.IsSame(initialState).Should().BeTrue();
+        board.ToFen().Should().Be(originalFen);
     }
 
     [Theory]
@@ -70,7 +72,7 @@ public class NNUETests
         var oldEnpassant = board.EnPassantFile;
         var prevInCheck = board.InCheck;
         var prevCastleRights = board.CastleRights;
-        var prevFiftyMoveCounter = board.FiftyMoveCounter;
+        var prevFiftyMoveCounter = board.HalfMoveClock;
 
         var validMoves = new List<uint>();
         board.GenerateLegalMoves(validMoves, false);

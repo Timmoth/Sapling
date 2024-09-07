@@ -1,10 +1,23 @@
 ﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
 namespace iBlunder.Engine.Evaluation;
 
-public class NnueEvaluator
+#if AVX512
+using AvxIntrinsics = System.Runtime.Intrinsics.X86.Avx512BW;
+using VectorType = System.Runtime.Intrinsics.Vector512;
+using VectorInt = System.Runtime.Intrinsics.Vector512<int>;
+using VectorShort = System.Runtime.Intrinsics.Vector512<short>;
+#else
+using AvxIntrinsics = Avx2;
+using VectorType = Vector256;
+using VectorInt = Vector256<int>;
+using VectorShort = Vector256<short>;
+#endif
+
+public unsafe class NnueEvaluator
 {
     private const int Scale = 400;
     private const int Q = 255 * 64;
@@ -12,34 +25,70 @@ public class NnueEvaluator
     private const int ColorStride = 64 * 6;
     private const int PieceStride = 64;
 
-    private static readonly Vector256<short> Ceil = Vector256.Create<short>(255);
-    private static readonly Vector256<short> Floor = Vector256.Create<short>(0);
-    public readonly short[] BlackAccumulator = new short[NnueWeights.Layer1Size];
-    public readonly short[] WhiteAccumulator = new short[NnueWeights.Layer1Size];
+    private static readonly VectorShort Ceil = VectorType.Create<short>(255);
+    private static readonly VectorShort Floor = VectorType.Create<short>(0);
+
+    public short* BlackAccumulator;
+    public short* WhiteAccumulator;
 
     public NnueEvaluator()
     {
-        Array.Copy(NnueWeights.FeatureBiases, WhiteAccumulator, WhiteAccumulator.Length);
-        Array.Copy(NnueWeights.FeatureBiases, BlackAccumulator, BlackAccumulator.Length);
+        WhiteAccumulator = AllocateAccumulator();
+        BlackAccumulator = AllocateAccumulator();
+        SimdCopy(WhiteAccumulator, NnueWeights.FeatureBiases);
+        SimdCopy(BlackAccumulator, NnueWeights.FeatureBiases);
     }
 
-    public bool IsSame(NnueEvaluator other)
+    public static short* AllocateAccumulator()
     {
-        return WhiteAccumulator.SequenceEqual(other.WhiteAccumulator) &&
-               BlackAccumulator.SequenceEqual(other.BlackAccumulator);
+        const nuint alignment = 64;
+        const nuint bytes = sizeof(short) * NnueWeights.Layer1Size;
+
+        var block = NativeMemory.AlignedAlloc(bytes, alignment);
+        NativeMemory.Clear(block, bytes);
+
+        return (short*)block;
+    }
+
+    private static void SimdCopy(short* destination, short* source)
+    {
+        #if AVX512
+            const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+        #else
+            const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+        #endif
+
+
+        nuint i = 0;
+        for (; i + VectorSize <= NnueWeights.Layer1Size; i += VectorSize)
+        {
+            AvxIntrinsics.StoreAligned(destination + i, VectorType.LoadAligned(source + i));
+        }
+
+        // Copy remaining elements that don't fit in the vector
+        for (; i < NnueWeights.Layer1Size; i++)
+        {
+            destination[i] = source[i];
+        }
+    }
+
+    ~NnueEvaluator()
+    {
+        NativeMemory.AlignedFree(WhiteAccumulator);
+        NativeMemory.AlignedFree(BlackAccumulator);
     }
 
     public void ResetTo(NnueEvaluator other)
     {
-        Array.Copy(other.WhiteAccumulator, WhiteAccumulator, WhiteAccumulator.Length);
-        Array.Copy(other.BlackAccumulator, BlackAccumulator, BlackAccumulator.Length);
+        SimdCopy(WhiteAccumulator, other.WhiteAccumulator);
+        SimdCopy(BlackAccumulator, other.BlackAccumulator);
     }
 
     public static NnueEvaluator Clone(NnueEvaluator other)
     {
         var net = new NnueEvaluator();
-        Array.Copy(other.WhiteAccumulator, net.WhiteAccumulator, net.WhiteAccumulator.Length);
-        Array.Copy(other.BlackAccumulator, net.BlackAccumulator, net.BlackAccumulator.Length);
+        SimdCopy(net.WhiteAccumulator, other.WhiteAccumulator);
+        SimdCopy(net.BlackAccumulator, other.BlackAccumulator);
         return net;
     }
 
@@ -63,15 +112,15 @@ public class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe void Add(short* accuPtr, short* featurePtr, int i)
+    private static void Add(short* accuPtr, short* featurePtr, int i)
     {
-        Avx.Store(accuPtr + i, Avx2.Add(Avx.LoadVector256(accuPtr + i), Avx.LoadVector256(featurePtr + i)));
+        AvxIntrinsics.StoreAligned(accuPtr + i, AvxIntrinsics.Add(VectorType.LoadAligned(accuPtr + i), VectorType.LoadAligned(featurePtr + i)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe void Remove(short* accuPtr, short* featurePtr, int i)
+    private static void Remove(short* accuPtr, short* featurePtr, int i)
     {
-        Avx.Store(accuPtr + i, Avx2.Subtract(Avx.LoadVector256(accuPtr + i), Avx.LoadVector256(featurePtr + i)));
+        AvxIntrinsics.StoreAligned(accuPtr + i, AvxIntrinsics.Subtract(VectorType.LoadAligned(accuPtr + i), VectorType.LoadAligned(featurePtr + i)));
     }
 
     public void Deactivate(int piece, int square)
@@ -98,101 +147,117 @@ public class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe void Replace(short* accuPtr, short* addFeatureOffsetPtr, short* removeFeatureOffsetPtr, int i)
+    private static void Replace(short* accuPtr, short* addFeatureOffsetPtr, short* removeFeatureOffsetPtr, int i)
     {
-        Avx.Store(accuPtr + i,
-            Avx2.Add(
-                Avx.LoadVector256(accuPtr + i),
-                Avx2.Subtract(
-                    Avx.LoadVector256(addFeatureOffsetPtr + i),
-                    Avx.LoadVector256(removeFeatureOffsetPtr + i))));
+        AvxIntrinsics.StoreAligned(accuPtr + i,
+            AvxIntrinsics.Add(
+                VectorType.LoadAligned(accuPtr + i),
+                AvxIntrinsics.Subtract(
+                    VectorType.LoadAligned(addFeatureOffsetPtr + i),
+                    VectorType.LoadAligned(removeFeatureOffsetPtr + i))));
     }
 
-    private static void ReplaceWeights(short[] accu, int addFeatureIndex, int removeFeatureIndex)
+    private static void ReplaceWeights(short* accuPtr, int addFeatureIndex, int removeFeatureIndex)
     {
-        unsafe
-        {
-            fixed (short* accuPtr = accu)
-            fixed (short* featureWeightsPtr = NnueWeights.FeatureWeights)
-            {
-                var addFeatureOffsetPtr = featureWeightsPtr + addFeatureIndex * NnueWeights.Layer1Size;
-                var removeFeatureOffsetPtr = featureWeightsPtr + removeFeatureIndex * NnueWeights.Layer1Size;
+        var addFeatureOffsetPtr = NnueWeights.FeatureWeights + addFeatureIndex * NnueWeights.Layer1Size;
+        var removeFeatureOffsetPtr = NnueWeights.FeatureWeights + removeFeatureIndex * NnueWeights.Layer1Size;
 
-                // Process in chunks
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 16);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 32);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 48);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 64);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 80);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 96);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 112);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 128);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 144);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 160);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 176);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 192);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 208);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 224);
-                Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 240);
-            }
-        }
+        // Process in chunks
+        #if AVX512
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 32);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 64);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 96);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 128);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 160);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 192);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 224);
+        #else
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 16);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 32);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 48);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 64);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 80);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 96);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 112);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 128);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 144);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 160);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 176);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 192);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 208);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 224);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 240);
+        #endif
     }
 
-    private static void SubtractWeights(short[] accu, int inputFeatureIndex)
+    private static void SubtractWeights(short* accuPtr, int inputFeatureIndex)
     {
-        unsafe
-        {
-            fixed (short* accuPtr = accu)
-            fixed (short* featureWeightsPtr = NnueWeights.FeatureWeights)
-            {
-                var featurePtr = featureWeightsPtr + inputFeatureIndex * NnueWeights.Layer1Size;
-                Remove(accuPtr, featurePtr, 0);
-                Remove(accuPtr, featurePtr, 16);
-                Remove(accuPtr, featurePtr, 32);
-                Remove(accuPtr, featurePtr, 48);
-                Remove(accuPtr, featurePtr, 64);
-                Remove(accuPtr, featurePtr, 80);
-                Remove(accuPtr, featurePtr, 96);
-                Remove(accuPtr, featurePtr, 112);
-                Remove(accuPtr, featurePtr, 128);
-                Remove(accuPtr, featurePtr, 144);
-                Remove(accuPtr, featurePtr, 160);
-                Remove(accuPtr, featurePtr, 176);
-                Remove(accuPtr, featurePtr, 192);
-                Remove(accuPtr, featurePtr, 208);
-                Remove(accuPtr, featurePtr, 224);
-                Remove(accuPtr, featurePtr, 240);
-            }
-        }
+        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * NnueWeights.Layer1Size;
+
+
+        #if AVX512
+            Remove(accuPtr, featurePtr, 0);
+            Remove(accuPtr, featurePtr, 32);
+            Remove(accuPtr, featurePtr, 64);
+            Remove(accuPtr, featurePtr, 96);
+            Remove(accuPtr, featurePtr, 128);
+            Remove(accuPtr, featurePtr, 160);
+            Remove(accuPtr, featurePtr, 192);
+            Remove(accuPtr, featurePtr, 224);
+        #else
+            Remove(accuPtr, featurePtr, 0);
+            Remove(accuPtr, featurePtr, 16);
+            Remove(accuPtr, featurePtr, 32);
+            Remove(accuPtr, featurePtr, 48);
+            Remove(accuPtr, featurePtr, 64);
+            Remove(accuPtr, featurePtr, 80);
+            Remove(accuPtr, featurePtr, 96);
+            Remove(accuPtr, featurePtr, 112);
+            Remove(accuPtr, featurePtr, 128);
+            Remove(accuPtr, featurePtr, 144);
+            Remove(accuPtr, featurePtr, 160);
+            Remove(accuPtr, featurePtr, 176);
+            Remove(accuPtr, featurePtr, 192);
+            Remove(accuPtr, featurePtr, 208);
+            Remove(accuPtr, featurePtr, 224);
+            Remove(accuPtr, featurePtr, 240);
+        #endif
     }
 
-    private static void AddWeights(short[] accumulator, int inputFeatureIndex)
+    private static void AddWeights(short* accuPtr, int inputFeatureIndex)
     {
-        unsafe
-        {
-            fixed (short* accuPtr = accumulator)
-            fixed (short* featureWeightsPtr = NnueWeights.FeatureWeights)
-            {
-                var featurePtr = featureWeightsPtr + inputFeatureIndex * NnueWeights.Layer1Size;
-                Add(accuPtr, featurePtr, 0);
-                Add(accuPtr, featurePtr, 16);
-                Add(accuPtr, featurePtr, 32);
-                Add(accuPtr, featurePtr, 48);
-                Add(accuPtr, featurePtr, 64);
-                Add(accuPtr, featurePtr, 80);
-                Add(accuPtr, featurePtr, 96);
-                Add(accuPtr, featurePtr, 112);
-                Add(accuPtr, featurePtr, 128);
-                Add(accuPtr, featurePtr, 144);
-                Add(accuPtr, featurePtr, 160);
-                Add(accuPtr, featurePtr, 176);
-                Add(accuPtr, featurePtr, 192);
-                Add(accuPtr, featurePtr, 208);
-                Add(accuPtr, featurePtr, 224);
-                Add(accuPtr, featurePtr, 240);
-            }
-        }
+        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * NnueWeights.Layer1Size;
+
+
+        #if AVX512
+            Add(accuPtr, featurePtr, 0);
+            Add(accuPtr, featurePtr, 32);
+            Add(accuPtr, featurePtr, 64);
+            Add(accuPtr, featurePtr, 96);
+            Add(accuPtr, featurePtr, 128);
+            Add(accuPtr, featurePtr, 160);
+            Add(accuPtr, featurePtr, 192);
+            Add(accuPtr, featurePtr, 224);
+        #else
+            Add(accuPtr, featurePtr, 0);
+            Add(accuPtr, featurePtr, 16);
+            Add(accuPtr, featurePtr, 32);
+            Add(accuPtr, featurePtr, 48);
+            Add(accuPtr, featurePtr, 64);
+            Add(accuPtr, featurePtr, 80);
+            Add(accuPtr, featurePtr, 96);
+            Add(accuPtr, featurePtr, 112);
+            Add(accuPtr, featurePtr, 128);
+            Add(accuPtr, featurePtr, 144);
+            Add(accuPtr, featurePtr, 160);
+            Add(accuPtr, featurePtr, 176);
+            Add(accuPtr, featurePtr, 192);
+            Add(accuPtr, featurePtr, 208);
+            Add(accuPtr, featurePtr, 224);
+            Add(accuPtr, featurePtr, 240);
+        #endif
     }
 
     public void FillAccumulator(BoardState board)
@@ -263,60 +328,75 @@ public class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe void CRelU(Vector256<int>* accumulator, short* accuPtr, short* featurePtr, int i)
+    private static void CRelU(VectorInt* accumulator, short* accuPtr, short* featurePtr, int i)
     {
-        *accumulator += Avx2.MultiplyAddAdjacent(
-            Vector256.Max(Vector256.Min(Avx.LoadVector256(accuPtr + i), Ceil), Floor),
-            Avx.LoadVector256(featurePtr + i));
+        *accumulator += AvxIntrinsics.MultiplyAddAdjacent(
+            AvxIntrinsics.Max(AvxIntrinsics.Min(VectorType.LoadAligned(accuPtr + i), Ceil), Floor),
+            VectorType.LoadAligned(featurePtr + i));
     }
 
-    private static int ForwardCReLU(short[] us, short[] them)
+    private static int ForwardCReLU(short* usAcc, short* themAcc)
     {
-        var sum = Vector256<int>.Zero;
-        unsafe
-        {
-            fixed (short* usAcc = us)
-            fixed (short* themAcc = them)
-            fixed (short* featureWeightsPtr = NnueWeights.OutputWeights)
-            {
-                var sumAddr = &sum;
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 0);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 16);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 32);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 48);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 64);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 80);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 96);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 112);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 128);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 144);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 160);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 176);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 192);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 208);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 224);
-                CRelU(sumAddr, usAcc, featureWeightsPtr, 240);
+        var sum = VectorInt.Zero;
+        var featureWeightsPtr = NnueWeights.OutputWeights;
+        var sumAddr = &sum;
 
-                var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
-                CRelU(sumAddr, themAcc, themWeightsPtr, 0);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 16);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 32);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 48);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 80);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 64);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 96);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 112);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 128);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 144);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 160);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 176);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 192);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 208);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 224);
-                CRelU(sumAddr, themAcc, themWeightsPtr, 240);
-            }
-        }
+        #if AVX512
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 0);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 32);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 64);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 96);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 128);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 160);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 192);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 224);
 
-        return Vector256.Sum(sum);
+            var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
+            CRelU(sumAddr, themAcc, themWeightsPtr, 0);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 32);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 64);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 96);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 128);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 160);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 192);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 224);
+        #else
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 0);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 16);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 32);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 48);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 64);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 80);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 96);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 112);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 128);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 144);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 160);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 176);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 192);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 208);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 224);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 240);
+
+            var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
+            CRelU(sumAddr, themAcc, themWeightsPtr, 0);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 16);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 32);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 48);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 64);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 80);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 96);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 112);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 128);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 144);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 160);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 176);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 192);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 208);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 224);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 240);
+        #endif
+
+        return VectorType.Sum(sum);
     }
 }

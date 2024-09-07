@@ -38,7 +38,7 @@ public partial class Searcher
                 return alpha;
             }
 
-            if (Board.FiftyMoveCounter >= 100 || Board.InsufficientMatingMaterial() ||
+            if (Board.HalfMoveClock >= 100 || Board.InsufficientMatingMaterial() ||
                 RepetitionTable.DetectThreeFoldRepetition(Board.Hash))
             {
                 // Detect draw by Fifty move counter or repetition
@@ -153,7 +153,7 @@ public partial class Searcher
         }
 
         var prevCastleRights = Board.CastleRights;
-        var prevFiftyMoveCounter = Board.FiftyMoveCounter;
+        var prevFiftyMoveCounter = Board.HalfMoveClock;
 
         // Best move seen so far used in move ordering.
         var moveOrderingBestMove = depthFromRoot == 0

@@ -25,7 +25,7 @@ public static class MoveGenerator
         var oldEnpassant = board.EnPassantFile;
         var prevInCheck = board.InCheck;
         var prevCastleRights = board.CastleRights;
-        var prevFiftyMoveCounter = board.FiftyMoveCounter;
+        var prevFiftyMoveCounter = board.HalfMoveClock;
 
         // Evaluate each position
         for (var moveIndex = 0; moveIndex < moveCount; ++moveIndex)
