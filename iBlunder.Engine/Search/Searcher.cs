@@ -68,6 +68,7 @@ public unsafe partial class Searcher
             if (j <= 1)
             {
                 RepetitionTable.Init(Board.RepetitionPositionHistory);
+                killers.Clear();
                 lastIterationEval = NegaMaxSearch(killers, counters, history, 0, j, alpha, beta, false);
             }
             else
@@ -84,6 +85,8 @@ public unsafe partial class Searcher
                         : lastIterationEval + AsperationWindows[betaWindowIndex];
 
                     RepetitionTable.Init(Board.RepetitionPositionHistory);
+                    killers.Clear();
+
                     var eval = NegaMaxSearch(killers, counters, history, 0, j, alpha, beta, false);
 
                     if (eval <= alpha)
