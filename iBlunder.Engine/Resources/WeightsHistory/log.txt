@@ -84,5 +84,13 @@ weights_9.bin
 ----------------------------------
 Data: 600m positions
 WDL: 0.7
-LR: 0.001, 0.3, 16
-SuperBatches: 64
+LR: 0.001, 0.3, 20
+SuperBatches: 80
+
+----------------------------------
+weights_10.bin
+----------------------------------
+Data: 750m positions
+WDL: 0.7
+LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
+SuperBatches: 90
