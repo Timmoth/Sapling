@@ -1,23 +1,27 @@
-# iBlunder
+# Sapling
 A strong dotnet UCI Chess engine 
-
+<p align="center">
+   <div style="width:640;height:320">
+       <img style="width: inherit" src="./sapling-banner.png">
+</div>
+</p>
 > [!NOTE]  
-> iBlunder is still in active development so will so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 6 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
+> Sapling is still in active development so will so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 6 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
 
 Play it here -> https://iblunder.com/
 
 Or challenge it on Lichess -> https://lichess.org/@/iblunder-bot
 
 ## Releases
-You can download the latest version for windows, linux or mac [here](https://github.com/Timmoth/iBlunder/releases)
+You can download the latest version for windows, linux or mac [here](https://github.com/Timmoth/Sapling/releases)
 
 ## Requirements
-- iBlunder makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
+- Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
 - The releases come with a bundled version of the dotnet runtime, however if you want to run from source you'll need the dotnet 8 SDK installed.
 
 ## Running from source
 ```bash
-dotnet run --project .\iBlunder\iBlunder.csproj --configuration Release
+dotnet run --project .\Sapling\Sapling.csproj --configuration Release
 ```
 
 ## Commands
@@ -84,7 +88,7 @@ After any changes to the engine a SPRT test must be ran to ensure that the chang
 There is a script `sprt.bat` which contains the command to run a cutechess-cli SPRT test. Ensure that you've configured CuteChess to point to both `dev` and `base` engines before hand, and also update the opening book + endgame table base to point to one on your system.
 
 ## NNUE
-I'm in the process of training a 768->256 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/iBlunder/tree/main/iBlunder.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
+I'm in the process of training a 768->256 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
 
 ## Resources:
 - [Chess Programming Wiki](https://www.chessprogramming.org/)
