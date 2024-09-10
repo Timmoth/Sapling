@@ -197,6 +197,7 @@ public partial class Searcher
                 counterMove);
         }
 
+        var logDepth = Math.Log(depth);
         var searchedMoves = 0;
 
         uint bestMove = default;
@@ -247,12 +248,13 @@ public partial class Searcher
             var score = 0;
             if (searchedMoves > 0)
             {
-                if (!isInteresting && depth > 3)
+                if (!isInteresting && depth > 3 && searchedMoves >= 4)
                 {
                     // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
-                    var reduction = pvNode
-                        ? MathHelpers.VectorSqrt(searchedMoves) - 1
-                        : MathHelpers.VectorSqrt(searchedMoves);
+                    var reduction = (int)(pvNode
+                        ? logDepth * Math.Log(searchedMoves) / 2.36
+                        : 0.77 + logDepth * Math.Log(searchedMoves) / 2.36);
+
 
                     if (reduction > 0)
                     {
