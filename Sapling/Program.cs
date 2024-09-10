@@ -6,15 +6,14 @@ internal class Program
 {
     private static void Main(string[] args)
     {
-
-        #if AVX512
+#if AVX512
             if (!Avx512BW.IsSupported)
             {
                 Console.WriteLine("[Error] Avx512BW is not supported on this system");
                 return;
             }
-        #else
-            if (!Avx2.IsSupported)
+#else
+        if (!Avx2.IsSupported)
             {
                 Console.WriteLine("[Error] Avx2 is not supported on this system");
                 return;

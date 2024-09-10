@@ -10,24 +10,30 @@ namespace Sapling;
 
 public class UciEngine
 {
-    public const ulong DefaultTranspositionSetCount = 0b0011_1111_1111_1111_1111_1111;
+    public int TranspositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
+    public Transposition[] Transpositions;
 
     private static readonly string[] PositionLabels = { "position", "fen", "moves" };
     private static readonly string[] GoLabels = { "go", "movetime", "wtime", "btime", "winc", "binc", "movestogo" };
     private readonly StreamWriter _logWriter;
 
-    private readonly ParallelSearcher _parallelSearcher = new();
-    private readonly Searcher _simpleSearcher = new(new Transposition[DefaultTranspositionSetCount + 1]);
+    private ParallelSearcher _parallelSearcher;
+    private Searcher _simpleSearcher;
     private DateTime _dt = DateTime.Now;
     private GameState _gameState = GameState.InitialState();
     private bool _isPonderHit;
     private bool _isPondering;
     private bool _isReady = true;
     private (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) _result;
-
+    private bool _ponderEnabled = false;
+    private int _threadCount = 1;
     public UciEngine(StreamWriter logWriter)
     {
         _logWriter = logWriter;
+        Transpositions = GC.AllocateArray<Transposition>(TranspositionSize, true);
+        _parallelSearcher = new ParallelSearcher(Transpositions);
+        _simpleSearcher = new Searcher(Transpositions);
+
         _parallelSearcher.SetThreads(1);
     }
 
@@ -40,14 +46,45 @@ public class UciEngine
 
         switch (tokens[2].ToLower())
         {
+            case "ponder":
+            {
+                if (tokens[3] == "value" && bool.TryParse(tokens[4], out var value))
+                {
+                    _ponderEnabled = value;
+                }
+                break;
+            }
+
             case "threads":
                 if (tokens[3] == "value" && int.TryParse(tokens[4], out var searchThreads))
                 {
+                    _threadCount = searchThreads;
                     _parallelSearcher.SetThreads(searchThreads);
                     LogToFile($"[Debug] Set Threads '{searchThreads}'");
                 }
 
                 break;
+            case "hash":
+            {
+                if (tokens[3] == "value" && int.TryParse(tokens[4], out var transpositionSize))
+                {
+                    TranspositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
+                    Transpositions = GC.AllocateArray<Transposition>(TranspositionSize, true);
+                    _simpleSearcher = new(Transpositions);
+                    _parallelSearcher = new(Transpositions);
+                    _parallelSearcher.SetThreads(_threadCount);
+                    LogToFile($"[Debug] Set Transposition Size '{TranspositionSize}'");
+                }
+                break;
+            }
+            case "uci_opponent":
+            {
+                if (tokens[3] == "value")
+                {
+                    LogToFile($"Opponent: '{tokens[4]}'");
+                }
+                break;
+            }
         }
     }
 
@@ -64,8 +101,12 @@ public class UciEngine
             switch (messageType)
             {
                 case "uci":
-                    Respond("option name Threads type spin default 1 min 1 max 1024");
-                    Respond("option name Ponder type check default true");
+                    Respond("id name Sapling BETA");
+                    Respond("id author Tim Jones");
+                    Respond("id author Tim Jones");
+                    Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
+                    Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
+                    Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)}");
                     Respond("uciok");
                     break;
                 case "isready":
@@ -73,7 +114,6 @@ public class UciEngine
                     {
                         Respond("readyok");
                     }
-
                     break;
                 case "ucinewgame":
                     _gameState = GameState.InitialState();
@@ -140,26 +180,26 @@ public class UciEngine
     private void OnMoveChosen(
         (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) result)
     {
-        var bestMove = result.move.ToUciMoveName().Replace("=", "");
+        Info(result);
 
-        if (result.ponder != 0)
+        var bestMove = result.move.ToUciMoveName();
+
+        if (_ponderEnabled && result.ponder != 0)
         {
-            var ponderMove = result.ponder.ToUciMoveName().Replace("=", "");
+            var ponderMove = result.ponder.ToUciMoveName();
             Respond($"bestmove {bestMove} ponder {ponderMove}");
         }
         else
         {
             Respond($"bestmove {bestMove}");
         }
-
-        Info(result);
     }
 
     public void Info((uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) result)
     {
         var nps = (int)(result.nodes / result.duration.TotalSeconds);
         Respond(
-            $"info depth {result.depthSearched} score {ScoreToString(result.score)} nodes {result.nodes} nps {nps} time {(int)result.duration.TotalMilliseconds} pv {result.ponder.ToUciMoveName().Replace("=", "")}");
+            $"info depth {result.depthSearched} score {ScoreToString(result.score)} nodes {result.nodes} nps {nps} time {(int)result.duration.TotalMilliseconds} pv {result.move.ToUciMoveName()} {(result.ponder != 0 ? result.ponder.ToUciMoveName() : "")}");
     }
 
     private void ProcessGoCommand(string message)

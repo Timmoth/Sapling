@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
+using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.DataGen;
 

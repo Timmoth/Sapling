@@ -12,10 +12,18 @@ public class ParallelSearcher
     // Used to prevent a previous searches timeout cancelling a new search
     private Guid _prevSearchId = Guid.NewGuid();
 
+    public ParallelSearcher(Transposition[] transpositions)
+    {
+        Transpositions = transpositions;
+
+        // Default to one thread
+        Searchers.Add(new Searcher(Transpositions));
+    }   
+    
     public ParallelSearcher()
     {
-        const int size = (int)Searcher.TtMask + 1;
-        Transpositions = GC.AllocateArray<Transposition>(size, true);
+        const int transpositionSize = 0b0011_1111_1111_1111_1111_1111;
+        Transpositions = GC.AllocateArray<Transposition>(transpositionSize, true);
 
         // Default to one thread
         Searchers.Add(new Searcher(Transpositions));

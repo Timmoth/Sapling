@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Sapling.Engine.Transpositions;
 
@@ -60,7 +61,7 @@ public static class TranspositionTableExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void Set(Transposition* tt, ulong ttMask, ulong hash, byte depth, int ply,
+    public static unsafe void Set(Transposition* tt, uint ttMask, ulong hash, byte depth, int ply,
         int eval, TranspositionTableFlag nodeType, uint move = default)
     {
         ref var entry = ref tt[hash & ttMask];
@@ -82,4 +83,50 @@ public static class TranspositionTableExtensions
         entry.Flag = nodeType;
         entry.Move = move != 0 ? move : entry.Move; //Don't clear TT move if no best move is provided: keep old one
     }
+
+    public static uint CalculateTranspositionTableSize(int sizeInMb)
+    {
+        var transpositionCount = ((ulong)sizeInMb * 1024ul * 1024ul) / 18;
+        if (!BitOperations.IsPow2(transpositionCount))
+        {
+            transpositionCount = BitOperations.RoundUpToPowerOf2(transpositionCount) >> 1;
+        }
+
+        if (transpositionCount > int.MaxValue)
+        {
+            throw new ArgumentException($"Transposition table too large");
+        }
+
+        return (uint)transpositionCount;
+    }
+
+    public static int CalculateSizeInMb(uint transpositionCount)
+    {
+        // If transpositionCount is less than 2, the original function would have shifted it
+        // to a power of 2 and then shifted it back down by >> 1, so adjust it.
+        if (transpositionCount < 2 || !BitOperations.IsPow2(transpositionCount))
+        {
+            throw new ArgumentException("Invalid transposition count, must be a power of 2.");
+        }
+
+        // Reverse the potential shift caused by rounding up in the original function
+        ulong adjustedTranspositionCount = transpositionCount << 1;
+
+        // Calculate the size in MB
+        int sizeInMb = (int)((adjustedTranspositionCount * 18) / (1024 * 1024));
+
+        // Check if the original function would have produced the same transposition count
+        // for this sizeInMb, if not, decrement the size until it matches.
+        while (CalculateTranspositionTableSize(sizeInMb) != transpositionCount)
+        {
+            sizeInMb--;
+            if (sizeInMb < 0)
+            {
+                throw new ArgumentException("Could not invert the function, invalid input.");
+            }
+        }
+
+        return sizeInMb;
+    }
+
 }

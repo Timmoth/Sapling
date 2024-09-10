@@ -5,8 +5,7 @@ namespace Sapling.Engine.Search;
 
 public unsafe partial class Searcher
 {
-    public const ulong TtMask = 0b1111_1111_1111_1111_1111_1111;
-
+    public readonly uint TtMask;
     private static readonly int[] AsperationWindows = { 40, 100, 300, 900, 2700, Constants.MaxScore };
     private readonly Transposition* _transpositionTable;
     public readonly RepetitionTable RepetitionTable = new();
@@ -29,6 +28,8 @@ public unsafe partial class Searcher
         {
             _transpositionTable = p; // Store the pointer
         }
+
+        TtMask = (uint)transpositions.Length - 1;
     }
 
     public void Stop()
