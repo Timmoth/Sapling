@@ -1,16 +1,17 @@
-# Sapling
-A strong dotnet UCI Chess engine 
 <p align="center">
    <div style="width:640;height:320">
        <img style="width: inherit" src="./sapling-banner.png">
 </div>
 </p>
+
+### A strong dotnet UCI Chess engine [BETA] My leaf nodes are growing
+
 > [!NOTE]  
-> Sapling is still in active development so will so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 6 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
+> Sapling is still in active development so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 11 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
 
 Play it here -> https://iblunder.com/
 
-Or challenge it on Lichess -> https://lichess.org/@/iblunder-bot
+Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
