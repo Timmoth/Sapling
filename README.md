@@ -13,7 +13,15 @@ Play it here -> https://iblunder.com/
 Or challenge it on Lichess -> https://lichess.org/@/iblunder-bot
 
 ## Releases
-You can download the latest version for windows, linux or mac [here](https://github.com/Timmoth/Sapling/releases)
+You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
+
+### Latest Release
+- [Windows Avx-256](https://github.com/Timmoth/Sapling/releases/tag/windows_2024-09-11_07-13)
+- [Windows Avx-512](https://github.com/Timmoth/Sapling/releases/tag/windows_avx512_2024-09-11_07-13)
+- [Linux Avx-256](https://github.com/Timmoth/Sapling/releases/tag/linux_2024-09-11_07-13)
+- [Linux Avx-512](https://github.com/Timmoth/Sapling/releases/tag/linux_avx512_2024-09-11_07-13)
+- [Mac Avx-256](https://github.com/Timmoth/Sapling/releases/tag/osx_2024-09-11_07-13)
+- [Mac Avx-512](https://github.com/Timmoth/Sapling/releases/tag/osx_avx512_2024-09-11_07-13)
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
