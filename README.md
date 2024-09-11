@@ -16,7 +16,7 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-### Latest Release
+### Latest Release [BETA] 11/09/2024
 - [Windows Avx-256](https://github.com/Timmoth/Sapling/releases/tag/windows_2024-09-11_07-13)
 - [Windows Avx-512](https://github.com/Timmoth/Sapling/releases/tag/windows_avx512_2024-09-11_07-13)
 - [Linux Avx-256](https://github.com/Timmoth/Sapling/releases/tag/linux_2024-09-11_07-13)
