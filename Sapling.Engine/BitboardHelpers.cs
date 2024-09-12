@@ -65,24 +65,28 @@ public static class BitboardHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ShiftUpRight(this ulong board)
     {
-        return board.ShiftUp().ShiftRight();
+        // Combined shift up (<< 8) and right (<< 1) with a mask to prevent overflow on the left side.
+        return (board << 9) & Constants.NotAFile;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ShiftUpLeft(this ulong board)
     {
-        return board.ShiftUp().ShiftLeft();
+        // Combined shift up (<< 8) and left (>> 1) with a mask to prevent overflow on the right side.
+        return (board << 7) & Constants.NotHFile;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ShiftDownRight(this ulong board)
     {
-        return board.ShiftDown().ShiftRight();
+        // Combined shift down (>> 8) and right (<< 1) with a mask to prevent overflow on the left side.
+        return (board >> 7) & Constants.NotAFile;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ShiftDownLeft(this ulong board)
     {
-        return board.ShiftDown().ShiftLeft();
+        // Combined shift down (>> 8) and left (>> 1) with a mask to prevent overflow on the right side.
+        return (board >> 9) & Constants.NotHFile;
     }
 }

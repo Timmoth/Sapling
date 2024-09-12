@@ -2,7 +2,6 @@
 using System.Runtime.CompilerServices;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
-using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.DataGen;
 
@@ -10,7 +9,7 @@ public class DataGenerator
 {
     public const int Iterations = 10000;
     public const int MaxGames = 20;
-    public const int MaxTurnCount = 300;
+    public const int MaxTurnCount = 500;
     public static readonly BoardState InitialBoard = BoardStateExtensions.CreateBoardFromArray(Constants.InitialState);
     private static readonly object OutputLock = new();
     public int Draws;
@@ -116,7 +115,7 @@ public class DataGenerator
                 while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount)
                 {
                     uint move = default;
-                    if (randomMoveCount < 8)
+                    if (randomMoveCount <= 9)
                     {
                         move = gameState.Moves[Random.Shared.Next(0, gameState.Moves.Count)];
                         randomMoveCount++;

@@ -1015,6 +1015,6 @@ public static class BoardStateExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int Evaluate(this BoardState board)
     {
-        return board.Evaluator.Evaluate(board.WhiteToMove);
+        return board.Evaluator.Evaluate(board.WhiteToMove, board.PieceCount);
     }
 }

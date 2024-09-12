@@ -1,4 +1,7 @@
-﻿using System.Reflection;
+﻿using System.IO;
+using System;
+using System.Reflection;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -7,13 +10,14 @@ namespace Sapling.Engine.Evaluation;
 public static class NnueWeights
 {
     public const int InputSize = 768;
-    public const int Layer1Size = 256;
+    public const int Layer1Size = 512;
 
-    public static readonly short OutputBias;
+    public const short OutputBuckets = 8;
 
     public static readonly unsafe short* FeatureWeights;
     public static readonly unsafe short* FeatureBiases;
     public static readonly unsafe short* OutputWeights;
+    public static readonly short[] OutputBiases = new short[OutputBuckets];
 
     static unsafe NnueWeights()
     {
@@ -25,7 +29,7 @@ public static class NnueWeights
 
         var featureWeights = new short[InputSize * Layer1Size];
         var featureBiases = new short[Layer1Size];
-        var outputWeights = new short[Layer1Size * 2];
+        var outputWeights = new short[Layer1Size * 2 * OutputBuckets];
 
         using var reader = new BinaryReader(stream, Encoding.UTF8, false);
         for (var i = 0; i < featureWeights.Length; i++)
@@ -42,13 +46,35 @@ public static class NnueWeights
         {
             outputWeights[i] = reader.ReadInt16();
         }
+        var transposedWeights = new short[outputWeights.Length];
 
-        OutputBias = reader.ReadInt16();
+        // Transposing logic
+        for (int i = 0; i < 2 * Layer1Size; i++)
+        {
+            for (int j = 0; j < OutputBuckets; j++)
+            {
+                // Original index calculation
+                int originalIndex = i * OutputBuckets + j;
+
+                // Transposed index calculation
+                int transposedIndex = j * (2 * Layer1Size) + i;
+
+                // Assign value to transposed position
+                transposedWeights[transposedIndex] = outputWeights[originalIndex];
+            }
+        }
+
+        outputWeights = transposedWeights;
+
+        for (var i = 0; i < OutputBiases.Length; i++)
+        {
+            OutputBiases[i] = reader.ReadInt16();
+        }
 
         // Allocate unmanaged memory
-        FeatureWeights = AlignedAllocZeroed(InputSize * Layer1Size);
-        FeatureBiases = AlignedAllocZeroed(Layer1Size);
-        OutputWeights = AlignedAllocZeroed(Layer1Size * 2);
+        FeatureWeights = AlignedAllocZeroed((nuint)featureWeights.Length);
+        FeatureBiases = AlignedAllocZeroed((nuint)featureBiases.Length);
+        OutputWeights = AlignedAllocZeroed((nuint)outputWeights.Length);
 
         // Copy managed array to unmanaged memory
         fixed (short* sourcePtr = featureWeights)

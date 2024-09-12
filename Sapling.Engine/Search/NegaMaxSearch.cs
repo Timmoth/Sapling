@@ -248,12 +248,12 @@ public partial class Searcher
             var score = 0;
             if (searchedMoves > 0)
             {
-                if (!isInteresting && depth > 3 && searchedMoves >= 4)
+                if (!isInteresting && depth > 3 && searchedMoves >= 3)
                 {
                     // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
                     var reduction = (int)(pvNode
-                        ? logDepth * Math.Log(searchedMoves) / 2.36
-                        : 0.77 + logDepth * Math.Log(searchedMoves) / 2.36);
+                        ? logDepth * Math.Log(searchedMoves) / 2
+                        : 0.5 + logDepth * Math.Log(searchedMoves) / 2);
 
 
                     if (reduction > 0)

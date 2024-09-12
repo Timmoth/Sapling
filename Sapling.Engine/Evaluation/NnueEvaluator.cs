@@ -92,13 +92,16 @@ public unsafe class NnueEvaluator
         return net;
     }
 
-    public int Evaluate(bool isWhite)
+    public int Evaluate(bool isWhite, int pieceCount)
     {
-        var output = isWhite
-            ? ForwardCReLU(WhiteAccumulator, BlackAccumulator)
-            : ForwardCReLU(BlackAccumulator, WhiteAccumulator);
+        const int bucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
+        var bucket = (pieceCount - 2) / bucketDivisor;
 
-        return (output + NnueWeights.OutputBias) * Scale / Q;
+        var output = isWhite
+            ? ForwardCReLU(WhiteAccumulator, BlackAccumulator, bucket)
+            : ForwardCReLU(BlackAccumulator, WhiteAccumulator, bucket);
+
+        return (output + NnueWeights.OutputBiases[bucket]) * Scale / Q;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -163,7 +166,7 @@ public unsafe class NnueEvaluator
         var removeFeatureOffsetPtr = NnueWeights.FeatureWeights + removeFeatureIndex * NnueWeights.Layer1Size;
 
         // Process in chunks
-        #if AVX512
+#if AVX512
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 32);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 64);
@@ -172,8 +175,16 @@ public unsafe class NnueEvaluator
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 160);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 192);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 224);
-        #else
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 256);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 288);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 320);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 352);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 384);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 416);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 448);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 480);
+#else
+        Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 16);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 32);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 48);
@@ -189,7 +200,23 @@ public unsafe class NnueEvaluator
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 208);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 224);
             Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 240);
-        #endif
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 256);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 272);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 288);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 304);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 320);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 336);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 352);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 368);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 384);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 400);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 416);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 432);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 448);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 464);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 480);
+            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 496);
+#endif
     }
 
     private static void SubtractWeights(short* accuPtr, int inputFeatureIndex)
@@ -197,7 +224,7 @@ public unsafe class NnueEvaluator
         var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * NnueWeights.Layer1Size;
 
 
-        #if AVX512
+#if AVX512
             Remove(accuPtr, featurePtr, 0);
             Remove(accuPtr, featurePtr, 32);
             Remove(accuPtr, featurePtr, 64);
@@ -205,9 +232,17 @@ public unsafe class NnueEvaluator
             Remove(accuPtr, featurePtr, 128);
             Remove(accuPtr, featurePtr, 160);
             Remove(accuPtr, featurePtr, 192);
-            Remove(accuPtr, featurePtr, 224);
-        #else
-            Remove(accuPtr, featurePtr, 0);
+            Remove(accuPtr, featurePtr, 224);     
+            Remove(accuPtr, featurePtr, 256);
+            Remove(accuPtr, featurePtr, 288);
+            Remove(accuPtr, featurePtr, 320);
+            Remove(accuPtr, featurePtr, 352);
+            Remove(accuPtr, featurePtr, 384);
+            Remove(accuPtr, featurePtr, 416);
+            Remove(accuPtr, featurePtr, 448);
+            Remove(accuPtr, featurePtr, 480);
+#else
+        Remove(accuPtr, featurePtr, 0);
             Remove(accuPtr, featurePtr, 16);
             Remove(accuPtr, featurePtr, 32);
             Remove(accuPtr, featurePtr, 48);
@@ -223,7 +258,23 @@ public unsafe class NnueEvaluator
             Remove(accuPtr, featurePtr, 208);
             Remove(accuPtr, featurePtr, 224);
             Remove(accuPtr, featurePtr, 240);
-        #endif
+            Remove(accuPtr, featurePtr, 256);
+            Remove(accuPtr, featurePtr, 272);
+            Remove(accuPtr, featurePtr, 288);
+            Remove(accuPtr, featurePtr, 304);
+            Remove(accuPtr, featurePtr, 320);
+            Remove(accuPtr, featurePtr, 336);
+            Remove(accuPtr, featurePtr, 352);
+            Remove(accuPtr, featurePtr, 368);
+            Remove(accuPtr, featurePtr, 384);
+            Remove(accuPtr, featurePtr, 400);
+            Remove(accuPtr, featurePtr, 416);
+            Remove(accuPtr, featurePtr, 432);
+            Remove(accuPtr, featurePtr, 448);
+            Remove(accuPtr, featurePtr, 464);
+            Remove(accuPtr, featurePtr, 480);
+            Remove(accuPtr, featurePtr, 496);
+#endif
     }
 
     private static void AddWeights(short* accuPtr, int inputFeatureIndex)
@@ -231,7 +282,7 @@ public unsafe class NnueEvaluator
         var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * NnueWeights.Layer1Size;
 
 
-        #if AVX512
+#if AVX512
             Add(accuPtr, featurePtr, 0);
             Add(accuPtr, featurePtr, 32);
             Add(accuPtr, featurePtr, 64);
@@ -240,8 +291,16 @@ public unsafe class NnueEvaluator
             Add(accuPtr, featurePtr, 160);
             Add(accuPtr, featurePtr, 192);
             Add(accuPtr, featurePtr, 224);
-        #else
-            Add(accuPtr, featurePtr, 0);
+            Add(accuPtr, featurePtr, 256);
+            Add(accuPtr, featurePtr, 288);
+            Add(accuPtr, featurePtr, 320);
+            Add(accuPtr, featurePtr, 352);
+            Add(accuPtr, featurePtr, 384);
+            Add(accuPtr, featurePtr, 416);
+            Add(accuPtr, featurePtr, 448);
+            Add(accuPtr, featurePtr, 480);
+#else
+        Add(accuPtr, featurePtr, 0);
             Add(accuPtr, featurePtr, 16);
             Add(accuPtr, featurePtr, 32);
             Add(accuPtr, featurePtr, 48);
@@ -257,7 +316,23 @@ public unsafe class NnueEvaluator
             Add(accuPtr, featurePtr, 208);
             Add(accuPtr, featurePtr, 224);
             Add(accuPtr, featurePtr, 240);
-        #endif
+            Add(accuPtr, featurePtr, 256);
+            Add(accuPtr, featurePtr, 272);
+            Add(accuPtr, featurePtr, 288);
+            Add(accuPtr, featurePtr, 304);
+            Add(accuPtr, featurePtr, 320);
+            Add(accuPtr, featurePtr, 336);
+            Add(accuPtr, featurePtr, 352);
+            Add(accuPtr, featurePtr, 368);
+            Add(accuPtr, featurePtr, 384);
+            Add(accuPtr, featurePtr, 400);
+            Add(accuPtr, featurePtr, 416);
+            Add(accuPtr, featurePtr, 432);
+            Add(accuPtr, featurePtr, 448);
+            Add(accuPtr, featurePtr, 464);
+            Add(accuPtr, featurePtr, 480);
+            Add(accuPtr, featurePtr, 496);
+#endif
     }
 
     public void FillAccumulator(BoardState board)
@@ -335,13 +410,13 @@ public unsafe class NnueEvaluator
             VectorType.LoadAligned(featurePtr + i));
     }
 
-    private static int ForwardCReLU(short* usAcc, short* themAcc)
+    private static int ForwardCReLU(short* usAcc, short* themAcc, int bucket)
     {
         var sum = VectorInt.Zero;
-        var featureWeightsPtr = NnueWeights.OutputWeights;
+        var featureWeightsPtr = NnueWeights.OutputWeights + (bucket * NnueWeights.Layer1Size * 2);
         var sumAddr = &sum;
 
-        #if AVX512
+#if AVX512
             CRelU(sumAddr, usAcc, featureWeightsPtr, 0);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 32);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 64);
@@ -350,6 +425,14 @@ public unsafe class NnueEvaluator
             CRelU(sumAddr, usAcc, featureWeightsPtr, 160);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 192);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 224);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 256);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 288);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 320);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 352);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 384);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 416);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 448);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 480);
 
             var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
             CRelU(sumAddr, themAcc, themWeightsPtr, 0);
@@ -360,7 +443,15 @@ public unsafe class NnueEvaluator
             CRelU(sumAddr, themAcc, themWeightsPtr, 160);
             CRelU(sumAddr, themAcc, themWeightsPtr, 192);
             CRelU(sumAddr, themAcc, themWeightsPtr, 224);
-        #else
+            CRelU(sumAddr, themAcc, themWeightsPtr, 256);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 288);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 320);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 352);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 384);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 416);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 448);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 480);
+#else
             CRelU(sumAddr, usAcc, featureWeightsPtr, 0);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 16);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 32);
@@ -377,8 +468,24 @@ public unsafe class NnueEvaluator
             CRelU(sumAddr, usAcc, featureWeightsPtr, 208);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 224);
             CRelU(sumAddr, usAcc, featureWeightsPtr, 240);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 256);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 272);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 288);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 304);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 320);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 336);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 352);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 368);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 384);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 400);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 416);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 432);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 448);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 464);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 480);
+            CRelU(sumAddr, usAcc, featureWeightsPtr, 496);
 
-            var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
+        var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
             CRelU(sumAddr, themAcc, themWeightsPtr, 0);
             CRelU(sumAddr, themAcc, themWeightsPtr, 16);
             CRelU(sumAddr, themAcc, themWeightsPtr, 32);
@@ -395,7 +502,23 @@ public unsafe class NnueEvaluator
             CRelU(sumAddr, themAcc, themWeightsPtr, 208);
             CRelU(sumAddr, themAcc, themWeightsPtr, 224);
             CRelU(sumAddr, themAcc, themWeightsPtr, 240);
-        #endif
+            CRelU(sumAddr, themAcc, themWeightsPtr, 256);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 272);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 288);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 304);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 320);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 336);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 352);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 368);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 384);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 400);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 416);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 432);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 448);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 464);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 480);
+            CRelU(sumAddr, themAcc, themWeightsPtr, 496);
+#endif
 
         return VectorType.Sum(sum);
     }

@@ -22,7 +22,7 @@ public class ParallelSearcher
     
     public ParallelSearcher()
     {
-        const int transpositionSize = 0b0011_1111_1111_1111_1111_1111;
+        const int transpositionSize = 0b1111_1111_1111_1111_1111_1111;
         Transpositions = GC.AllocateArray<Transposition>(transpositionSize, true);
 
         // Default to one thread
