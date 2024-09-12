@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Pgn;
@@ -135,7 +136,8 @@ public static class BoardStateExtensions
         boardState.Hash = Zobrist.CalculateZobristKey(boardState);
 
         boardState.Evaluator = new NnueEvaluator();
-        boardState.Evaluator.FillAccumulator(boardState);
+        boardState.Evaluator.FillWhiteAccumulator(boardState, boardState.WhiteKingSquare.IsMirroredSide());
+        boardState.Evaluator.FillBlackAccumulator(boardState, boardState.BlackKingSquare.IsMirroredSide());
         return boardState;
     }
 
@@ -212,7 +214,8 @@ public static class BoardStateExtensions
         boardState.Occupancy = boardState.WhitePieces | boardState.BlackPieces;
         boardState.Hash = Zobrist.CalculateZobristKey(boardState);
         boardState.Evaluator = new NnueEvaluator();
-        boardState.Evaluator.FillAccumulator(boardState);
+        boardState.Evaluator.FillWhiteAccumulator(boardState, boardState.WhiteKingSquare.IsMirroredSide());
+        boardState.Evaluator.FillBlackAccumulator(boardState, boardState.WhiteKingSquare.IsMirroredSide());
 
         return boardState;
     }
@@ -593,6 +596,14 @@ public static class BoardStateExtensions
 
         var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
 
+        if (movedPiece == Constants.WhiteKing && toSquare.IsMirroredSide() != board.Evaluator.WhiteMirrored)
+        {
+            board.Evaluator.MirrorWhite(board, toSquare.IsMirroredSide());
+        }else if (moveType == Constants.BlackKing && toSquare.IsMirroredSide() != board.Evaluator.BlackMirrored)
+        {
+            board.Evaluator.MirrorBlack(board, toSquare.IsMirroredSide());
+        }
+
         switch (moveType)
         {
             case Constants.EnPassant:
@@ -873,6 +884,15 @@ public static class BoardStateExtensions
     public static void FinishUnApplyMove(this BoardState board, uint m, int oldEnpassantFile)
     {
         var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
+
+        if (movedPiece == Constants.WhiteKing && fromSquare.IsMirroredSide() != board.Evaluator.WhiteMirrored)
+        {
+            board.Evaluator.MirrorWhite(board, fromSquare.IsMirroredSide());
+        }
+        else if (moveType == Constants.BlackKing && fromSquare.IsMirroredSide() != board.Evaluator.BlackMirrored)
+        {
+            board.Evaluator.MirrorBlack(board, fromSquare.IsMirroredSide());
+        }
 
         switch (moveType)
         {

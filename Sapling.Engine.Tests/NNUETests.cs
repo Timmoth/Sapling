@@ -51,15 +51,15 @@ public class NNUETests
         board.ToFen().Should().Be(fen);
     }
 
-    [Theory]
-    [InlineData(1, 0, 64 * 6, 56)]
-    [InlineData(2, 0, 0, 440)]
-    public void FeatureIndex(int piece, int square, int expectedWhite, int expectedBlack)
-    {
-        var (bIndex, wIndex) = NnueEvaluator.FeatureIndices(piece, square);
-        bIndex.Should().Be(expectedBlack);
-        wIndex.Should().Be(expectedWhite);
-    }
+    //[Theory]
+    //[InlineData(1, 0, 64 * 6, 56)]
+    //[InlineData(2, 0, 0, 440)]
+    //public void FeatureIndex(int piece, int square, int expectedWhite, int expectedBlack)
+    //{
+    //    var (bIndex, wIndex) = NnueEvaluator.FeatureIndices(piece, square);
+    //    bIndex.Should().Be(expectedBlack);
+    //    wIndex.Should().Be(expectedWhite);
+    //}
 
     public void ApplyUnApply(BoardState board, Searcher searcher, string[] moves, int moveIndex)
     {

@@ -31,12 +31,13 @@ public unsafe class NnueEvaluator
     public short* BlackAccumulator;
     public short* WhiteAccumulator;
 
+    public bool WhiteMirrored = false;
+    public bool BlackMirrored = false;
+
     public NnueEvaluator()
     {
         WhiteAccumulator = AllocateAccumulator();
         BlackAccumulator = AllocateAccumulator();
-        SimdCopy(WhiteAccumulator, NnueWeights.FeatureBiases);
-        SimdCopy(BlackAccumulator, NnueWeights.FeatureBiases);
     }
 
     public static short* AllocateAccumulator()
@@ -72,6 +73,38 @@ public unsafe class NnueEvaluator
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ClearWhiteAccumulator()
+    {
+#if AVX512
+            const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#else
+        const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#endif
+
+        nuint i = 0;
+        for (; i + VectorSize <= NnueWeights.Layer1Size; i += VectorSize)
+        {
+            AvxIntrinsics.StoreAligned(WhiteAccumulator + i, VectorType.LoadAligned(NnueWeights.FeatureBiases + i));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ClearBlackAccumulator()
+    {
+#if AVX512
+            const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#else
+        const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#endif
+
+        nuint i = 0;
+        for (; i + VectorSize <= NnueWeights.Layer1Size; i += VectorSize)
+        {
+            AvxIntrinsics.StoreAligned(BlackAccumulator + i, VectorType.LoadAligned(NnueWeights.FeatureBiases + i));
+        }
+    }
+
     ~NnueEvaluator()
     {
         NativeMemory.AlignedFree(WhiteAccumulator);
@@ -92,9 +125,9 @@ public unsafe class NnueEvaluator
         return net;
     }
 
+    const int bucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
     public int Evaluate(bool isWhite, int pieceCount)
     {
-        const int bucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
         var bucket = (pieceCount - 2) / bucketDivisor;
 
         var output = isWhite
@@ -105,8 +138,23 @@ public unsafe class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static (int blackIdx, int whiteIdx) FeatureIndices(int piece, int square)
+    public (int blackIdx, int whiteIdx) FeatureIndices(int piece, int square)
     {
+        if (piece % 2 == 0)
+        {
+            if (!WhiteMirrored)
+            {
+                square ^= 7;
+            }
+        }
+        else
+        {
+            if (!BlackMirrored)
+            {
+                square ^= 7;
+            }
+        }
+
         var white = (piece + 1) % 2;
         var type = (piece >> 1) - white;
 
@@ -335,11 +383,13 @@ public unsafe class NnueEvaluator
 #endif
     }
 
-    public void FillAccumulator(BoardState board)
+    public void FillWhiteAccumulator(BoardState board, bool isMirrored)
     {
+        WhiteMirrored = isMirrored;
+        ClearWhiteAccumulator();
+
         // Accumulate layer weights
         Apply(Constants.WhiteKing, board.WhiteKingSquare);
-        Apply(Constants.BlackKing, board.BlackKingSquare);
 
         var number = board.WhitePawns;
         while (number != 0)
@@ -370,8 +420,17 @@ public unsafe class NnueEvaluator
         {
             Apply(Constants.WhiteQueen, number.PopLSB());
         }
+    }
 
-        number = board.BlackPawns;
+    public void FillBlackAccumulator(BoardState board, bool isMirrored)
+    {
+        BlackMirrored = isMirrored;
+        ClearBlackAccumulator();
+
+        // Accumulate layer weights
+        Apply(Constants.BlackKing, board.BlackKingSquare);
+
+        var number = board.BlackPawns;
         while (number != 0)
         {
             Apply(Constants.BlackPawn, number.PopLSB());
@@ -521,5 +580,15 @@ public unsafe class NnueEvaluator
 #endif
 
         return VectorType.Sum(sum);
+    }
+
+    public void MirrorWhite(BoardState board, bool isMirrored)
+    {
+        FillWhiteAccumulator(board, isMirrored);
+    }
+
+    public void MirrorBlack(BoardState board, bool isMirrored)
+    {
+        FillBlackAccumulator(board, isMirrored);
     }
 }
