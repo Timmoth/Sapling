@@ -16,13 +16,13 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-### Latest Release [BETA] 11/09/2024
-- [Windows Avx-256](https://github.com/Timmoth/Sapling/releases/tag/windows_2024-09-11_07-13)
-- [Windows Avx-512](https://github.com/Timmoth/Sapling/releases/tag/windows_avx512_2024-09-11_07-13)
-- [Linux Avx-256](https://github.com/Timmoth/Sapling/releases/tag/linux_2024-09-11_07-13)
-- [Linux Avx-512](https://github.com/Timmoth/Sapling/releases/tag/linux_avx512_2024-09-11_07-13)
-- [Mac Avx-256](https://github.com/Timmoth/Sapling/releases/tag/osx_2024-09-11_07-13)
-- [Mac Avx-512](https://github.com/Timmoth/Sapling/releases/tag/osx_avx512_2024-09-11_07-13)
+### Latest Release [BETA] 12/09/2024
+- [Windows Avx-256](https://github.com/Timmoth/Sapling/releases/tag/windows_2024-09-12_18-15)
+- [Windows Avx-512](https://github.com/Timmoth/Sapling/releases/tag/windows_avx512_2024-09-12_18-15)
+- [Linux Avx-256](https://github.com/Timmoth/Sapling/releases/tag/linux_2024-09-12_18-15)
+- [Linux Avx-512](https://github.com/Timmoth/Sapling/releases/tag/linux_avx512_2024-09-12_18-15)
+- [Mac Avx-256](https://github.com/Timmoth/Sapling/releases/tag/osx_2024-09-12_18-15)
+- [Mac Avx-512](https://github.com/Timmoth/Sapling/releases/tag/osx_avx512_2024-09-12_18-15)
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
