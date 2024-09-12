@@ -1,19 +1,28 @@
-# Sapling
-A strong dotnet UCI Chess engine 
 <p align="center">
    <div style="width:640;height:320">
        <img style="width: inherit" src="./sapling-banner.png">
 </div>
 </p>
+
+### A strong dotnet UCI Chess engine [BETA] My leaf nodes are growing
+
 > [!NOTE]  
-> Sapling is still in active development so will so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 6 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
+> Sapling is still in active development so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 11 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
 
 Play it here -> https://iblunder.com/
 
-Or challenge it on Lichess -> https://lichess.org/@/iblunder-bot
+Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 
 ## Releases
-You can download the latest version for windows, linux or mac [here](https://github.com/Timmoth/Sapling/releases)
+You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
+
+### Latest Release [BETA] 11/09/2024
+- [Windows Avx-256](https://github.com/Timmoth/Sapling/releases/tag/windows_2024-09-11_07-13)
+- [Windows Avx-512](https://github.com/Timmoth/Sapling/releases/tag/windows_avx512_2024-09-11_07-13)
+- [Linux Avx-256](https://github.com/Timmoth/Sapling/releases/tag/linux_2024-09-11_07-13)
+- [Linux Avx-512](https://github.com/Timmoth/Sapling/releases/tag/linux_avx512_2024-09-11_07-13)
+- [Mac Avx-256](https://github.com/Timmoth/Sapling/releases/tag/osx_2024-09-11_07-13)
+- [Mac Avx-512](https://github.com/Timmoth/Sapling/releases/tag/osx_avx512_2024-09-11_07-13)
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
