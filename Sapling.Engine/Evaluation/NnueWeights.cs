@@ -4,9 +4,21 @@ using System.Reflection;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Runtime.Intrinsics.X86;
+using System.Runtime.Intrinsics;
 
 namespace Sapling.Engine.Evaluation;
-
+#if AVX512
+using AvxIntrinsics = System.Runtime.Intrinsics.X86.Avx512BW;
+using VectorType = System.Runtime.Intrinsics.Vector512;
+using VectorInt = System.Runtime.Intrinsics.Vector512<int>;
+using VectorShort = System.Runtime.Intrinsics.Vector512<short>;
+#else
+using AvxIntrinsics = Avx2;
+using VectorType = Vector256;
+using VectorInt = Vector256<int>;
+using VectorShort = Vector256<short>;
+#endif
 public static class NnueWeights
 {
     public const int InputSize = 768;
@@ -14,9 +26,9 @@ public static class NnueWeights
 
     public const short OutputBuckets = 8;
 
-    public static readonly unsafe short* FeatureWeights;
-    public static readonly unsafe short* FeatureBiases;
-    public static readonly unsafe short* OutputWeights;
+    public static readonly unsafe VectorShort* FeatureWeights;
+    public static readonly unsafe VectorShort* FeatureBiases;
+    public static readonly unsafe VectorShort* OutputWeights;
     public static readonly short[] OutputBiases = new short[OutputBuckets];
 
     static unsafe NnueWeights()
@@ -72,9 +84,9 @@ public static class NnueWeights
         }
 
         // Allocate unmanaged memory
-        FeatureWeights = AlignedAllocZeroed((nuint)featureWeights.Length);
-        FeatureBiases = AlignedAllocZeroed((nuint)featureBiases.Length);
-        OutputWeights = AlignedAllocZeroed((nuint)outputWeights.Length);
+        FeatureWeights = AlignedAllocZeroedShort((nuint)featureWeights.Length);
+        FeatureBiases = AlignedAllocZeroedShort((nuint)featureBiases.Length);
+        OutputWeights = AlignedAllocZeroedShort((nuint)outputWeights.Length);
 
         // Copy managed array to unmanaged memory
         fixed (short* sourcePtr = featureWeights)
@@ -96,7 +108,19 @@ public static class NnueWeights
         }
     }
 
+    public static unsafe VectorShort* AlignedAllocZeroedShort(nuint items)
+    {
+        const nuint alignment = 64;
+        var bytes = sizeof(short) * items;
+        var block = NativeMemory.AlignedAlloc(bytes, alignment);
+        if (block == null)
+        {
+            throw new OutOfMemoryException("Failed to allocate aligned memory.");
+        }
 
+        NativeMemory.Clear(block, bytes);
+        return (VectorShort*)block;
+    }
     public static unsafe short* AlignedAllocZeroed(nuint items)
     {
         const nuint alignment = 64;

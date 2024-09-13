@@ -84,7 +84,6 @@ public class NNUETests
         board.FinishApply(move, oldEnpassant, prevCastleRights);
         ApplyUnApply(board, searcher, moves, moveIndex + 1);
         board.PartialUnApply(move, oldHash, oldEnpassant, prevInCheck, prevCastleRights, prevFiftyMoveCounter);
-        board.FinishUnApplyMove(move, oldEnpassant);
     }
 
     public void Apply(BoardState board, string[] moves, int moveIndex)

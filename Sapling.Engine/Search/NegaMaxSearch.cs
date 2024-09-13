@@ -1,9 +1,21 @@
-﻿using System.Runtime.Intrinsics.X86;
+﻿using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.Search;
-
+#if AVX512
+using AvxIntrinsics = System.Runtime.Intrinsics.X86.Avx512BW;
+using VectorType = System.Runtime.Intrinsics.Vector512;
+using VectorInt = System.Runtime.Intrinsics.Vector512<int>;
+using VectorShort = System.Runtime.Intrinsics.Vector512<short>;
+#else
+using AvxIntrinsics = Avx2;
+using VectorType = Vector256;
+using VectorInt = Vector256<int>;
+using VectorShort = Vector256<short>;
+#endif
 public partial class Searcher
 {
     public unsafe int
@@ -203,6 +215,16 @@ public partial class Searcher
         uint bestMove = default;
         var evaluationBound = TranspositionTableFlag.Alpha;
 
+        var shouldWhiteMirrored = Board.Evaluator.ShouldWhiteMirrored;
+        var shouldBlackMirrored = Board.Evaluator.ShouldBlackMirrored;
+        var whiteMirrored = Board.Evaluator.WhiteMirrored;
+        var blackMirrored = Board.Evaluator.BlackMirrored;
+        var whiteAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
+        var blackAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
+ 
+        NnueEvaluator.SimdCopy(whiteAccPtr, Board.Evaluator.WhiteAccumulator);
+        NnueEvaluator.SimdCopy(blackAccPtr, Board.Evaluator.BlackAccumulator);
+
         // Evaluate each move
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
@@ -282,7 +304,13 @@ public partial class Searcher
 
             // Revert the move
             Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevFiftyMoveCounter);
-            Board.FinishUnApplyMove(m, oldEnpassant);
+
+            Board.Evaluator.WhiteMirrored = whiteMirrored;
+            Board.Evaluator.BlackMirrored = blackMirrored;
+            Board.Evaluator.ShouldWhiteMirrored = shouldWhiteMirrored;
+            Board.Evaluator.ShouldBlackMirrored = shouldBlackMirrored;
+            NnueEvaluator.SimdCopy(Board.Evaluator.WhiteAccumulator, whiteAccPtr);
+            NnueEvaluator.SimdCopy(Board.Evaluator.BlackAccumulator, blackAccPtr);
 
             searchedMoves++;
 
@@ -343,6 +371,7 @@ public partial class Searcher
 
             return score;
         }
+
 
         if (_searchCancelled)
         {

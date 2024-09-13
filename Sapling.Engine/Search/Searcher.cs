@@ -1,8 +1,22 @@
-﻿using Sapling.Engine.MoveGen;
+﻿using Sapling.Engine.Evaluation;
+using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
+using System.Runtime.Intrinsics;
 
 namespace Sapling.Engine.Search;
-
+#if AVX512
+using AvxIntrinsics = System.Runtime.Intrinsics.X86.Avx512BW;
+using VectorType = System.Runtime.Intrinsics.Vector512;
+using VectorInt = System.Runtime.Intrinsics.Vector512<int>;
+using VectorShort = System.Runtime.Intrinsics.Vector512<short>;
+#else
+using AvxIntrinsics = Avx2;
+using VectorType = Vector256;
+using VectorInt = Vector256<int>;
+using VectorShort = Vector256<short>;
+#endif
 public unsafe partial class Searcher
 {
     public readonly uint TtMask;
@@ -59,7 +73,7 @@ public unsafe partial class Searcher
 
         var maxDepth = depthLimit > 0 ? depthLimit : Constants.MaxSearchDepth;
 
-        for (var j = 1; j <= maxDepth; j++)
+        for (var j = 0; j <= maxDepth; j++)
         {
             if (_searchCancelled)
             {
@@ -117,82 +131,6 @@ public unsafe partial class Searcher
             }
 
             depthSearched = j;
-        }
-
-        if (BestSoFar != default)
-        {
-            return (BestSoFar, depthSearched, BestScoreSoFar, BestOpponentMove, NodesVisited);
-        }
-
-        // If couldn't find a good move, due to timeout return first legal move after move ordering
-        Span<uint> moves = stackalloc uint[218];
-        var psuedoMoveCount = Board.GeneratePseudoLegalMoves(moves, false);
-
-        var originalHash = Board.Hash;
-        var oldEnpassant = Board.EnPassantFile;
-        var prevInCheck = Board.InCheck;
-
-        var prevCastleRights = Board.CastleRights;
-        var prevFiftyMoveCounter = Board.HalfMoveClock;
-
-        // Get killer move
-        var killerA = killers[0 * 2];
-        var killerB = killers[0 * 2 + 1];
-
-        // Data used in move ordering
-        Span<int> scores = stackalloc int[psuedoMoveCount];
-        Span<ulong> occupancyBitBoards = stackalloc ulong[8]
-        {
-            Board.WhitePieces,
-            Board.BlackPieces,
-            Board.BlackPawns | Board.WhitePawns,
-            Board.BlackKnights | Board.WhiteKnights,
-            Board.BlackBishops | Board.WhiteBishops,
-            Board.BlackRooks | Board.WhiteRooks,
-            Board.BlackQueens | Board.WhiteQueens,
-            Board.BlackKings | Board.WhiteKings
-        };
-
-        Span<short> captures = stackalloc short[Board.PieceCount];
-
-        for (var i = 0; i < psuedoMoveCount; ++i)
-        {
-            // Estimate each moves score for move ordering
-            scores[i] = Board.ScoreMove(history, occupancyBitBoards, captures, moves[i], killerA, killerB, default,
-                default);
-        }
-
-        for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
-        {
-            // Incremental move sorting
-            for (var j = moveIndex + 1; j < psuedoMoveCount; j++)
-            {
-                if (scores[j] > scores[moveIndex])
-                {
-                    (scores[moveIndex], scores[j], moves[moveIndex], moves[j]) =
-                        (scores[j], scores[moveIndex], moves[j], moves[moveIndex]);
-                }
-            }
-
-            var m = moves[moveIndex];
-
-            if (!Board.PartialApply(m))
-            {
-                // illegal move
-                Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
-                    prevFiftyMoveCounter);
-                continue;
-            }
-
-            Board.UpdateCheckStatus();
-            Board.FinishApply(m, oldEnpassant, prevCastleRights);
-
-            BestSoFar = m;
-            BestScoreSoFar = Board.Evaluate();
-
-            Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights, prevFiftyMoveCounter);
-            Board.FinishUnApplyMove(m, oldEnpassant);
-            break;
         }
 
         return (BestSoFar, depthSearched, BestScoreSoFar, BestOpponentMove, NodesVisited);

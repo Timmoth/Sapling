@@ -110,3 +110,11 @@ Data: 1.5bn positions
 WDL: 0.4
 LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
 SuperBatches: 130
+
+----------------------------------
+13_hl512.bin
+----------------------------------
+Data: 1.5bn positions (same as prev iteration)
+WDL: 0.4
+LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
+SuperBatches: 140

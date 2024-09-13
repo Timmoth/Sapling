@@ -1,9 +1,21 @@
-﻿using System.Runtime.Intrinsics.X86;
+﻿using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.Search;
-
+#if AVX512
+using AvxIntrinsics = System.Runtime.Intrinsics.X86.Avx512BW;
+using VectorType = System.Runtime.Intrinsics.Vector512;
+using VectorInt = System.Runtime.Intrinsics.Vector512<int>;
+using VectorShort = System.Runtime.Intrinsics.Vector512<short>;
+#else
+using AvxIntrinsics = Avx2;
+using VectorType = Vector256;
+using VectorInt = Vector256<int>;
+using VectorShort = Vector256<short>;
+#endif
 public partial class Searcher
 {
     public unsafe int QuiescenceSearch(int depthFromRoot, int alpha, int beta)
@@ -85,78 +97,94 @@ public partial class Searcher
 
         uint bestMove = default;
         var hasValidMove = false;
+        var shouldWhiteMirrored = Board.Evaluator.ShouldWhiteMirrored;
+        var shouldBlackMirrored = Board.Evaluator.ShouldBlackMirrored;
+        var whiteMirrored = Board.Evaluator.WhiteMirrored;
+        var blackMirrored = Board.Evaluator.BlackMirrored;
+        var whiteAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
+        var blackAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
+        NnueEvaluator.SimdCopy(whiteAccPtr, Board.Evaluator.WhiteAccumulator);
+        NnueEvaluator.SimdCopy(blackAccPtr, Board.Evaluator.BlackAccumulator);
 
-        for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
-        {
-            // Incremental move sorting
-            for (var j = moveIndex + 1; j < psuedoMoveCount; j++)
-            {
-                if (scores[j] > scores[moveIndex])
+                for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
                 {
-                    (scores[moveIndex], scores[j], moves[moveIndex], moves[j]) =
-                        (scores[j], scores[moveIndex], moves[j], moves[moveIndex]);
-                }
-            }
+                    // Incremental move sorting
+                    for (var j = moveIndex + 1; j < psuedoMoveCount; j++)
+                    {
+                        if (scores[j] > scores[moveIndex])
+                        {
+                            (scores[moveIndex], scores[j], moves[moveIndex], moves[j]) =
+                                (scores[j], scores[moveIndex], moves[j], moves[moveIndex]);
+                        }
+                    }
 
-            var m = moves[moveIndex];
+                    var m = moves[moveIndex];
 
-            if (!Board.PartialApply(m))
-            {
-                // illegal move
-                Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
-                    prevFiftyMoveCounter);
-                continue;
-            }
+                    if (!Board.PartialApply(m))
+                    {
+                        // illegal move
+                        Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
+                            prevFiftyMoveCounter);
+                        continue;
+                    }
 
-            if (!prevInCheck && !Board.InCheck && scores[moveIndex] < Constants.LosingCaptureBias)
-            {
-                //skip playing bad captures when not in check
-                Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
-                    prevFiftyMoveCounter);
-                continue;
-            }
+                    if (!prevInCheck && !Board.InCheck && scores[moveIndex] < Constants.LosingCaptureBias)
+                    {
+                        //skip playing bad captures when not in check
+                        Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
+                            prevFiftyMoveCounter);
+                        continue;
+                    }
 
-            hasValidMove = true;
+                    hasValidMove = true;
 
-            Board.UpdateCheckStatus();
-            Board.FinishApply(m, oldEnpassant, prevCastleRights);
-            Sse.Prefetch0(_transpositionTable + (Board.Hash & TtMask));
+                    Board.UpdateCheckStatus();
+                    Board.FinishApply(m, oldEnpassant, prevCastleRights);
 
-            var val = -QuiescenceSearch(depthFromRoot + 1, -beta, -alpha);
+                    Sse.Prefetch0(_transpositionTable + (Board.Hash & TtMask));
 
-            Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights, prevFiftyMoveCounter);
-            Board.FinishUnApplyMove(m, oldEnpassant);
+                    var val = -QuiescenceSearch(depthFromRoot + 1, -beta, -alpha);
 
-            if (_searchCancelled)
-            {
-                // Search was cancelled
-                return 0;
-            }
+                    Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
+                        prevFiftyMoveCounter);
 
-            if (val <= alpha)
-            {
-                // Move was not better then alpha, continue searching
-                continue;
-            }
+                    Board.Evaluator.WhiteMirrored = whiteMirrored;
+                    Board.Evaluator.BlackMirrored = blackMirrored;
+                    Board.Evaluator.ShouldWhiteMirrored = shouldWhiteMirrored;
+                    Board.Evaluator.ShouldBlackMirrored = shouldBlackMirrored;
+                    NnueEvaluator.SimdCopy(Board.Evaluator.WhiteAccumulator, whiteAccPtr);
+                    NnueEvaluator.SimdCopy(Board.Evaluator.BlackAccumulator, blackAccPtr);
 
-            evaluationBound = TranspositionTableFlag.Exact;
-            bestMove = m;
-            alpha = val;
+                    if (_searchCancelled)
+                    {
+                        // Search was cancelled
+                        return 0;
+                    }
 
-            if (val < beta)
-            {
-                // Move was not better then beta, continue searching
-                continue;
-            }
+                    if (val <= alpha)
+                    {
+                        // Move was not better then alpha, continue searching
+                        continue;
+                    }
 
-            // Cache in transposition table
-            TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, 0, depthFromRoot, val,
-                TranspositionTableFlag.Beta, bestMove);
+                    evaluationBound = TranspositionTableFlag.Exact;
+                    bestMove = m;
+                    alpha = val;
 
-            // Beta cut off
-            return val;
+                    if (val < beta)
+                    {
+                        // Move was not better then beta, continue searching
+                        continue;
+                    }
+
+                    // Cache in transposition table
+                    TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, 0, depthFromRoot, val,
+                        TranspositionTableFlag.Beta, bestMove);
+
+                    // Beta cut off
+                    return val;
+   
         }
-
         if (_searchCancelled)
         {
             // Search was cancelled
