@@ -1,7 +1,4 @@
-﻿using System.IO;
-using System;
-using System.Reflection;
-using System.Reflection.PortableExecutable;
+﻿using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Runtime.Intrinsics.X86;
