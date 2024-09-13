@@ -26,6 +26,12 @@ public static class SquareHelpers
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsMirroredSide(this byte square)
+    {
+        return (square & 7) >= 4;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte GetRankIndex(this byte square)
     {
         // Rank is obtained by shifting right by 3 bits

@@ -19,6 +19,12 @@ using VectorShort = Vector256<short>;
 
 public unsafe class NnueEvaluator
 {
+#if AVX512
+            const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#else
+    const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#endif
+
     private const int Scale = 400;
     private const int Q = 255 * 64;
 
@@ -28,47 +34,48 @@ public unsafe class NnueEvaluator
     private static readonly VectorShort Ceil = VectorType.Create<short>(255);
     private static readonly VectorShort Floor = VectorType.Create<short>(0);
 
-    public short* BlackAccumulator;
-    public short* WhiteAccumulator;
+    public VectorShort* BlackAccumulator;
+    public VectorShort* WhiteAccumulator;
+    public VectorShort* TempAccumulator;
 
+    public bool ShouldWhiteMirrored = false;
+    public bool ShouldBlackMirrored = false;
+    public bool WhiteMirrored = false;
+    public bool BlackMirrored = false;
+    public const int AccumulatorSize = NnueWeights.Layer1Size / VectorSize;
     public NnueEvaluator()
     {
         WhiteAccumulator = AllocateAccumulator();
         BlackAccumulator = AllocateAccumulator();
-        SimdCopy(WhiteAccumulator, NnueWeights.FeatureBiases);
-        SimdCopy(BlackAccumulator, NnueWeights.FeatureBiases);
+        TempAccumulator = AllocateAccumulator();
     }
+    public const int L1ByteSize = sizeof(short) * NnueWeights.Layer1Size;
 
-    public static short* AllocateAccumulator()
+    public static VectorShort* AllocateAccumulator()
     {
         const nuint alignment = 64;
-        const nuint bytes = sizeof(short) * NnueWeights.Layer1Size;
+        
+        var block = NativeMemory.AlignedAlloc((nuint)L1ByteSize, alignment);
+        NativeMemory.Clear(block, (nuint)L1ByteSize);
 
-        var block = NativeMemory.AlignedAlloc(bytes, alignment);
-        NativeMemory.Clear(block, bytes);
-
-        return (short*)block;
+        return (VectorShort*)block;
     }
 
-    private static void SimdCopy(short* destination, short* source)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SimdCopy(VectorShort* destination, VectorShort* source)
     {
-        #if AVX512
-            const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
-        #else
-            const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
-        #endif
-
-
-        nuint i = 0;
-        for (; i + VectorSize <= NnueWeights.Layer1Size; i += VectorSize)
-        {
-            AvxIntrinsics.StoreAligned(destination + i, VectorType.LoadAligned(source + i));
-        }
-
-        // Copy remaining elements that don't fit in the vector
-        for (; i < NnueWeights.Layer1Size; i++)
+        for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
             destination[i] = source[i];
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ClearAccumulators()
+    {
+        for (var i = AccumulatorSize - 1; i >= 0; i--)
+        {
+            WhiteAccumulator[i] = BlackAccumulator[i] = NnueWeights.FeatureBiases[i];
         }
     }
 
@@ -86,18 +93,33 @@ public unsafe class NnueEvaluator
 
     public static NnueEvaluator Clone(NnueEvaluator other)
     {
-        var net = new NnueEvaluator();
+        var net = new NnueEvaluator
+        {
+            WhiteMirrored = other.WhiteMirrored,
+            BlackMirrored = other.BlackMirrored,
+            ShouldWhiteMirrored = other.ShouldWhiteMirrored,
+            ShouldBlackMirrored = other.ShouldBlackMirrored
+        };
         SimdCopy(net.WhiteAccumulator, other.WhiteAccumulator);
         SimdCopy(net.BlackAccumulator, other.BlackAccumulator);
         return net;
     }
 
-    public int Evaluate(bool isWhite, int pieceCount)
+    const int BucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
+    public int Evaluate(BoardState board)
     {
-        const int bucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
-        var bucket = (pieceCount - 2) / bucketDivisor;
+        if (WhiteMirrored != ShouldWhiteMirrored)
+        {
+            MirrorWhite(board);
+        }
+        if (BlackMirrored != ShouldBlackMirrored)
+        {
+            MirrorBlack(board);
+        }
 
-        var output = isWhite
+        var bucket = (board.PieceCount - 2) / BucketDivisor;
+
+        var output = board.WhiteToMove
             ? ForwardCReLU(WhiteAccumulator, BlackAccumulator, bucket)
             : ForwardCReLU(BlackAccumulator, WhiteAccumulator, bucket);
 
@@ -105,25 +127,56 @@ public unsafe class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static (int blackIdx, int whiteIdx) FeatureIndices(int piece, int square)
+    public (int blackIdx, int whiteIdx) FeatureIndices(int piece, int square)
     {
+        var whitePieceSquare = square;
+        var blackPieceSquare = square ^ 0x38;
+
+        if (WhiteMirrored)
+        {
+            whitePieceSquare ^= 7;
+        }
+
+        if (BlackMirrored)
+        {
+            blackPieceSquare ^= 7;
+        }
+
         var white = (piece + 1) % 2;
         var type = (piece >> 1) - white;
 
-        return (white * ColorStride + type * PieceStride + (square ^ 0x38),
-            (white ^ 1) * ColorStride + type * PieceStride + square);
+        return (white * ColorStride + type * PieceStride + (blackPieceSquare),
+            (white ^ 1) * ColorStride + type * PieceStride + whitePieceSquare);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Add(short* accuPtr, short* featurePtr, int i)
-    {
-        AvxIntrinsics.StoreAligned(accuPtr + i, AvxIntrinsics.Add(VectorType.LoadAligned(accuPtr + i), VectorType.LoadAligned(featurePtr + i)));
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Remove(short* accuPtr, short* featurePtr, int i)
+    public int WhiteFeatureIndices(int piece, byte square)
     {
-        AvxIntrinsics.StoreAligned(accuPtr + i, AvxIntrinsics.Subtract(VectorType.LoadAligned(accuPtr + i), VectorType.LoadAligned(featurePtr + i)));
+        if (WhiteMirrored)
+        {
+            square ^= 7;
+        }
+
+        var white = (piece + 1) % 2;
+        var type = (piece >> 1) - white;
+
+        return (white ^ 1) * ColorStride + type * PieceStride + square;
+    }
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public int BlackFeatureIndices(int piece, byte square)
+    {
+        if (BlackMirrored)
+        {
+            square ^= 7;
+        }
+
+        var white = (piece + 1) % 2;
+        var type = (piece >> 1) - white;
+
+        return white * ColorStride + type * PieceStride + square ^ 0x38;
     }
 
     public void Deactivate(int piece, int square)
@@ -150,376 +203,300 @@ public unsafe class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Replace(short* accuPtr, short* addFeatureOffsetPtr, short* removeFeatureOffsetPtr, int i)
+    private static void ReplaceWeights(VectorShort* accuPtr, int addFeatureIndex, int removeFeatureIndex)
     {
-        AvxIntrinsics.StoreAligned(accuPtr + i,
-            AvxIntrinsics.Add(
-                VectorType.LoadAligned(accuPtr + i),
-                AvxIntrinsics.Subtract(
-                    VectorType.LoadAligned(addFeatureOffsetPtr + i),
-                    VectorType.LoadAligned(removeFeatureOffsetPtr + i))));
-    }
-
-    private static void ReplaceWeights(short* accuPtr, int addFeatureIndex, int removeFeatureIndex)
-    {
-        var addFeatureOffsetPtr = NnueWeights.FeatureWeights + addFeatureIndex * NnueWeights.Layer1Size;
-        var removeFeatureOffsetPtr = NnueWeights.FeatureWeights + removeFeatureIndex * NnueWeights.Layer1Size;
-
-        // Process in chunks
-#if AVX512
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 32);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 64);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 96);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 128);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 160);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 192);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 224);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 256);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 288);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 320);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 352);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 384);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 416);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 448);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 480);
-#else
-        Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 0);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 16);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 32);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 48);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 64);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 80);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 96);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 112);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 128);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 144);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 160);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 176);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 192);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 208);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 224);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 240);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 256);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 272);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 288);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 304);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 320);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 336);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 352);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 368);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 384);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 400);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 416);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 432);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 448);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 464);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 480);
-            Replace(accuPtr, addFeatureOffsetPtr, removeFeatureOffsetPtr, 496);
-#endif
-    }
-
-    private static void SubtractWeights(short* accuPtr, int inputFeatureIndex)
-    {
-        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * NnueWeights.Layer1Size;
-
-
-#if AVX512
-            Remove(accuPtr, featurePtr, 0);
-            Remove(accuPtr, featurePtr, 32);
-            Remove(accuPtr, featurePtr, 64);
-            Remove(accuPtr, featurePtr, 96);
-            Remove(accuPtr, featurePtr, 128);
-            Remove(accuPtr, featurePtr, 160);
-            Remove(accuPtr, featurePtr, 192);
-            Remove(accuPtr, featurePtr, 224);     
-            Remove(accuPtr, featurePtr, 256);
-            Remove(accuPtr, featurePtr, 288);
-            Remove(accuPtr, featurePtr, 320);
-            Remove(accuPtr, featurePtr, 352);
-            Remove(accuPtr, featurePtr, 384);
-            Remove(accuPtr, featurePtr, 416);
-            Remove(accuPtr, featurePtr, 448);
-            Remove(accuPtr, featurePtr, 480);
-#else
-        Remove(accuPtr, featurePtr, 0);
-            Remove(accuPtr, featurePtr, 16);
-            Remove(accuPtr, featurePtr, 32);
-            Remove(accuPtr, featurePtr, 48);
-            Remove(accuPtr, featurePtr, 64);
-            Remove(accuPtr, featurePtr, 80);
-            Remove(accuPtr, featurePtr, 96);
-            Remove(accuPtr, featurePtr, 112);
-            Remove(accuPtr, featurePtr, 128);
-            Remove(accuPtr, featurePtr, 144);
-            Remove(accuPtr, featurePtr, 160);
-            Remove(accuPtr, featurePtr, 176);
-            Remove(accuPtr, featurePtr, 192);
-            Remove(accuPtr, featurePtr, 208);
-            Remove(accuPtr, featurePtr, 224);
-            Remove(accuPtr, featurePtr, 240);
-            Remove(accuPtr, featurePtr, 256);
-            Remove(accuPtr, featurePtr, 272);
-            Remove(accuPtr, featurePtr, 288);
-            Remove(accuPtr, featurePtr, 304);
-            Remove(accuPtr, featurePtr, 320);
-            Remove(accuPtr, featurePtr, 336);
-            Remove(accuPtr, featurePtr, 352);
-            Remove(accuPtr, featurePtr, 368);
-            Remove(accuPtr, featurePtr, 384);
-            Remove(accuPtr, featurePtr, 400);
-            Remove(accuPtr, featurePtr, 416);
-            Remove(accuPtr, featurePtr, 432);
-            Remove(accuPtr, featurePtr, 448);
-            Remove(accuPtr, featurePtr, 464);
-            Remove(accuPtr, featurePtr, 480);
-            Remove(accuPtr, featurePtr, 496);
-#endif
-    }
-
-    private static void AddWeights(short* accuPtr, int inputFeatureIndex)
-    {
-        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * NnueWeights.Layer1Size;
-
-
-#if AVX512
-            Add(accuPtr, featurePtr, 0);
-            Add(accuPtr, featurePtr, 32);
-            Add(accuPtr, featurePtr, 64);
-            Add(accuPtr, featurePtr, 96);
-            Add(accuPtr, featurePtr, 128);
-            Add(accuPtr, featurePtr, 160);
-            Add(accuPtr, featurePtr, 192);
-            Add(accuPtr, featurePtr, 224);
-            Add(accuPtr, featurePtr, 256);
-            Add(accuPtr, featurePtr, 288);
-            Add(accuPtr, featurePtr, 320);
-            Add(accuPtr, featurePtr, 352);
-            Add(accuPtr, featurePtr, 384);
-            Add(accuPtr, featurePtr, 416);
-            Add(accuPtr, featurePtr, 448);
-            Add(accuPtr, featurePtr, 480);
-#else
-        Add(accuPtr, featurePtr, 0);
-            Add(accuPtr, featurePtr, 16);
-            Add(accuPtr, featurePtr, 32);
-            Add(accuPtr, featurePtr, 48);
-            Add(accuPtr, featurePtr, 64);
-            Add(accuPtr, featurePtr, 80);
-            Add(accuPtr, featurePtr, 96);
-            Add(accuPtr, featurePtr, 112);
-            Add(accuPtr, featurePtr, 128);
-            Add(accuPtr, featurePtr, 144);
-            Add(accuPtr, featurePtr, 160);
-            Add(accuPtr, featurePtr, 176);
-            Add(accuPtr, featurePtr, 192);
-            Add(accuPtr, featurePtr, 208);
-            Add(accuPtr, featurePtr, 224);
-            Add(accuPtr, featurePtr, 240);
-            Add(accuPtr, featurePtr, 256);
-            Add(accuPtr, featurePtr, 272);
-            Add(accuPtr, featurePtr, 288);
-            Add(accuPtr, featurePtr, 304);
-            Add(accuPtr, featurePtr, 320);
-            Add(accuPtr, featurePtr, 336);
-            Add(accuPtr, featurePtr, 352);
-            Add(accuPtr, featurePtr, 368);
-            Add(accuPtr, featurePtr, 384);
-            Add(accuPtr, featurePtr, 400);
-            Add(accuPtr, featurePtr, 416);
-            Add(accuPtr, featurePtr, 432);
-            Add(accuPtr, featurePtr, 448);
-            Add(accuPtr, featurePtr, 464);
-            Add(accuPtr, featurePtr, 480);
-            Add(accuPtr, featurePtr, 496);
-#endif
-    }
-
-    public void FillAccumulator(BoardState board)
-    {
-        // Accumulate layer weights
-        Apply(Constants.WhiteKing, board.WhiteKingSquare);
-        Apply(Constants.BlackKing, board.BlackKingSquare);
-
-        var number = board.WhitePawns;
-        while (number != 0)
+        var addFeatureOffsetPtr = NnueWeights.FeatureWeights + addFeatureIndex * AccumulatorSize;
+        var removeFeatureOffsetPtr = NnueWeights.FeatureWeights + removeFeatureIndex * AccumulatorSize;
+        for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
-            Apply(Constants.WhitePawn, number.PopLSB());
-        }
-
-        number = board.WhiteKnights;
-        while (number != 0)
-        {
-            Apply(Constants.WhiteKnight, number.PopLSB());
-        }
-
-        number = board.WhiteBishops;
-        while (number != 0)
-        {
-            Apply(Constants.WhiteBishop, number.PopLSB());
-        }
-
-        number = board.WhiteRooks;
-        while (number != 0)
-        {
-            Apply(Constants.WhiteRook, number.PopLSB());
-        }
-
-        number = board.WhiteQueens;
-        while (number != 0)
-        {
-            Apply(Constants.WhiteQueen, number.PopLSB());
-        }
-
-        number = board.BlackPawns;
-        while (number != 0)
-        {
-            Apply(Constants.BlackPawn, number.PopLSB());
-        }
-
-        number = board.BlackKnights;
-        while (number != 0)
-        {
-            Apply(Constants.BlackKnight, number.PopLSB());
-        }
-
-        number = board.BlackBishops;
-        while (number != 0)
-        {
-            Apply(Constants.BlackBishop, number.PopLSB());
-        }
-
-        number = board.BlackRooks;
-        while (number != 0)
-        {
-            Apply(Constants.BlackRook, number.PopLSB());
-        }
-
-        number = board.BlackQueens;
-        while (number != 0)
-        {
-            Apply(Constants.BlackQueen, number.PopLSB());
+            accuPtr[i] += addFeatureOffsetPtr[i] - removeFeatureOffsetPtr[i];
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CRelU(VectorInt* accumulator, short* accuPtr, short* featurePtr, int i)
+    private static void SubtractWeights(VectorShort* accuPtr, int inputFeatureIndex)
     {
-        *accumulator += AvxIntrinsics.MultiplyAddAdjacent(
-            AvxIntrinsics.Max(AvxIntrinsics.Min(VectorType.LoadAligned(accuPtr + i), Ceil), Floor),
-            VectorType.LoadAligned(featurePtr + i));
+        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * AccumulatorSize;
+        for (var i = AccumulatorSize - 1; i >= 0; i--)
+        {
+            accuPtr[i] -= featurePtr[i];
+        }
     }
 
-    private static int ForwardCReLU(short* usAcc, short* themAcc, int bucket)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AddWeights(VectorShort* accuPtr, int inputFeatureIndex)
+    {
+        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * AccumulatorSize;
+        for (var i = AccumulatorSize - 1; i >= 0; i--)
+        {
+            accuPtr[i] += featurePtr[i];
+        }
+    }
+
+    public void FillAccumulators(BoardState board)
+    {
+        ClearAccumulators();
+
+        // Accumulate layer weights
+        Apply(Constants.WhiteKing, board.WhiteKingSquare);
+
+        var bitboard = board.WhitePawns;
+        while (bitboard != 0)
+        {
+            Apply(Constants.WhitePawn, bitboard.PopLSB());
+        }
+
+        bitboard = board.WhiteKnights;
+        while (bitboard != 0)
+        {
+            Apply(Constants.WhiteKnight, bitboard.PopLSB());
+        }
+
+        bitboard = board.WhiteBishops;
+        while (bitboard != 0)
+        {
+            Apply(Constants.WhiteBishop, bitboard.PopLSB());
+        }
+
+        bitboard = board.WhiteRooks;
+        while (bitboard != 0)
+        {
+            Apply(Constants.WhiteRook, bitboard.PopLSB());
+        }
+
+        bitboard = board.WhiteQueens;
+        while (bitboard != 0)
+        {
+            Apply(Constants.WhiteQueen, bitboard.PopLSB());
+        }
+
+        // Accumulate layer weights
+        Apply(Constants.BlackKing, board.BlackKingSquare);
+
+        bitboard = board.BlackPawns;
+        while (bitboard != 0)
+        {
+            Apply(Constants.BlackPawn, bitboard.PopLSB());
+        }
+
+        bitboard = board.BlackKnights;
+        while (bitboard != 0)
+        {
+            Apply(Constants.BlackKnight, bitboard.PopLSB());
+        }
+
+        bitboard = board.BlackBishops;
+        while (bitboard != 0)
+        {
+            Apply(Constants.BlackBishop, bitboard.PopLSB());
+        }
+
+        bitboard = board.BlackRooks;
+        while (bitboard != 0)
+        {
+            Apply(Constants.BlackRook, bitboard.PopLSB());
+        }
+
+        bitboard = board.BlackQueens;
+        while (bitboard != 0)
+        {
+            Apply(Constants.BlackQueen, bitboard.PopLSB());
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ForwardCReLU(VectorShort* usAcc, VectorShort* themAcc, int bucket)
     {
         var sum = VectorInt.Zero;
-        var featureWeightsPtr = NnueWeights.OutputWeights + (bucket * NnueWeights.Layer1Size * 2);
-        var sumAddr = &sum;
-
-#if AVX512
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 0);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 32);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 64);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 96);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 128);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 160);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 192);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 224);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 256);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 288);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 320);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 352);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 384);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 416);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 448);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 480);
-
-            var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
-            CRelU(sumAddr, themAcc, themWeightsPtr, 0);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 32);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 64);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 96);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 128);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 160);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 192);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 224);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 256);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 288);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 320);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 352);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 384);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 416);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 448);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 480);
-#else
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 0);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 16);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 32);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 48);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 64);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 80);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 96);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 112);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 128);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 144);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 160);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 176);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 192);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 208);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 224);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 240);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 256);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 272);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 288);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 304);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 320);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 336);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 352);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 368);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 384);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 400);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 416);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 432);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 448);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 464);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 480);
-            CRelU(sumAddr, usAcc, featureWeightsPtr, 496);
-
-        var themWeightsPtr = featureWeightsPtr + NnueWeights.Layer1Size;
-            CRelU(sumAddr, themAcc, themWeightsPtr, 0);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 16);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 32);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 48);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 64);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 80);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 96);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 112);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 128);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 144);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 160);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 176);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 192);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 208);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 224);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 240);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 256);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 272);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 288);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 304);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 320);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 336);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 352);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 368);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 384);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 400);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 416);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 432);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 448);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 464);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 480);
-            CRelU(sumAddr, themAcc, themWeightsPtr, 496);
-#endif
+        var featureWeightsPtr = NnueWeights.OutputWeights + (bucket * AccumulatorSize * 2);
+        var themWeightsPtr = featureWeightsPtr + AccumulatorSize;
+        for (var i = AccumulatorSize - 1; i >= 0; i--)
+        {
+            sum += AvxIntrinsics.MultiplyAddAdjacent(
+                       AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[i], Ceil), Floor),
+                       featureWeightsPtr[i]) +
+                   AvxIntrinsics.MultiplyAddAdjacent(
+                       AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[i], Ceil), Floor),
+                       themWeightsPtr[i]);
+        }
 
         return VectorType.Sum(sum);
+    }
+
+    public void MirrorWhite(BoardState board)
+    {
+        WhiteMirrored = !WhiteMirrored;
+        for (var i = 0; i < AccumulatorSize; i++)
+        {
+            TempAccumulator[i] = NnueWeights.FeatureBiases[i];
+        }
+
+        // Accumulate layer weights
+        AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.WhiteKing, board.WhiteKingSquare));
+
+        var bitboards = board.WhitePawns;
+
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.WhitePawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteKnights;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.WhiteKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteBishops;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.WhiteBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteRooks;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.WhiteRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteQueens;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.WhiteQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.BlackKing, board.BlackKingSquare));
+
+        bitboards = board.BlackPawns;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.BlackPawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackKnights;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.BlackKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackBishops;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.BlackBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackRooks;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.BlackRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackQueens;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, WhiteFeatureIndices(Constants.BlackQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        var ptr = WhiteAccumulator;
+        WhiteAccumulator = TempAccumulator;
+        TempAccumulator = ptr;
+    }
+
+    public void MirrorBlack(BoardState board)
+    {
+        BlackMirrored = !BlackMirrored;
+        for (var i = 0; i < AccumulatorSize; i++)
+        {
+            TempAccumulator[i] = NnueWeights.FeatureBiases[i];
+        }
+
+        // Accumulate layer weights
+        AddWeights(TempAccumulator, BlackFeatureIndices(Constants.WhiteKing, board.WhiteKingSquare));
+
+        var bitboards = board.WhitePawns;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.WhitePawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteKnights;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.WhiteKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteBishops;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.WhiteBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteRooks;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.WhiteRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.WhiteQueens;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.WhiteQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        AddWeights(TempAccumulator, BlackFeatureIndices(Constants.BlackKing, board.BlackKingSquare));
+
+        bitboards = board.BlackPawns;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.BlackPawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackKnights;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.BlackKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackBishops;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.BlackBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackRooks;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.BlackRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        bitboards = board.BlackQueens;
+        while (bitboards != 0)
+        {
+            AddWeights(TempAccumulator, BlackFeatureIndices(Constants.BlackQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            bitboards &= bitboards - 1;
+        }
+
+        var ptr = BlackAccumulator;
+        BlackAccumulator = TempAccumulator;
+        TempAccumulator = ptr;
     }
 }

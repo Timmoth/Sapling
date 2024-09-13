@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Pgn;
@@ -135,7 +136,9 @@ public static class BoardStateExtensions
         boardState.Hash = Zobrist.CalculateZobristKey(boardState);
 
         boardState.Evaluator = new NnueEvaluator();
-        boardState.Evaluator.FillAccumulator(boardState);
+        boardState.Evaluator.ShouldWhiteMirrored = boardState.WhiteKingSquare.IsMirroredSide();
+        boardState.Evaluator.ShouldBlackMirrored = boardState.BlackKingSquare.IsMirroredSide();
+        boardState.Evaluator.FillAccumulators(boardState);
         return boardState;
     }
 
@@ -212,7 +215,9 @@ public static class BoardStateExtensions
         boardState.Occupancy = boardState.WhitePieces | boardState.BlackPieces;
         boardState.Hash = Zobrist.CalculateZobristKey(boardState);
         boardState.Evaluator = new NnueEvaluator();
-        boardState.Evaluator.FillAccumulator(boardState);
+        boardState.Evaluator.WhiteMirrored = boardState.WhiteKingSquare.IsMirroredSide();
+        boardState.Evaluator.BlackMirrored = boardState.BlackKingSquare.IsMirroredSide();
+        boardState.Evaluator.FillAccumulators(boardState);
 
         return boardState;
     }
@@ -476,6 +481,7 @@ public static class BoardStateExtensions
 
                 // Clear enpassant file
                 board.EnPassantFile = 8;
+                --board.PieceCount;
                 break;
             }
             case >= 4:
@@ -500,6 +506,7 @@ public static class BoardStateExtensions
                 board.Remove(movedPiece, fromSquare);
                 if (capturedPiece != Constants.None)
                 {
+                    --board.PieceCount;
                     board.Remove(capturedPiece, toSquare);
                 }
 
@@ -562,6 +569,7 @@ public static class BoardStateExtensions
                 board.EnPassantFile = 8;
                 if (capturedPiece != Constants.None)
                 {
+                    --board.PieceCount;
                     board.Remove(capturedPiece, toSquare);
                 }
 
@@ -605,7 +613,6 @@ public static class BoardStateExtensions
                 board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
                               Zobrist.PiecesArray[movedPiece * 64 + toSquare] ^
                               Zobrist.PiecesArray[capturedPiece * 64 + enpassantSquare];
-                --board.PieceCount;
                 break;
             }
             case >= 4:
@@ -630,7 +637,6 @@ public static class BoardStateExtensions
 
                 if (capturedPiece != Constants.None)
                 {
-                    --board.PieceCount;
                     board.Evaluator.Deactivate(capturedPiece, toSquare);
                     board.Hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
                 }
@@ -688,7 +694,6 @@ public static class BoardStateExtensions
 
                 if (capturedPiece != Constants.None)
                 {
-                    --board.PieceCount;
                     board.Evaluator.Deactivate(capturedPiece, toSquare);
                     board.Hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
                 }
@@ -738,6 +743,15 @@ public static class BoardStateExtensions
         {
             board.HalfMoveClock++;
         }
+
+        if (movedPiece == Constants.WhiteKing && fromSquare.IsMirroredSide() != toSquare.IsMirroredSide())
+        {
+            board.Evaluator.ShouldWhiteMirrored = toSquare.IsMirroredSide();
+        }
+        else if (movedPiece == Constants.BlackKing && fromSquare.IsMirroredSide() != toSquare.IsMirroredSide())
+        {
+            board.Evaluator.ShouldBlackMirrored = toSquare.IsMirroredSide();
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -784,6 +798,7 @@ public static class BoardStateExtensions
                 board.Add(capturedPiece, enpassantIndex);
 
                 board.Pieces[enpassantIndex] = capturedPiece;
+                ++board.PieceCount;
                 break;
             }
             case >= 4:
@@ -808,6 +823,7 @@ public static class BoardStateExtensions
 
                 if (capturedPiece != Constants.None)
                 {
+                    ++board.PieceCount;
                     board.Add(capturedPiece, toSquare);
                 }
 
@@ -858,6 +874,7 @@ public static class BoardStateExtensions
 
                 if (capturedPiece != Constants.None)
                 {
+                    ++board.PieceCount;
                     board.Add(capturedPiece, toSquare);
                 }
 
@@ -869,82 +886,88 @@ public static class BoardStateExtensions
         board.Occupancy = board.WhitePieces | board.BlackPieces;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void FinishUnApplyMove(this BoardState board, uint m, int oldEnpassantFile)
-    {
-        var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
+    //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    //public static void FinishUnApplyMove(this BoardState board, uint m, int oldEnpassantFile)
+    //{
+    //    var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
 
-        switch (moveType)
-        {
-            case Constants.EnPassant:
-                board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
-                board.Evaluator.Apply(capturedPiece, fromSquare.GetRankIndex() * 8 + oldEnpassantFile);
-                ++board.PieceCount;
-                break;
-            case >= 4:
-            {
-                // Pawn Promotion
-                // [pawn, moveType] => piece
-                // [1, 4] => 3
-                // [2, 4] => 4
-                // [1, 5] => 5
-                // [2, 5] => 6
-                // [1, 6] => 7
-                // [2, 6] => 8
-                // [1, 7] => 9
-                // [2, 7] => 10
-                // a + 2b - 6
+    //    if (movedPiece == Constants.WhiteKing && fromSquare.IsMirroredSide() != toSquare.IsMirroredSide())
+    //    {
+    //        board.Evaluator.MirrorWhite(board);
+    //    }
+    //    else if (movedPiece == Constants.BlackKing && fromSquare.IsMirroredSide() != toSquare.IsMirroredSide())
+    //    {
+    //        board.Evaluator.MirrorBlack(board);
+    //    }
 
-                board.Evaluator.Deactivate(movedPiece + moveType + moveType - 6, toSquare);
-                board.Evaluator.Apply(movedPiece, fromSquare);
+    //    switch (moveType)
+    //    {
+    //        case Constants.EnPassant:
+    //            board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
+    //            board.Evaluator.Apply(capturedPiece, fromSquare.GetRankIndex() * 8 + oldEnpassantFile);
+    //            break;
+    //        case >= 4:
+    //        {
+    //            // Pawn Promotion
+    //            // [pawn, moveType] => piece
+    //            // [1, 4] => 3
+    //            // [2, 4] => 4
+    //            // [1, 5] => 5
+    //            // [2, 5] => 6
+    //            // [1, 6] => 7
+    //            // [2, 6] => 8
+    //            // [1, 7] => 9
+    //            // [2, 7] => 10
+    //            // a + 2b - 6
 
-                if (capturedPiece != Constants.None)
-                {
-                    board.Evaluator.Apply(capturedPiece, toSquare);
-                    ++board.PieceCount;
-                }
+    //            board.Evaluator.Deactivate(movedPiece + moveType + moveType - 6, toSquare);
+    //            board.Evaluator.Apply(movedPiece, fromSquare);
 
-                break;
-            }
-            case Constants.Castle when toSquare == 62:
-                board.Evaluator.Replace(Constants.BlackRook, 61, 63);
-                board.Evaluator.Replace(Constants.BlackKing, toSquare, fromSquare);
-                break;
-            case Constants.Castle when toSquare == 58:
-                board.Evaluator.Replace(Constants.BlackRook, 59, 56);
-                board.Evaluator.Replace(Constants.BlackKing, toSquare, fromSquare);
-                break;
-            case Constants.Castle when toSquare == 6:
-                board.Evaluator.Replace(Constants.WhiteRook, 5, 7);
-                board.Evaluator.Replace(Constants.WhiteKing, toSquare, fromSquare);
-                break;
-            case Constants.Castle:
-            {
-                if (toSquare == 2)
-                {
-                    board.Evaluator.Replace(Constants.WhiteRook, 3, 0);
-                    board.Evaluator.Replace(Constants.WhiteKing, toSquare, fromSquare);
-                }
+    //            if (capturedPiece != Constants.None)
+    //            {
+    //                board.Evaluator.Apply(capturedPiece, toSquare);
+    //            }
 
-                break;
-            }
-            case Constants.DoublePush:
-                board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
-                break;
-            default:
-            {
-                board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
+    //            break;
+    //        }
+    //        case Constants.Castle when toSquare == 62:
+    //            board.Evaluator.Replace(Constants.BlackRook, 61, 63);
+    //            board.Evaluator.Replace(Constants.BlackKing, toSquare, fromSquare);
+    //            break;
+    //        case Constants.Castle when toSquare == 58:
+    //            board.Evaluator.Replace(Constants.BlackRook, 59, 56);
+    //            board.Evaluator.Replace(Constants.BlackKing, toSquare, fromSquare);
+    //            break;
+    //        case Constants.Castle when toSquare == 6:
+    //            board.Evaluator.Replace(Constants.WhiteRook, 5, 7);
+    //            board.Evaluator.Replace(Constants.WhiteKing, toSquare, fromSquare);
+    //            break;
+    //        case Constants.Castle:
+    //        {
+    //            if (toSquare == 2)
+    //            {
+    //                board.Evaluator.Replace(Constants.WhiteRook, 3, 0);
+    //                board.Evaluator.Replace(Constants.WhiteKing, toSquare, fromSquare);
+    //            }
 
-                if (capturedPiece != Constants.None)
-                {
-                    board.Evaluator.Apply(capturedPiece, toSquare);
-                    ++board.PieceCount;
-                }
+    //            break;
+    //        }
+    //        case Constants.DoublePush:
+    //            board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
+    //            break;
+    //        default:
+    //        {
+    //            board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
 
-                break;
-            }
-        }
-    }
+    //            if (capturedPiece != Constants.None)
+    //            {
+    //                board.Evaluator.Apply(capturedPiece, toSquare);
+    //            }
+
+    //            break;
+    //        }
+    //    }
+    //}
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ApplyNullMove(this BoardState board)
@@ -1015,6 +1038,6 @@ public static class BoardStateExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int Evaluate(this BoardState board)
     {
-        return board.Evaluator.Evaluate(board.WhiteToMove, board.PieceCount);
+        return board.Evaluator.Evaluate(board);
     }
 }
