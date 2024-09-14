@@ -24,7 +24,7 @@ jobs:
       - name: Get .NET application version
         id: get_version
         run: |
-          VERSION=$(dotnet run --no-build --project --configuration Release -- --version | tr -d '\r\n')
+          VERSION=$(dotnet run --no-build --configuration Release -- --version | tr -d '\r\n')
           echo "Application version: $VERSION"
           echo "::set-output name=version::$VERSION"
 
@@ -64,6 +64,11 @@ jobs:
         id: tag
         run: |
           echo "::set-output name=release_tag::release_${{ steps.get_version.outputs.version }}"
+
+      # Ensure the output folder exists
+      - name: Check output folder
+        run: |
+          ls -R ./output
 
       # Create a single release with all artifacts
       - name: Create GitHub release
