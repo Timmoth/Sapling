@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: Sapling  # Set the working directory for all commands
+        working-directory: Sapling
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -22,10 +22,11 @@ jobs:
 
       # Get the version from the .csproj file
       - name: Get .NET application version
+        working-directory: Sapling
         id: get_version
         run: |
-          dotnet build --configuration Release
-          VERSION=$(dotnet run --configuration Release -- --version | tr -d '\r\n')
+          dotnet run --no-build -- --version
+          VERSION=$(dotnet run --no-build -- --version | tr -d '\r\n')
           echo "Application version: $VERSION"
           echo "::set-output name=version::$VERSION"
 
