@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: Sapling
+        working-directory: Sapling  # Set the working directory for all commands
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -32,43 +32,53 @@ jobs:
       - name: Build and Package AVX512 for Windows
         run: |
           dotnet restore
-          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ./output/win-x64-avx512
+          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/win-x64-avx512
 
       - name: Build and Package Non-AVX512 for Windows
         run: |
           dotnet restore
-          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -o ./output/win-x64
+          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -o ../output/win-x64
 
       - name: Build and Package AVX512 for Linux
         run: |
           dotnet restore
-          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ./output/linux-x64-avx512
+          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/linux-x64-avx512
 
       - name: Build and Package Non-AVX512 for Linux
         run: |
           dotnet restore
-          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -o ./output/linux-x64
+          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -o ../output/linux-x64
 
       - name: Build and Package AVX512 for OSX
         run: |
           dotnet restore
-          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ./output/osx-x64-avx512
+          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/osx-x64-avx512
 
       - name: Build and Package Non-AVX512 for OSX
         run: |
           dotnet restore
-          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -o ./output/osx-x64
+          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -o ../output/osx-x64
+
+      # Rename the output files for consistency
+      - name: Rename output files
+        run: |
+          mv ../output/win-x64-avx512/Sapling.exe ../output/win-x64-avx512/Sapling_win_x64_avx512.exe
+          mv ../output/win-x64/Sapling.exe ../output/win-x64/Sapling_win_x64.exe
+          mv ../output/linux-x64-avx512/Sapling ../output/linux-x64-avx512/Sapling_linux_x64_avx512
+          mv ../output/linux-x64/Sapling ../output/linux-x64/Sapling_linux_x64
+          mv ../output/osx-x64-avx512/Sapling ../output/osx-x64-avx512/Sapling_osx_x64_avx512
+          mv ../output/osx-x64/Sapling ../output/osx-x64/Sapling_osx_x64
+
+      # List files in output directory to verify they exist
+      - name: Verify output files
+        run: |
+          ls -R ../output
 
       # Generate release tag based on version
       - name: Generate release tag
         id: tag
         run: |
-          echo "::set-output name=release_tag::release_${{ steps.get_version.outputs.version }}"
-
-      # Ensure the output folder exists
-      - name: Check output folder
-        run: |
-          ls -R ./output
+          echo "::set-output name=release_tag::Sapling-${{ steps.get_version.outputs.version }}"
 
       # Create a single release with all artifacts
       - name: Create GitHub release
@@ -78,9 +88,9 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
-            ./output/win-x64-avx512/Sapling.exe#Sapling_win_x64_avx512.exe
-            ./output/win-x64/Sapling.exe#Sapling_win_x64.exe
-            ./output/linux-x64-avx512/Sapling#Sapling_linux_x64_avx512
-            ./output/linux-x64/Sapling#Sapling_linux_x64
-            ./output/osx-x64-avx512/Sapling#Sapling_osx_x64_avx512
-            ./output/osx-x64/Sapling#Sapling_osx_x64
+            ../output/win-x64-avx512/Sapling_win_x64_avx512.exe
+            ../output/win-x64/Sapling_win_x64.exe
+            ../output/linux-x64-avx512/Sapling_linux_x64_avx512
+            ../output/linux-x64/Sapling_linux_x64
+            ../output/osx-x64-avx512/Sapling_osx_x64_avx512
+            ../output/osx-x64/Sapling_osx_x64
