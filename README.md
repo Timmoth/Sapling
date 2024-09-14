@@ -54,7 +54,7 @@ dotnet run --project .\Sapling\Sapling.csproj --configuration Release
 <Summary>General</Summary>
   
 - Bitboards 
-- NNUE 768->256
+- NNUE (768 -> 512)x2 -> 8
 - Horizontal mirroring
 - Output buckets x8
 - Transposition table
@@ -99,7 +99,7 @@ After any changes to the engine a SPRT test must be ran to ensure that the chang
 There is a script `sprt.bat` which contains the command to run a cutechess-cli SPRT test. Ensure that you've configured CuteChess to point to both `dev` and `base` engines before hand, and also update the opening book + endgame table base to point to one on your system.
 
 ## NNUE
-I'm in the process of training a 768->256 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
+I'm in the process of training a  (768 -> 512)x2 -> 8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
 
 ## Resources:
 - [Chess Programming Wiki](https://www.chessprogramming.org/)
