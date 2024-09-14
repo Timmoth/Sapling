@@ -73,7 +73,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
-          ./output/win-x64-avx512/Sapling.exe#Sapling_win_x64_avx512.exe
+            ./output/win-x64-avx512/Sapling.exe#Sapling_win_x64_avx512.exe
             ./output/win-x64/Sapling.exe#Sapling_win_x64.exe
             ./output/linux-x64-avx512/Sapling#Sapling_linux_x64_avx512
             ./output/linux-x64/Sapling#Sapling_linux_x64
