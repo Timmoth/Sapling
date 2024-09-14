@@ -24,7 +24,8 @@ jobs:
       - name: Get .NET application version
         id: get_version
         run: |
-          VERSION=$(dotnet run --no-build --configuration Release -- --version | tr -d '\r\n')
+          dotnet build --configuration Release
+          VERSION=$(dotnet run --configuration Release -- --version | tr -d '\r\n')
           echo "Application version: $VERSION"
           echo "::set-output name=version::$VERSION"
 
