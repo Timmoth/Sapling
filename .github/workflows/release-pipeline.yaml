@@ -1,0 +1,81 @@
+name: Release Pipeline
+
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Sapling
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 8.0.x
+
+      # Get the version from the .csproj file
+      - name: Get .NET application version
+        id: get_version
+        run: |
+          VERSION=$(dotnet run --no-build --project ./Sapling --configuration Release -- --version | tr -d '\r\n')
+          echo "Application version: $VERSION"
+          echo "::set-output name=version::$VERSION"
+
+      # Build and Package AVX512 for all platforms
+      - name: Build and Package AVX512 for Windows
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ./output/win-x64-avx512
+
+      - name: Build and Package Non-AVX512 for Windows
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -o ./output/win-x64
+
+      - name: Build and Package AVX512 for Linux
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ./output/linux-x64-avx512
+
+      - name: Build and Package Non-AVX512 for Linux
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -o ./output/linux-x64
+
+      - name: Build and Package AVX512 for OSX
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ./output/osx-x64-avx512
+
+      - name: Build and Package Non-AVX512 for OSX
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -o ./output/osx-x64
+
+      # Generate release tag based on version
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "::set-output name=release_tag::release_${{ steps.get_version.outputs.version }}"
+
+      # Create a single release with all artifacts
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          files: |
+          ./output/win-x64-avx512/Sapling.exe#Sapling_win_x64_avx512.exe
+            ./output/win-x64/Sapling.exe#Sapling_win_x64.exe
+            ./output/linux-x64-avx512/Sapling#Sapling_linux_x64_avx512
+            ./output/linux-x64/Sapling#Sapling_linux_x64
+            ./output/osx-x64-avx512/Sapling#Sapling_osx_x64_avx512
+            ./output/osx-x64/Sapling#Sapling_osx_x64

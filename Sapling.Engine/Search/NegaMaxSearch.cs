@@ -30,6 +30,16 @@ public partial class Searcher
             return 0;
         }
 
+        if (depthFromRoot >= Constants.MaxSearchDepth)
+        {
+            // Max depth reached, return evaluation
+            return Board.Evaluate();
+        }
+
+        var pvIndex = PVTable.Indexes[depthFromRoot];
+        var nextPvIndex = PVTable.Indexes[depthFromRoot + 1];
+        _pVTable[pvIndex] = 0;
+
         var pvNode = beta - alpha > 1;
         var inCheck = Board.InCheck;
         var originalHash = Board.Hash;
@@ -60,16 +70,11 @@ public partial class Searcher
             (var transpositionEvaluation, transpositionBestMove, transpositionType) =
                 TranspositionTableExtensions.Get(_transpositionTable, TtMask, Board.Hash, depth, depthFromRoot, alpha,
                     beta);
+
             if (!pvNode && transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
             {
                 // Transposition table hit
                 return transpositionEvaluation;
-            }
-
-            if (depthFromRoot >= Constants.MaxSearchDepth)
-            {
-                // Max depth reached, return evaluation
-                return Board.Evaluate();
             }
 
             if (inCheck)
@@ -166,12 +171,10 @@ public partial class Searcher
 
         var prevCastleRights = Board.CastleRights;
         var prevFiftyMoveCounter = Board.HalfMoveClock;
-
         // Best move seen so far used in move ordering.
         var moveOrderingBestMove = depthFromRoot == 0
             ? BestSoFar
             : transpositionBestMove;
-
         // Generate pseudo legal moves from this position
         Span<uint> moves = stackalloc uint[218];
         var psuedoMoveCount = Board.GeneratePseudoLegalMoves(moves, false);
@@ -268,39 +271,40 @@ public partial class Searcher
 
             var needsFullSearch = true;
             var score = 0;
-            if (searchedMoves > 0)
-            {
-                if (!isInteresting && depth > 3 && searchedMoves >= 3)
+
+                if (searchedMoves > 0)
                 {
-                    // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
-                    var reduction = (int)(pvNode
-                        ? logDepth * Math.Log(searchedMoves) / 2
-                        : 0.5 + logDepth * Math.Log(searchedMoves) / 2);
-
-
-                    if (reduction > 0)
+                    if (!isInteresting && depth > 3 && searchedMoves >= 3)
                     {
-                        score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - reduction - 1,
-                            -alpha - 1, -alpha, false, m);
-                        needsFullSearch = score > alpha;
+                        // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
+                        var reduction = (int)(pvNode
+                            ? logDepth * Math.Log(searchedMoves) / 2
+                            : 0.5 + logDepth * Math.Log(searchedMoves) / 2);
+
+
+                        if (reduction > 0)
+                        {
+                            score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - reduction - 1,
+                                -alpha - 1, -alpha, false, m);
+                            needsFullSearch = score > alpha;
+                        }
+                    }
+
+                    if (needsFullSearch)
+                    {
+                        // PVS
+                        score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha,
+                            false, m);
+                        needsFullSearch = score > alpha && score < beta;
                     }
                 }
 
                 if (needsFullSearch)
                 {
-                    // PVS
-                    score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha,
-                        false, m);
-                    needsFullSearch = score > alpha && score < beta;
+                    // Full search
+                    score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -beta, -alpha, false,
+                        m);
                 }
-            }
-
-            if (needsFullSearch)
-            {
-                // Full search
-                score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -beta, -alpha, false,
-                    m);
-            }
 
             // Revert the move
             Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevFiftyMoveCounter);
@@ -317,7 +321,7 @@ public partial class Searcher
             if (_searchCancelled)
             {
                 // Search was cancelled
-                break;
+                return 0;
             }
 
             if (score <= alpha)
@@ -331,65 +335,55 @@ public partial class Searcher
             alpha = score;
             evaluationBound = TranspositionTableFlag.Exact;
 
-            if (score < beta)
+            if (score >= beta)
             {
-                // Move didn't cause a beta cut off, continue searching
-                continue;
-            }
+                // Cache in transposition table
+                TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, (byte)depth, depthFromRoot, score,
+                    TranspositionTableFlag.Beta,
+                    bestMove);
 
-            // Cache in transposition table
-            TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, (byte)depth, depthFromRoot, score,
-                TranspositionTableFlag.Beta,
-                bestMove);
-
-            if (m.IsQuiet())
-            {
-                // Update move ordering heuristics for quiet moves that lead to a beta cut off
-
-                // History
-                history.UpdateMovesHistory(moves, moveIndex, m, depth);
-
-                if (m != killerA)
+                if (m.IsQuiet())
                 {
-                    // Killer move
-                    killers[depthFromRoot * 2 + 1] = killerA;
-                    killers[depthFromRoot * 2] = m;
+                    // Update move ordering heuristics for quiet moves that lead to a beta cut off
+
+                    // History
+                    history.UpdateMovesHistory(moves, moveIndex, m, depth);
+
+                    if (m != killerA)
+                    {
+                        // Killer move
+                        killers[depthFromRoot * 2 + 1] = killerA;
+                        killers[depthFromRoot * 2] = m;
+                    }
+
+                    if (prevMove != default)
+                    {
+                        // Counter move
+                        counters[prevMove.GetMovedPiece() * 64 + prevMove.GetToSquare()] = m;
+                    }
                 }
 
-                if (prevMove != default)
+                if (depthFromRoot > 0)
                 {
-                    // Counter move
-                    counters[prevMove.GetMovedPiece() * 64 + prevMove.GetToSquare()] = m;
+                    // Ensure position is popped from repetition table before returning
+                    RepetitionTable.TryPop();
                 }
+
+                return score;
             }
 
-            if (depthFromRoot > 0)
+            if (!_searchCancelled)
             {
-                // Ensure position is popped from repetition table before returning
-                RepetitionTable.TryPop();
+                // update pv table
+                _pVTable[pvIndex] = m;
+                ShiftPvMoves(pvIndex + 1, nextPvIndex, Constants.MaxSearchDepth - depthFromRoot - 1);
             }
-
-            return score;
         }
-
 
         if (_searchCancelled)
         {
             // Search was cancelled
             return 0;
-        }
-
-        if (depthFromRoot == 1 && bestMove != default)
-        {
-            // Set best opponent move
-            BestOpponentMove = bestMove;
-        }
-
-        if (depthFromRoot == 0 && bestMove != default)
-        {
-            // Set best move
-            BestSoFar = bestMove;
-            BestScoreSoFar = alpha;
         }
 
         if (depthFromRoot > 0)

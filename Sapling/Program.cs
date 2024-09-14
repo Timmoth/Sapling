@@ -1,4 +1,5 @@
-﻿using System.Runtime.Intrinsics.X86;
+﻿using System.Reflection;
+using System.Runtime.Intrinsics.X86;
 
 namespace Sapling;
 
@@ -6,6 +7,14 @@ internal class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--version")
+        {
+            // Get the version from the assembly information
+            var version = Assembly.GetExecutingAssembly().GetName().Version;
+            Console.WriteLine($"{version.Major}-{version.Minor}-{version.Build}");
+            return;
+        }
+
 #if AVX512
             if (!Avx512BW.IsSupported)
             {

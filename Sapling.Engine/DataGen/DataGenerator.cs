@@ -36,7 +36,7 @@ public class DataGenerator
         }
 
         var stopwatch = Stopwatch.StartNew();
-
+   
         Parallel.For(0, searchers.Count,
             j =>
             {
@@ -122,7 +122,9 @@ public class DataGenerator
                     }
                     else
                     {
-                        (move, _, score, _, _, _) = searcher.NodeBoundSearch(gameState.Board, 5000, 15);
+                        var ( pv, _, s, _, _) = searcher.NodeBoundSearch(gameState.Board, 5000, 15);
+                        move = pv[0];
+                        score = s;
                         if (move.IsQuiet() && !gameState.Board.InCheck)
                         {
                             turns[positions] = gameState.Board.WhiteToMove;

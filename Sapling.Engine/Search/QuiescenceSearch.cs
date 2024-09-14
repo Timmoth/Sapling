@@ -1,4 +1,7 @@
-﻿using System.Runtime.Intrinsics;
+﻿using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
@@ -28,6 +31,16 @@ public partial class Searcher
             return 0;
         }
 
+        if (depthFromRoot >= Constants.MaxSearchDepth)
+        {
+            // Reached max depth
+            return Board.Evaluate();
+        }
+
+        var pvIndex = PVTable.Indexes[depthFromRoot];
+        var nextPvIndex = PVTable.Indexes[depthFromRoot + 1];
+        _pVTable[pvIndex] = 0;
+
         if (Board.InsufficientMatingMaterial())
         {
             // Detect draw by Fifty move counter or repetition
@@ -40,12 +53,6 @@ public partial class Searcher
         {
             // Transposition table hit
             return ttProbeResult.Evaluation;
-        }
-
-        if (depthFromRoot >= Constants.MaxSearchDepth)
-        {
-            // Reached max depth
-            return Board.Evaluate();
         }
 
         var inCheck = Board.InCheck;
@@ -106,8 +113,8 @@ public partial class Searcher
         NnueEvaluator.SimdCopy(whiteAccPtr, Board.Evaluator.WhiteAccumulator);
         NnueEvaluator.SimdCopy(blackAccPtr, Board.Evaluator.BlackAccumulator);
 
-                for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
-                {
+        for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
+        {
                     // Incremental move sorting
                     for (var j = moveIndex + 1; j < psuedoMoveCount; j++)
                     {
@@ -171,20 +178,23 @@ public partial class Searcher
                     bestMove = m;
                     alpha = val;
 
-                    if (val < beta)
+                    if (val >= beta)
                     {
-                        // Move was not better then beta, continue searching
-                        continue;
+                        // Cache in transposition table
+                        TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, 0, depthFromRoot, val,
+                            TranspositionTableFlag.Beta, bestMove);
+                        // Beta cut off
+                        return val;
                     }
 
-                    // Cache in transposition table
-                    TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, 0, depthFromRoot, val,
-                        TranspositionTableFlag.Beta, bestMove);
-
-                    // Beta cut off
-                    return val;
-   
+                    if (!_searchCancelled)
+                    {
+                        // update pv table
+                        _pVTable[pvIndex] = m;
+                        ShiftPvMoves(pvIndex + 1, nextPvIndex, Constants.MaxSearchDepth - depthFromRoot - 1);
+                    }
         }
+
         if (_searchCancelled)
         {
             // Search was cancelled
@@ -208,5 +218,17 @@ public partial class Searcher
             bestMove);
 
         return alpha;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe void ShiftPvMoves(int target, int source, int moveCountToCopy)
+    {
+        if (_pVTable[source] == 0)
+        {
+            NativeMemory.Clear(_pVTable + target, _pvTableBytes - (nuint)target * sizeof(uint));
+            return;
+        }
+
+        NativeMemory.Copy(_pVTable + source, _pVTable + target, (nuint)moveCountToCopy * sizeof(uint));
     }
 }
