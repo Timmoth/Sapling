@@ -24,7 +24,7 @@ jobs:
       - name: Get .NET application version
         id: get_version
         run: |
-          VERSION=$(dotnet run --no-build --project ./Sapling --configuration Release -- --version | tr -d '\r\n')
+          VERSION=$(dotnet run --no-build --project --configuration Release -- --version | tr -d '\r\n')
           echo "Application version: $VERSION"
           echo "::set-output name=version::$VERSION"
 
