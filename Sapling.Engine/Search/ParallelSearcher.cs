@@ -49,18 +49,18 @@ public class ParallelSearcher
         }
     }
 
-    public (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) NodeBoundSearch(
+    public (List<uint> pv, int depthSearched, int score, int nodes, TimeSpan duration) NodeBoundSearch(
         BoardState state, int nodeLimit, int maxDepth)
     {
         Searchers[0].Board = state;
 
         var start = DateTime.Now;
         var searchResult = Searchers[0].Search(nodeLimit, maxDepth);
-        return (searchResult.move, searchResult.depthSearched, searchResult.score, searchResult.ponder,
+        return (searchResult.pv, searchResult.depthSearched, searchResult.score,
             searchResult.nodes, DateTime.Now - start);
     }
 
-    public (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) TimeBoundSearch(
+    public (List<uint> pv, int depthSearched, int score, int nodes, TimeSpan duration) TimeBoundSearch(
         BoardState state, int thinkTime)
     {
         var newSearchId = Guid.NewGuid();
@@ -92,14 +92,14 @@ public class ParallelSearcher
         if (Searchers.Count == 1)
         {
             var searchResult = Searchers[0].Search();
-            return (searchResult.move, searchResult.depthSearched, searchResult.score, searchResult.ponder,
+            return (searchResult.pv, searchResult.depthSearched, searchResult.score,
                 searchResult.nodes, DateTime.Now - start);
         }
 
         // Thread-local storage for best move in each thread
         var results =
-            new ThreadLocal<(uint move, int depthSearched, int score, uint ponder, int nodes)>(
-                () => (0, 0, int.MinValue, 0, 0), true);
+            new ThreadLocal<(List<uint> move, int depthSearched, int score, int nodes)>(
+                () => (new List<uint>(), 0, int.MinValue, 0), true);
 
 
         // Parallel search, with thread-local best move
@@ -121,20 +121,19 @@ public class ParallelSearcher
         // Second pass: Accumulate votes
         foreach (var result in results.Values)
         {
-            voteMap[MoveFromToIndex(result.move)] += ThreadValue(result.score, worstScore, result.depthSearched);
+            voteMap[MoveFromToIndex(result.move[0])] += ThreadValue(result.score, worstScore, result.depthSearched);
         }
 
         // Initialize best thread and best scores
         var bestMove = results.Values[0].move;
         var bestScore = results.Values[0].score;
         var bestDepth = results.Values[0].depthSearched;
-        var bestPonder = results.Values[0].ponder;
-        var bestVoteScore = voteMap[MoveFromToIndex(results.Values[0].move)];
+        var bestVoteScore = voteMap[MoveFromToIndex(results.Values[0].move[0])];
 
         // Find the best thread
         for (var i = 1; i < results.Values.Count; i++)
         {
-            var currentVoteScore = voteMap[MoveFromToIndex(results.Values[i].move)];
+            var currentVoteScore = voteMap[MoveFromToIndex(results.Values[i].move[0])];
             if (currentVoteScore <= bestVoteScore)
             {
                 continue;
@@ -143,14 +142,13 @@ public class ParallelSearcher
             bestMove = results.Values[i].move;
             bestScore = results.Values[i].score;
             bestDepth = results.Values[i].depthSearched;
-            bestPonder = results.Values[i].ponder;
             bestVoteScore = currentVoteScore;
         }
 
-        return (bestMove, bestDepth, bestScore, bestPonder, nodes, dt);
+        return (bestMove, bestDepth, bestScore, nodes, dt);
     }
 
-    public (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) DepthBoundSearch(
+    public (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) DepthBoundSearch(
         BoardState state, int depth)
     {
         var searchId = Guid.NewGuid();
@@ -164,8 +162,8 @@ public class ParallelSearcher
 
         // Thread-local storage for best move in each thread
         var results =
-            new ThreadLocal<(uint move, int depthSearched, int score, uint ponder, int nodes)>(
-                () => (0, 0, int.MinValue, 0, 0), true);
+            new ThreadLocal<(List<uint> move, int depthSearched, int score, int nodes)>(
+                () => (new List<uint>(), 0, int.MinValue, 0), true);
 
         var start = DateTime.Now;
 
@@ -186,31 +184,29 @@ public class ParallelSearcher
         // Second pass: Accumulate votes
         foreach (var result in results.Values)
         {
-            voteMap[MoveFromToIndex(result.move)] += ThreadValue(result.score, worstScore, result.depthSearched);
+            voteMap[MoveFromToIndex(result.move[0])] += ThreadValue(result.score, worstScore, result.depthSearched);
         }
 
         // Initialize best thread and best scores
         var bestMove = results.Values[0].move;
         var bestScore = results.Values[0].score;
         var bestDepth = results.Values[0].depthSearched;
-        var bestPonder = results.Values[0].ponder;
-        var bestVoteScore = voteMap[MoveFromToIndex(results.Values[0].move)];
+        var bestVoteScore = voteMap[MoveFromToIndex(results.Values[0].move[0])];
 
         // Find the best thread
         for (var i = 1; i < results.Values.Count; i++)
         {
-            var currentVoteScore = voteMap[MoveFromToIndex(results.Values[i].move)];
+            var currentVoteScore = voteMap[MoveFromToIndex(results.Values[i].move[0])];
             if (currentVoteScore > bestVoteScore)
             {
                 bestMove = results.Values[i].move;
                 bestScore = results.Values[i].score;
                 bestDepth = results.Values[i].depthSearched;
-                bestPonder = results.Values[i].ponder;
                 bestVoteScore = currentVoteScore;
             }
         }
 
-        return (bestMove, bestDepth, bestScore, bestPonder, nodes, dt);
+        return (bestMove, bestDepth, bestScore, nodes, dt);
     }
 
     public void SetThreads(int searchThreads)

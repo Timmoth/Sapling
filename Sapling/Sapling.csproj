@@ -6,6 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationIcon>logo.ico</ApplicationIcon>
+    <Title>Sapling</Title>
+	  <AssemblyVersion>1.2.3.4</AssemblyVersion>
+	  <FileVersion>1.2.3.4</FileVersion>
+	  <Version>1.2.3.4</Version>
   </PropertyGroup>
 
   <ItemGroup>

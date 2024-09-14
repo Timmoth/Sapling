@@ -129,18 +129,8 @@ public unsafe class NnueEvaluator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public (int blackIdx, int whiteIdx) FeatureIndices(int piece, int square)
     {
-        var whitePieceSquare = square;
-        var blackPieceSquare = square ^ 0x38;
-
-        if (WhiteMirrored)
-        {
-            whitePieceSquare ^= 7;
-        }
-
-        if (BlackMirrored)
-        {
-            blackPieceSquare ^= 7;
-        }
+        var whitePieceSquare = WhiteMirrored ? square ^ 7 : square;
+        var blackPieceSquare = BlackMirrored ? square ^ 0x38 ^ 7 : square ^ 0x38;
 
         var white = (piece + 1) % 2;
         var type = (piece >> 1) - white;
