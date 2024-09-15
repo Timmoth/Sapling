@@ -1,8 +1,8 @@
 ﻿using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+using System.Text;
 
 namespace Sapling.Engine.Evaluation;
 #if AVX512
@@ -16,6 +16,7 @@ using VectorType = Vector256;
 using VectorInt = Vector256<int>;
 using VectorShort = Vector256<short>;
 #endif
+
 public static class NnueWeights
 {
     public const int InputSize = 768;
@@ -55,18 +56,19 @@ public static class NnueWeights
         {
             outputWeights[i] = reader.ReadInt16();
         }
+
         var transposedWeights = new short[outputWeights.Length];
 
         // Transposing logic
-        for (int i = 0; i < 2 * Layer1Size; i++)
+        for (var i = 0; i < 2 * Layer1Size; i++)
         {
-            for (int j = 0; j < OutputBuckets; j++)
+            for (var j = 0; j < OutputBuckets; j++)
             {
                 // Original index calculation
-                int originalIndex = i * OutputBuckets + j;
+                var originalIndex = i * OutputBuckets + j;
 
                 // Transposed index calculation
-                int transposedIndex = j * (2 * Layer1Size) + i;
+                var transposedIndex = j * 2 * Layer1Size + i;
 
                 // Assign value to transposed position
                 transposedWeights[transposedIndex] = outputWeights[originalIndex];
@@ -118,6 +120,7 @@ public static class NnueWeights
         NativeMemory.Clear(block, bytes);
         return (VectorShort*)block;
     }
+
     public static unsafe short* AlignedAllocZeroed(nuint items)
     {
         const nuint alignment = 64;

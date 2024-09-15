@@ -16,6 +16,7 @@ using VectorType = Vector256;
 using VectorInt = Vector256<int>;
 using VectorShort = Vector256<short>;
 #endif
+
 public partial class Searcher
 {
     public unsafe int
@@ -87,9 +88,10 @@ public partial class Searcher
                 var staticEval = Board.Evaluate();
 
                 // Reverse futility pruning
-                if (depth <= 7 && staticEval >= beta + depth * 75)
+                var margin = depth * 75;
+                if (depth <= 7 && staticEval >= beta + margin)
                 {
-                    return staticEval;
+                    return staticEval - margin;
                 }
 
                 // Null move pruning
@@ -137,9 +139,7 @@ public partial class Searcher
                         var qScore = QuiescenceSearch(depthFromRoot, alpha, beta);
                         if (qScore < beta)
                         {
-                            return qScore > score
-                                ? qScore
-                                : score;
+                            return int.Max(qScore, score);
                         }
                     }
 
@@ -222,7 +222,7 @@ public partial class Searcher
         var blackMirrored = Board.Evaluator.BlackMirrored;
         var whiteAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
         var blackAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
- 
+
         NnueEvaluator.SimdCopy(whiteAccPtr, Board.Evaluator.WhiteAccumulator);
         NnueEvaluator.SimdCopy(blackAccPtr, Board.Evaluator.BlackAccumulator);
 
@@ -253,6 +253,7 @@ public partial class Searcher
             var isPromotionThreat = m.IsPromotionThreat();
             var isInteresting = inCheck || Board.InCheck || isPromotionThreat ||
                                 scores[moveIndex] > Constants.LosingCaptureBias;
+
             if (!pvNode && depth <= 4 &&
                 !isInteresting &&
                 searchedMoves > depth * depth + 8)
@@ -270,39 +271,39 @@ public partial class Searcher
             var needsFullSearch = true;
             var score = 0;
 
-                if (searchedMoves > 0)
+            if (searchedMoves > 0)
+            {
+                if (depth >= 3 && searchedMoves >= 2)
                 {
-                    if (depth >= 3 && searchedMoves >= 2)
-                    {
-                        // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
-                        var reduction = (int)(isInteresting
-                            ? 0.2 + logDepth * Math.Log(searchedMoves) / 3.3
-                            : 1.35 + logDepth * Math.Log(searchedMoves) / 2.75);
+                    // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
+                    var reduction = (int)(isInteresting
+                        ? 0.2 + logDepth * Math.Log(searchedMoves) / 3.3
+                        : 1.35 + logDepth * Math.Log(searchedMoves) / 2.75);
 
 
                     if (reduction > 0)
-                        {
-                            score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - reduction - 1,
-                                -alpha - 1, -alpha, false, m);
-                            needsFullSearch = score > alpha;
-                        }
-                    }
-
-                    if (needsFullSearch)
                     {
-                        // PVS
-                        score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha,
-                            false, m);
-                        needsFullSearch = score > alpha && score < beta;
+                        score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - reduction - 1,
+                            -alpha - 1, -alpha, false, m);
+                        needsFullSearch = score > alpha;
                     }
                 }
 
                 if (needsFullSearch)
                 {
-                    // Full search
-                    score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -beta, -alpha, false,
-                        m);
+                    // PVS
+                    score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha,
+                        false, m);
+                    needsFullSearch = score > alpha && score < beta;
                 }
+            }
+
+            if (needsFullSearch)
+            {
+                // Full search
+                score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - 1, -beta, -alpha, false,
+                    m);
+            }
 
             // Revert the move
             Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevFiftyMoveCounter);
@@ -336,7 +337,8 @@ public partial class Searcher
             if (score >= beta)
             {
                 // Cache in transposition table
-                TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, (byte)depth, depthFromRoot, score,
+                TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, (byte)depth, depthFromRoot,
+                    score,
                     TranspositionTableFlag.Beta,
                     bestMove);
 

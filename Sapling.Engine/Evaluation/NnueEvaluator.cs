@@ -22,7 +22,7 @@ public unsafe class NnueEvaluator
 #if AVX512
             const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
 #else
-    const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+    private const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
 #endif
 
     private const int Scale = 400;
@@ -37,22 +37,24 @@ public unsafe class NnueEvaluator
     public VectorShort* BlackAccumulator;
     public VectorShort* WhiteAccumulator;
 
-    public bool ShouldWhiteMirrored = false;
-    public bool ShouldBlackMirrored = false;
-    public bool WhiteMirrored = false;
-    public bool BlackMirrored = false;
+    public bool ShouldWhiteMirrored;
+    public bool ShouldBlackMirrored;
+    public bool WhiteMirrored;
+    public bool BlackMirrored;
     public const int AccumulatorSize = NnueWeights.Layer1Size / VectorSize;
+
     public NnueEvaluator()
     {
         WhiteAccumulator = AllocateAccumulator();
         BlackAccumulator = AllocateAccumulator();
     }
+
     public const int L1ByteSize = sizeof(short) * NnueWeights.Layer1Size;
 
     public static VectorShort* AllocateAccumulator()
     {
         const nuint alignment = 64;
-        
+
         var block = NativeMemory.AlignedAlloc((nuint)L1ByteSize, alignment);
         NativeMemory.Clear(block, (nuint)L1ByteSize);
 
@@ -103,13 +105,15 @@ public unsafe class NnueEvaluator
         return net;
     }
 
-    const int BucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
+    private const int BucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
+
     public int Evaluate(BoardState board)
     {
         if (WhiteMirrored != ShouldWhiteMirrored)
         {
             MirrorWhite(board);
         }
+
         if (BlackMirrored != ShouldBlackMirrored)
         {
             MirrorBlack(board);
@@ -133,7 +137,7 @@ public unsafe class NnueEvaluator
         var white = (piece + 1) % 2;
         var type = (piece >> 1) - white;
 
-        return (white * ColorStride + type * PieceStride + (blackPieceSquare),
+        return (white * ColorStride + type * PieceStride + blackPieceSquare,
             (white ^ 1) * ColorStride + type * PieceStride + whitePieceSquare);
     }
 
@@ -164,7 +168,7 @@ public unsafe class NnueEvaluator
         var white = (piece + 1) % 2;
         var type = (piece >> 1) - white;
 
-        return white * ColorStride + type * PieceStride + square ^ 0x38;
+        return (white * ColorStride + type * PieceStride + square) ^ 0x38;
     }
 
     public void Deactivate(int piece, int square)
@@ -296,7 +300,7 @@ public unsafe class NnueEvaluator
     private static int ForwardCReLU(VectorShort* usAcc, VectorShort* themAcc, int bucket)
     {
         var sum = VectorInt.Zero;
-        var featureWeightsPtr = NnueWeights.OutputWeights + (bucket * AccumulatorSize * 2);
+        var featureWeightsPtr = NnueWeights.OutputWeights + bucket * AccumulatorSize * 2;
         var themWeightsPtr = featureWeightsPtr + AccumulatorSize;
         for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
@@ -326,35 +330,40 @@ public unsafe class NnueEvaluator
 
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.WhitePawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.WhitePawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteKnights;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.WhiteKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.WhiteKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteBishops;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.WhiteBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.WhiteBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteRooks;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.WhiteRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.WhiteRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteQueens;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.WhiteQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.WhiteQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
@@ -363,35 +372,40 @@ public unsafe class NnueEvaluator
         bitboards = board.BlackPawns;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.BlackPawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.BlackPawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackKnights;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.BlackKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.BlackKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackBishops;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.BlackBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.BlackBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackRooks;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.BlackRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.BlackRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackQueens;
         while (bitboards != 0)
         {
-            AddWeights(WhiteAccumulator, WhiteFeatureIndices(Constants.BlackQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(WhiteAccumulator,
+                WhiteFeatureIndices(Constants.BlackQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
     }
@@ -410,35 +424,40 @@ public unsafe class NnueEvaluator
         var bitboards = board.WhitePawns;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.WhitePawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.WhitePawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteKnights;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.WhiteKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.WhiteKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteBishops;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.WhiteBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.WhiteBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteRooks;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.WhiteRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.WhiteRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.WhiteQueens;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.WhiteQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.WhiteQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
@@ -447,35 +466,40 @@ public unsafe class NnueEvaluator
         bitboards = board.BlackPawns;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.BlackPawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.BlackPawn, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackKnights;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.BlackKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.BlackKnight, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackBishops;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.BlackBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.BlackBishop, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackRooks;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.BlackRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.BlackRook, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
 
         bitboards = board.BlackQueens;
         while (bitboards != 0)
         {
-            AddWeights(BlackAccumulator, BlackFeatureIndices(Constants.BlackQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
+            AddWeights(BlackAccumulator,
+                BlackFeatureIndices(Constants.BlackQueen, (byte)Bmi1.X64.TrailingZeroCount(bitboards)));
             bitboards &= bitboards - 1;
         }
     }

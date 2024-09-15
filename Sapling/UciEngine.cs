@@ -193,7 +193,7 @@ public class UciEngine
             var depth = int.Parse(messageSegments[2]);
             var stopWatch = Stopwatch.StartNew();
             ulong totalNodeCount = 0;
-            foreach (var (nodeCount, move) in _simpleSearcher.Board.PerftRootParallel(depth))
+            foreach (var (nodeCount, move) in _gameState.Board.PerftRootParallel(depth))
             {
                 totalNodeCount += nodeCount;
             }

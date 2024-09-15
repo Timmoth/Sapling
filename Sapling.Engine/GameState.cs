@@ -30,8 +30,8 @@ public sealed class GameState
 
         Board.ResetTo(board);
         Board.GenerateLegalMoves(Moves, false);
-    }   
-    
+    }
+
     public void ResetTo(BoardState board, uint[] legalMoves)
     {
         History.Clear();

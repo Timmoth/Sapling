@@ -19,11 +19,11 @@ public class DataGenerator
 
     public void Start()
     {
-        #if AVX512
+#if AVX512
             Console.WriteLine("Using Avx-512");
-        #else
-            Console.WriteLine("Using Avx-256");
-        #endif
+#else
+        Console.WriteLine("Using Avx-256");
+#endif
 
         using var fileStream = new FileStream("./out.bullet", FileMode.Append, FileAccess.Write);
         using var writer = new BinaryWriter(fileStream);
@@ -36,7 +36,7 @@ public class DataGenerator
         }
 
         var stopwatch = Stopwatch.StartNew();
-   
+
         Parallel.For(0, searchers.Count,
             j =>
             {
@@ -122,7 +122,7 @@ public class DataGenerator
                     }
                     else
                     {
-                        var ( pv, _, s, _, _) = searcher.NodeBoundSearch(gameState.Board, 5000, 15);
+                        var (pv, _, s, _, _) = searcher.NodeBoundSearch(gameState.Board, 5000, 15);
                         move = pv[0];
                         score = s;
                         if (move.IsQuiet() && !gameState.Board.InCheck)
@@ -146,7 +146,9 @@ public class DataGenerator
                         }
                     }
                     else
+                    {
                         adjudicationCounter = 0;
+                    }
                 }
 
                 byte result;

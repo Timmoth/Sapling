@@ -1,10 +1,9 @@
-﻿using Sapling.Engine.Transpositions;
-using System.Runtime.Intrinsics.X86;
+﻿using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
-using FluentResults;
 using Sapling.Engine.MoveGen;
+using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.Search;
 #if AVX512
@@ -18,35 +17,23 @@ using VectorType = Vector256;
 using VectorInt = Vector256<int>;
 using VectorShort = Vector256<short>;
 #endif
+
 public unsafe partial class Searcher
 {
-    public readonly uint TtMask;
+    private const nuint _pvTableLength = Constants.MaxSearchDepth * (Constants.MaxSearchDepth + 1) / 2;
+    private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
     private static readonly int[] AsperationWindows = { 40, 100, 300, 900, 2700, Constants.MaxScore };
+    private readonly uint* _pVTable;
     private readonly Transposition* _transpositionTable;
     public readonly RepetitionTable RepetitionTable = new();
     public readonly Transposition[] Transpositions;
-    private readonly uint* _pVTable;
-    public uint BestSoFar = 0;
+    public readonly uint TtMask;
     private long _lockedUntil;
 
     private bool _searchCancelled;
+    public uint BestSoFar;
     public BoardState Board = default!;
     public int NodesVisited;
-
-    const nuint _pvTableLength = Constants.MaxSearchDepth * (Constants.MaxSearchDepth + 1) / 2;
-    private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
-    public static unsafe uint* AlignedAllocZeroed()
-    {
-        const nuint alignment = 64;
-        var block = NativeMemory.AlignedAlloc(_pvTableBytes, alignment);
-        if (block == null)
-        {
-            throw new OutOfMemoryException("Failed to allocate aligned memory.");
-        }
-
-        NativeMemory.Clear(block, _pvTableBytes);
-        return (uint*)block;
-    }
 
     public Searcher(Transposition[] transpositions)
     {
@@ -58,6 +45,19 @@ public unsafe partial class Searcher
 
         TtMask = (uint)transpositions.Length - 1;
         _pVTable = AlignedAllocZeroed();
+    }
+
+    public static uint* AlignedAllocZeroed()
+    {
+        const nuint alignment = 64;
+        var block = NativeMemory.AlignedAlloc(_pvTableBytes, alignment);
+        if (block == null)
+        {
+            throw new OutOfMemoryException("Failed to allocate aligned memory.");
+        }
+
+        NativeMemory.Clear(block, _pvTableBytes);
+        return (uint*)block;
     }
 
     public void Stop()
@@ -164,7 +164,7 @@ public unsafe partial class Searcher
 
             if (writeInfo)
             {
-                var dt = (DateTime.Now - startTime);
+                var dt = DateTime.Now - startTime;
                 var nps = (int)(NodesVisited / dt.TotalSeconds);
                 var sb = new StringBuilder();
                 for (var i = 0; i < Constants.MaxSearchDepth; i++)
@@ -178,7 +178,8 @@ public unsafe partial class Searcher
                     sb.Append(pvMoves[i].ToUciMoveName());
                 }
 
-                Console.WriteLine($"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {NodesVisited} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
+                Console.WriteLine(
+                    $"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {NodesVisited} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
             }
 
             if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
@@ -186,6 +187,7 @@ public unsafe partial class Searcher
                 break;
             }
         }
+
         return (GetPvMoveList(pvMoves), depthSearched, bestEval, NodesVisited);
     }
 
@@ -281,7 +283,6 @@ public unsafe partial class Searcher
 
         return (GetPvMoveList(_pVTable), depthSearched, bestEval, NodesVisited);
     }
-
 
 
     public void Init(long currentUnixSeconds, BoardState board)

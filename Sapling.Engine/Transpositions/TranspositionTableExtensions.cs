@@ -86,7 +86,7 @@ public static class TranspositionTableExtensions
 
     public static uint CalculateTranspositionTableSize(int sizeInMb)
     {
-        var transpositionCount = ((ulong)sizeInMb * 1024ul * 1024ul) / 18;
+        var transpositionCount = (ulong)sizeInMb * 1024ul * 1024ul / 18;
         if (!BitOperations.IsPow2(transpositionCount))
         {
             transpositionCount = BitOperations.RoundUpToPowerOf2(transpositionCount) >> 1;
@@ -94,7 +94,7 @@ public static class TranspositionTableExtensions
 
         if (transpositionCount > int.MaxValue)
         {
-            throw new ArgumentException($"Transposition table too large");
+            throw new ArgumentException("Transposition table too large");
         }
 
         return (uint)transpositionCount;
@@ -113,7 +113,7 @@ public static class TranspositionTableExtensions
         ulong adjustedTranspositionCount = transpositionCount << 1;
 
         // Calculate the size in MB
-        int sizeInMb = (int)((adjustedTranspositionCount * 18) / (1024 * 1024));
+        var sizeInMb = (int)(adjustedTranspositionCount * 18 / (1024 * 1024));
 
         // Check if the original function would have produced the same transposition count
         // for this sizeInMb, if not, decrement the size until it matches.
@@ -128,5 +128,4 @@ public static class TranspositionTableExtensions
 
         return sizeInMb;
     }
-
 }
