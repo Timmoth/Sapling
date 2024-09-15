@@ -4,7 +4,7 @@
 </div>
 </p>
 
-### A strong dotnet UCI Chess engine [BETA] My leaf nodes are growing
+### A strong dotnet UCI Chess engine - My leaf nodes are growing
 
 > [!NOTE]  
 > Sapling is still in active development so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 13 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
@@ -16,13 +16,7 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-### Latest Release [BETA] 13/09/2024
-- [Windows Avx-256](https://github.com/Timmoth/Sapling/releases/tag/windows_2024-09-13_19-03)
-- [Windows Avx-512](https://github.com/Timmoth/Sapling/releases/tag/windows_avx512_2024-09-13_19-04)
-- [Linux Avx-256](https://github.com/Timmoth/Sapling/releases/tag/linux_2024-09-13_19-03)
-- [Linux Avx-512](https://github.com/Timmoth/Sapling/releases/tag/linux_avx512_2024-09-13_19-04)
-- [Mac Avx-256](https://github.com/Timmoth/Sapling/releases/tag/osx_2024-09-13_19-03)
-- [Mac Avx-512](https://github.com/Timmoth/Sapling/releases/tag/osx_avx512_2024-09-13_19-04)
+### Latest Release [v1.0.0 14/09/2024](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.0.0)
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
@@ -54,7 +48,7 @@ dotnet run --project .\Sapling\Sapling.csproj --configuration Release
 <Summary>General</Summary>
   
 - Bitboards 
-- NNUE (768 -> 512)x2 -> 8
+- NNUE (768 -> 768)x2 -> 8
 - Horizontal mirroring
 - Output buckets x8
 - Transposition table

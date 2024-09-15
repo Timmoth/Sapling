@@ -24,11 +24,15 @@ public class UciEngine
     private bool _isPonderHit;
     private bool _isPondering;
     private bool _isReady = true;
-    private (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) _result;
+    private (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) _result;
     private bool _ponderEnabled = false;
     private int _threadCount = 1;
+    private readonly string _version;
     public UciEngine(StreamWriter logWriter)
     {
+        var version = typeof(Program).Assembly.GetName().Version;
+        _version = $"{version.Major}-{version.Minor}-{version.Build}";
+
         _logWriter = logWriter;
         Transpositions = GC.AllocateArray<Transposition>(TranspositionSize, true);
         _parallelSearcher = new ParallelSearcher(Transpositions);
@@ -101,8 +105,7 @@ public class UciEngine
             switch (messageType)
             {
                 case "uci":
-                    Respond("id name Sapling BETA");
-                    Respond("id author Tim Jones");
+                    Respond($"id name Sapling {_version}");
                     Respond("id author Tim Jones");
                     Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                     Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
@@ -127,8 +130,11 @@ public class UciEngine
                     break;
                 case "go":
                     _isReady = false;
-                    ProcessGoCommand(loweredMessage);
-                    _isReady = true;
+                    Task.Run(() =>
+                    {
+                        ProcessGoCommand(loweredMessage);
+                        _isReady = true;
+                    });
                     break;
                 case "stop":
                     if (_isPondering)
@@ -163,6 +169,9 @@ public class UciEngine
                     var dataGen = new DataGenerator();
                     dataGen.Start();
                     break;
+                case "version":
+                    Console.WriteLine(_version);
+                    break;
                 default:
                     LogToFile($"Unrecognized command: {messageType}");
                     break;
@@ -178,7 +187,7 @@ public class UciEngine
     }
 
     private void OnMoveChosen(
-        (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) result)
+        (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) result)
     {
         if (result == default)
         {
@@ -187,24 +196,21 @@ public class UciEngine
 
         Info(result);
 
-        var bestMove = result.move.ToUciMoveName();
-
-        if (_ponderEnabled && result.ponder != 0)
+        if (_ponderEnabled && result.move.Count > 1)
         {
-            var ponderMove = result.ponder.ToUciMoveName();
-            Respond($"bestmove {bestMove} ponder {ponderMove}");
+            Respond($"bestmove {result.move[0].ToUciMoveName()} ponder {result.move[1].ToUciMoveName()}");
         }
         else
         {
-            Respond($"bestmove {bestMove}");
+            Respond($"bestmove {result.move[0].ToUciMoveName()}");
         }
     }
 
-    public void Info((uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) result)
+    public void Info((List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) result)
     {
         var nps = (int)(result.nodes / result.duration.TotalSeconds);
         Respond(
-            $"info depth {result.depthSearched} score {ScoreToString(result.score)} nodes {result.nodes} nps {nps} time {(int)result.duration.TotalMilliseconds} pv {result.move.ToUciMoveName()} {(result.ponder != 0 ? result.ponder.ToUciMoveName() : "")}");
+            $"info depth {result.depthSearched} score {ScoreToString(result.score)} nodes {result.nodes} nps {nps} time {(int)result.duration.TotalMilliseconds} pv {(string.Join(" ", result.move.Select(m => m.ToUciMoveName())))}");
     }
 
     private void ProcessGoCommand(string message)

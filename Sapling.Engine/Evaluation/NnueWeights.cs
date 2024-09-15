@@ -19,7 +19,7 @@ using VectorShort = Vector256<short>;
 public static class NnueWeights
 {
     public const int InputSize = 768;
-    public const int Layer1Size = 512;
+    public const int Layer1Size = 768;
 
     public const short OutputBuckets = 8;
 

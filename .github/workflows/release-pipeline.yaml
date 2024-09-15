@@ -1,0 +1,97 @@
+name: Release Pipeline
+
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Sapling
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 8.0.x
+
+      # Get the version from the .csproj file
+      - name: Get .NET application version
+        working-directory: Sapling
+        id: get_version
+        run: |
+          VERSION=1.0.0
+          echo "Application version: $VERSION"
+          echo "::set-output name=version::$VERSION"
+
+      # Build and Package AVX512 for all platforms
+      - name: Build and Package AVX512 for Windows
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/win-x64-avx512
+
+      - name: Build and Package Non-AVX512 for Windows
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -o ../output/win-x64
+
+      - name: Build and Package AVX512 for Linux
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/linux-x64-avx512
+
+      - name: Build and Package Non-AVX512 for Linux
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -o ../output/linux-x64
+
+      - name: Build and Package AVX512 for OSX
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/osx-x64-avx512
+
+      - name: Build and Package Non-AVX512 for OSX
+        run: |
+          dotnet restore
+          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -o ../output/osx-x64
+
+      # Rename the output files for consistency
+      - name: Rename output files
+        run: |
+          mv ../output/win-x64-avx512/Sapling.exe ../output/Sapling_win_x64_avx512.exe
+          mv ../output/win-x64/Sapling.exe ../output/Sapling_win_x64.exe
+          mv ../output/linux-x64-avx512/Sapling ../output/Sapling_linux_x64_avx512
+          mv ../output/linux-x64/Sapling ../output/Sapling_linux_x64
+          mv ../output/osx-x64-avx512/Sapling ../output/Sapling_osx_x64_avx512
+          mv ../output/osx-x64/Sapling ../output/Sapling_osx_x64
+
+      # List files in output directory to verify they exist
+      - name: Verify output files
+        run: |
+          ls -R ../output
+
+      # Generate release tag based on version
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "::set-output name=release_tag::Sapling-${{ steps.get_version.outputs.version }}"
+
+      # Create a single release with all artifacts
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          files: |
+            ${{ github.workspace }}/output/Sapling_win_x64_avx512.exe
+            ${{ github.workspace }}/output/Sapling_win_x64.exe
+            ${{ github.workspace }}/output/Sapling_linux_x64_avx512
+            ${{ github.workspace }}/output/Sapling_linux_x64
+            ${{ github.workspace }}/output/Sapling_osx_x64_avx512
+            ${{ github.workspace }}/output/Sapling_osx_x64
