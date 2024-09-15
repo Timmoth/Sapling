@@ -21,7 +21,6 @@ public class UciEngine
     private Searcher _simpleSearcher;
     private DateTime _dt = DateTime.Now;
     private GameState _gameState = GameState.InitialState();
-    private bool _isReady = true;
     private (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) _result;
     private bool _ponderEnabled = false;
     private int _threadCount = 1;
@@ -111,27 +110,19 @@ public class UciEngine
                     Respond("uciok");
                     break;
                 case "isready":
-                    if (_isReady)
-                    {
-                        Respond("readyok");
-                    }
+                    Respond("readyok");
                     break;
                 case "ucinewgame":
                     _gameState = GameState.InitialState();
-                    _isReady = true;
                     break;
                 case "position":
-                    _isReady = false;
                     _result = default;
                     ProcessPositionCommand(message);
-                    _isReady = true;
                     break;
                 case "go":
-                    _isReady = false;
                     Task.Run(() =>
                     {
                         ProcessGoCommand(loweredMessage);
-                        _isReady = true;
                     });
                     break;
                 case "stop":

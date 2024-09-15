@@ -90,7 +90,7 @@ public class ParallelSearcher
 
         if (Searchers.Count == 1)
         {
-            var searchResult = Searchers[0].Search();
+            var searchResult = Searchers[0].Search(writeInfo: true);
             return (searchResult.pv, searchResult.depthSearched, searchResult.score,
                 searchResult.nodes, DateTime.Now - start);
         }
@@ -103,7 +103,10 @@ public class ParallelSearcher
 
         // Parallel search, with thread-local best move
         Parallel.For(0, Searchers.Count,
-            i => { results.Value = Searchers[i].Search(); });
+            i =>
+            {
+                results.Value = Searchers[i].Search(writeInfo: i == 0);
+            });
 
         var dt = DateTime.Now - start;
 

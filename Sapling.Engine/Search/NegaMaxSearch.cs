@@ -257,7 +257,7 @@ public partial class Searcher
                                 scores[moveIndex] > Constants.LosingCaptureBias;
             if (canPrune &&
                 !isInteresting &&
-                searchedMoves > depth * depth + 5 * depth)
+                searchedMoves > depth * depth + 8)
             {
                 // Late move pruning
                 Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevFiftyMoveCounter);
@@ -274,15 +274,15 @@ public partial class Searcher
 
                 if (searchedMoves > 0)
                 {
-                    if (!isInteresting && depth > 3 && searchedMoves >= 3)
+                    if (depth > 3 && searchedMoves >= 3)
                     {
                         // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
-                        var reduction = (int)(pvNode
-                            ? logDepth * Math.Log(searchedMoves) / 2
-                            : 0.5 + logDepth * Math.Log(searchedMoves) / 2);
+                        var reduction = (int)(isInteresting
+                            ? 0.2 + logDepth * Math.Log(searchedMoves) / 3.3
+                            : 1.35 + logDepth * Math.Log(searchedMoves) / 2.75);
 
 
-                        if (reduction > 0)
+                    if (reduction > 0)
                         {
                             score = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1, depth - reduction - 1,
                                 -alpha - 1, -alpha, false, m);

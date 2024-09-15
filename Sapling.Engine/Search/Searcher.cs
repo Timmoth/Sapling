@@ -2,6 +2,9 @@
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 using System.Runtime.InteropServices;
+using System.Text;
+using FluentResults;
+using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine.Search;
 #if AVX512
@@ -81,7 +84,7 @@ public unsafe partial class Searcher
 
 
     public (List<uint> pv, int depthSearched, int score, int nodes) Search(int nodeLimit = 0,
-        int depthLimit = 0)
+        int depthLimit = 0, bool writeInfo = false)
     {
         NodesVisited = 0;
         BestSoFar = 0;
@@ -110,6 +113,7 @@ public unsafe partial class Searcher
 
         NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
 
+        var startTime = DateTime.Now;
         for (var j = 1; j <= maxDepth; j++)
         {
             var alphaWindowIndex = 0;
@@ -158,6 +162,25 @@ public unsafe partial class Searcher
             depthSearched = j;
             bestEval = lastIterationEval;
 
+            if (writeInfo)
+            {
+                var dt = (DateTime.Now - startTime);
+                var nps = (int)(NodesVisited / dt.TotalSeconds);
+                var sb = new StringBuilder();
+                for (var i = 0; i < Constants.MaxSearchDepth; i++)
+                {
+                    if (pvMoves[i] == 0)
+                    {
+                        break;
+                    }
+
+                    sb.Append(" ");
+                    sb.Append(pvMoves[i].ToUciMoveName());
+                }
+
+                Console.WriteLine($"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {NodesVisited} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
+            }
+
             if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
             {
                 break;
@@ -166,22 +189,30 @@ public unsafe partial class Searcher
         return (GetPvMoveList(pvMoves), depthSearched, bestEval, NodesVisited);
     }
 
+    private static string ScoreToString(int score)
+    {
+        if (MoveScoring.IsMateScore(score))
+        {
+            var sign = Math.Sign(score);
+            var moves = MoveScoring.GetMateDistance(score);
+            return $"mate {sign * moves}";
+        }
+
+        return $"cp {score}";
+    }
+
     public (List<uint> pv, int depthSearched, int score, int nodes) DepthBoundSearch(int depth)
     {
         NodesVisited = 0;
-
         var depthSearched = 0;
         _searchCancelled = false;
-
         var alpha = Constants.MinScore;
         var beta = Constants.MaxScore;
         var lastIterationEval = 0;
         BestSoFar = 0;
-
         Span<uint> killers = stackalloc uint[Constants.MaxSearchDepth * 2];
         Span<int> history = stackalloc int[13 * 64];
         Span<uint> counters = stackalloc uint[13 * 64];
-
         NativeMemory.Clear(_pVTable, _pvTableBytes);
         var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
 
