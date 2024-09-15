@@ -121,18 +121,16 @@ public partial class Searcher
                 // Razoring
                 if (depth is > 0 and <= 3)
                 {
-                    var score = staticEval + 100;
+                    var score = staticEval + 125;
                     if (depth == 1 && score < beta)
                     {
                         NodesVisited--;
                         var qScore = QuiescenceSearch(depthFromRoot, alpha, beta);
 
-                        return qScore > score
-                            ? qScore
-                            : score;
+                        return int.Max(qScore, score);
                     }
 
-                    score = staticEval + 250;
+                    score += 175;
                     if (score < beta)
                     {
                         NodesVisited--;
@@ -255,7 +253,7 @@ public partial class Searcher
             var isPromotionThreat = m.IsPromotionThreat();
             var isInteresting = inCheck || Board.InCheck || isPromotionThreat ||
                                 scores[moveIndex] > Constants.LosingCaptureBias;
-            if (canPrune &&
+            if (!pvNode && depth <= 4 &&
                 !isInteresting &&
                 searchedMoves > depth * depth + 8)
             {
@@ -274,7 +272,7 @@ public partial class Searcher
 
                 if (searchedMoves > 0)
                 {
-                    if (depth > 3 && searchedMoves >= 3)
+                    if (depth >= 3 && searchedMoves >= 2)
                     {
                         // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
                         var reduction = (int)(isInteresting
