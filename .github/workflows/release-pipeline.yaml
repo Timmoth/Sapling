@@ -63,12 +63,12 @@ jobs:
       # Rename the output files for consistency
       - name: Rename output files
         run: |
-          mv ../output/win-x64-avx512/Sapling.exe ../output/win-x64-avx512/Sapling_win_x64_avx512.exe
-          mv ../output/win-x64/Sapling.exe ../output/win-x64/Sapling_win_x64.exe
-          mv ../output/linux-x64-avx512/Sapling ../output/linux-x64-avx512/Sapling_linux_x64_avx512
-          mv ../output/linux-x64/Sapling ../output/linux-x64/Sapling_linux_x64
-          mv ../output/osx-x64-avx512/Sapling ../output/osx-x64-avx512/Sapling_osx_x64_avx512
-          mv ../output/osx-x64/Sapling ../output/osx-x64/Sapling_osx_x64
+          mv ../output/win-x64-avx512/Sapling.exe ../output/Sapling_win_x64_avx512.exe
+          mv ../output/win-x64/Sapling.exe ../output/Sapling_win_x64.exe
+          mv ../output/linux-x64-avx512/Sapling ../output/Sapling_linux_x64_avx512
+          mv ../output/linux-x64/Sapling ../output/Sapling_linux_x64
+          mv ../output/osx-x64-avx512/Sapling ../output/Sapling_osx_x64_avx512
+          mv ../output/osx-x64/Sapling ../output/Sapling_osx_x64
 
       # List files in output directory to verify they exist
       - name: Verify output files
@@ -89,9 +89,9 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
-            ../output/win-x64-avx512/Sapling_win_x64_avx512.exe
-            ../output/win-x64/Sapling_win_x64.exe
-            ../output/linux-x64-avx512/Sapling_linux_x64_avx512
-            ../output/linux-x64/Sapling_linux_x64
-            ../output/osx-x64-avx512/Sapling_osx_x64_avx512
-            ../output/osx-x64/Sapling_osx_x64
+            ../output/Sapling_win_x64_avx512.exe
+            ../output/Sapling_win_x64.exe
+            ../output/Sapling_linux_x64_avx512
+            ../output/Sapling_linux_x64
+            ../output/Sapling_osx_x64_avx512
+            ../output/Sapling_osx_x64
