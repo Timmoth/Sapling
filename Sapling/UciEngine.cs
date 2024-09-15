@@ -21,8 +21,6 @@ public class UciEngine
     private Searcher _simpleSearcher;
     private DateTime _dt = DateTime.Now;
     private GameState _gameState = GameState.InitialState();
-    private bool _isPonderHit;
-    private bool _isPondering;
     private bool _isReady = true;
     private (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) _result;
     private bool _ponderEnabled = false;
@@ -137,30 +135,12 @@ public class UciEngine
                     });
                     break;
                 case "stop":
-                    if (_isPondering)
-                    {
-                        OnMoveChosen(_result);
-                    }
-                    else
-                    {
-                        _parallelSearcher.Stop();
-                        _isPonderHit = true;
-                    }
-
+                    _parallelSearcher.Stop();
                     break;
                 case "setoption":
                     SetOption(tokens);
                     break;
                 case "ponderhit":
-                    if (_isPondering)
-                    {
-                        OnMoveChosen(_result);
-                    }
-                    else
-                    {
-                        _isPonderHit = true;
-                    }
-
                     break;
                 case "d":
                     Console.WriteLine(_gameState.CreateDiagram());
@@ -291,9 +271,6 @@ public class UciEngine
         }
 
         var thinkTime = 0;
-        _isPondering = message.Contains("ponder");
-        _isPonderHit = false;
-        IsSearching = true;
 
         if (message.Contains("movetime"))
         {
@@ -328,12 +305,6 @@ public class UciEngine
             LogToFile("----------");
         }
 
-        if (_isPondering && !_isPonderHit)
-        {
-            return;
-        }
-
-        _isPondering = false;
         OnMoveChosen(_result);
     }
 
