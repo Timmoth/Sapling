@@ -139,6 +139,8 @@ public static class BoardStateExtensions
         boardState.Evaluator.ShouldWhiteMirrored = boardState.WhiteKingSquare.IsMirroredSide();
         boardState.Evaluator.ShouldBlackMirrored = boardState.BlackKingSquare.IsMirroredSide();
         boardState.Evaluator.FillAccumulators(boardState);
+
+        boardState.UpdateCheckStatus();
         return boardState;
     }
 
@@ -218,6 +220,7 @@ public static class BoardStateExtensions
         boardState.Evaluator.WhiteMirrored = boardState.WhiteKingSquare.IsMirroredSide();
         boardState.Evaluator.BlackMirrored = boardState.BlackKingSquare.IsMirroredSide();
         boardState.Evaluator.FillAccumulators(boardState);
+        boardState.UpdateCheckStatus();
 
         return boardState;
     }
@@ -588,8 +591,14 @@ public static class BoardStateExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UpdateCheckStatus(this BoardState board)
     {
-        board.InCheck = (board.WhiteToMove && board.IsAttackedByBlack(board.WhiteKingSquare)) ||
-                        (!board.WhiteToMove && board.IsAttackedByWhite(board.BlackKingSquare));
+        if (board.WhiteToMove)
+        {
+            board.InCheck = board.IsAttackedByBlack(board.WhiteKingSquare);
+        }
+        else
+        {
+            board.InCheck = board.IsAttackedByWhite(board.BlackKingSquare);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -774,11 +783,11 @@ public static class BoardStateExtensions
     public static void PartialUnApply(this BoardState board, uint m,
         ulong oldHash,
         byte oldEnpassant,
-        bool prevWhiteCheck,
+        bool prevInCheck,
         CastleRights prevCastleRights,
         int prevFiftyMoveCounter)
     {
-        board.InCheck = prevWhiteCheck;
+        board.InCheck = prevInCheck;
         board.EnPassantFile = oldEnpassant;
         board.TurnCount--;
         board.WhiteToMove = !board.WhiteToMove;
@@ -982,15 +991,17 @@ public static class BoardStateExtensions
 
         board.TurnCount++;
         board.WhiteToMove = !board.WhiteToMove;
+        board.InCheck = false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UnApplyNullMove(this BoardState board, ulong oldHash, byte oldEnpassant)
+    public static void UnApplyNullMove(this BoardState board, ulong oldHash, byte oldEnpassant, bool oldCheck)
     {
         board.Hash = oldHash;
         board.EnPassantFile = oldEnpassant;
         board.TurnCount--;
         board.WhiteToMove = !board.WhiteToMove;
+        board.InCheck = oldCheck;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -104,7 +104,7 @@ public partial class Searcher
                     var nullMoveScore = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1,
                         Math.Max(depth - reduction - 1, 0), -beta,
                         -beta + 1, true, prevMove);
-                    Board.UnApplyNullMove(originalHash, oldEnpassant);
+                    Board.UnApplyNullMove(originalHash, oldEnpassant, inCheck);
 
                     if (nullMoveScore >= beta)
                     {

@@ -135,6 +135,8 @@ public partial class Searcher
                         continue;
                     }
 
+                    Board.UpdateCheckStatus();
+
                     if (!prevInCheck && !Board.InCheck && scores[moveIndex] < Constants.LosingCaptureBias)
                     {
                         //skip playing bad captures when not in check
@@ -145,7 +147,6 @@ public partial class Searcher
 
                     hasValidMove = true;
 
-                    Board.UpdateCheckStatus();
                     Board.FinishApply(m, oldEnpassant, prevCastleRights);
 
                     Sse.Prefetch0(_transpositionTable + (Board.Hash & TtMask));
