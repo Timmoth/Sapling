@@ -312,12 +312,12 @@ public unsafe class NnueEvaluator
         var themWeightsPtr = featureWeightsPtr + AccumulatorSize;
         for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
-            sum += AvxIntrinsics.MultiplyAddAdjacent(
-                       AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[i], Ceil), Floor),
-                       featureWeightsPtr[i]) +
-                   AvxIntrinsics.MultiplyAddAdjacent(
-                       AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[i], Ceil), Floor),
-                       themWeightsPtr[i]);
+            sum += AvxIntrinsics.Add(AvxIntrinsics.MultiplyAddAdjacent(
+                    AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[i], Ceil), Floor),
+                    featureWeightsPtr[i]),
+                AvxIntrinsics.MultiplyAddAdjacent(
+                    AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[i], Ceil), Floor),
+                    themWeightsPtr[i]));
         }
 
         return VectorType.Sum(sum);

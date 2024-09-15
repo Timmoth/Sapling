@@ -11,7 +11,6 @@ public class ParallelSearcher
 
     // Used to prevent a previous searches timeout cancelling a new search
     private Guid _prevSearchId = Guid.NewGuid();
-
     public ParallelSearcher(Transposition[] transpositions)
     {
         Transpositions = transpositions;

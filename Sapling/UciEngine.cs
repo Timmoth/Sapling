@@ -180,6 +180,11 @@ public class UciEngine
     private void OnMoveChosen(
         (uint move, int depthSearched, int score, uint ponder, int nodes, TimeSpan duration) result)
     {
+        if (result == default)
+        {
+            return;
+        }
+
         Info(result);
 
         var bestMove = result.move.ToUciMoveName();
@@ -276,13 +281,13 @@ public class UciEngine
                 LogToFile(ex.ToString());
                 LogToFile("----------");
             }
-
             return;
         }
 
         var thinkTime = 0;
         _isPondering = message.Contains("ponder");
         _isPonderHit = false;
+        IsSearching = true;
 
         if (message.Contains("movetime"))
         {
