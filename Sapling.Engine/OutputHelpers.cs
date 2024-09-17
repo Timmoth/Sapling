@@ -39,13 +39,8 @@ public static class OutputHelpers
         return stringBuilder.ToString();
     }
 
-    public static string ToFen(this BoardState board)
+    public static unsafe string ToFen(this BoardState board)
     {
-        if (board.Pieces.Length != 64)
-        {
-            throw new ArgumentException("Board must have exactly 64 elements.");
-        }
-
         var fen = new StringBuilder();
 
         for (var row = 7; row >= 0; row--)
@@ -113,7 +108,22 @@ public static class OutputHelpers
             }
         }
 
-        fen.Append(" -");
+        if (board.EnPassantFile >= 8)
+        {
+            fen.Append(" -");
+        }
+        else
+        {
+            fen.Append(" ");
+            var enpassantTargetSquare = board.WhiteToMove ? 5 * 8 + board.EnPassantFile : 2 * 8 + board.EnPassantFile;
+            fen.Append(((byte)enpassantTargetSquare).ConvertPosition());
+        }
+
+        fen.Append(" ");
+        fen.Append(board.HalfMoveClock);
+
+        fen.Append(" ");
+        fen.Append(board.TurnCount);
 
         return fen.ToString();
     }
@@ -198,7 +208,7 @@ public static class OutputHelpers
         };
     }
 
-    public static string CreateDiagram(this GameState gameState, bool blackAtTop = true, bool includeFen = true,
+    public static unsafe string CreateDiagram(this GameState gameState, bool blackAtTop = true, bool includeFen = true,
         bool includeZobristKey = true)
     {
         StringBuilder output = new();
@@ -263,7 +273,7 @@ public static class OutputHelpers
         return output.ToString();
     }
 
-    public static string CreateDiagram(this BoardState board, bool blackAtTop = true, bool includeFen = true,
+    public static unsafe string CreateDiagram(this BoardState board, bool blackAtTop = true, bool includeFen = true,
         bool includeZobristKey = true)
     {
         StringBuilder output = new();

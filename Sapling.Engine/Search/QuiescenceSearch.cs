@@ -47,6 +47,13 @@ public partial class Searcher
             return 0;
         }
 
+        if (alpha < 0 && RepetitionDetector.HasRepetition(Board, depthFromRoot))
+        {
+            alpha = 0;
+            if (alpha >= beta)
+                return alpha;
+        }
+
         var ttProbeResult =
             TranspositionTableExtensions.Get(_transpositionTable, TtMask, Board.Hash, 0, depthFromRoot, alpha, beta);
         if (ttProbeResult.Evaluation != TranspositionTableExtensions.NoHashEntry)
@@ -72,6 +79,25 @@ public partial class Searcher
         // Get all capturing moves
         Span<uint> moves = stackalloc uint[218];
         var psuedoMoveCount = Board.GeneratePseudoLegalMoves(moves, !inCheck);
+
+        if (psuedoMoveCount == 0)
+        {
+            if (inCheck)
+            {
+                // No move could be played, either stalemate or checkmate
+                var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
+
+                // Cache in transposition table
+                TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, 0, depthFromRoot, finalEval,
+                    TranspositionTableFlag.Exact);
+                return finalEval;
+            }
+
+            TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, 0, depthFromRoot, alpha,
+                TranspositionTableFlag.Alpha,
+                default);
+            return alpha;
+        }
 
         Span<int> scores = stackalloc int[psuedoMoveCount];
 
@@ -99,7 +125,7 @@ public partial class Searcher
         var prevInCheck = Board.InCheck;
 
         var prevCastleRights = Board.CastleRights;
-        var prevFiftyMoveCounter = Board.HalfMoveClock;
+        var prevHalfMoveClock = Board.HalfMoveClock;
         var evaluationBound = TranspositionTableFlag.Alpha;
 
         uint bestMove = default;
@@ -131,7 +157,7 @@ public partial class Searcher
             {
                 // illegal move
                 Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
-                    prevFiftyMoveCounter);
+                    prevHalfMoveClock);
                 continue;
             }
 
@@ -143,7 +169,7 @@ public partial class Searcher
             {
                 //skip playing bad captures when not in check
                 Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
-                    prevFiftyMoveCounter);
+                    prevHalfMoveClock);
                 continue;
             }
 
@@ -155,7 +181,7 @@ public partial class Searcher
             var val = -QuiescenceSearch(depthFromRoot + 1, -beta, -alpha);
 
             Board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights,
-                prevFiftyMoveCounter);
+                prevHalfMoveClock);
 
             Board.Evaluator.WhiteMirrored = whiteMirrored;
             Board.Evaluator.BlackMirrored = blackMirrored;

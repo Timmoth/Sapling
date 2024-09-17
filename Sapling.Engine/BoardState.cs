@@ -1,10 +1,11 @@
 ﻿using Sapling.Engine.Evaluation;
+using System.Runtime.InteropServices;
 
 namespace Sapling.Engine;
 
-public sealed class BoardState
+public sealed unsafe class BoardState
 {
-    public readonly byte[] Pieces = new byte[64];
+    public readonly byte* Pieces;
     public ulong BlackBishops;
     public ulong BlackKings;
     public byte BlackKingSquare = 0;
@@ -23,7 +24,7 @@ public sealed class BoardState
     public bool InCheck = false;
     public ulong Occupancy;
     public byte PieceCount;
-    public Stack<ulong> RepetitionPositionHistory = new(64);
+    public readonly ulong* Moves;
     public ushort TurnCount;
     public ulong WhiteBishops;
     public ulong WhiteKings;
@@ -34,4 +35,35 @@ public sealed class BoardState
     public ulong WhiteQueens;
     public ulong WhiteRooks;
     public bool WhiteToMove;
+
+    public BoardState()
+    {
+        Pieces = AllocatePieces();
+        Moves = AllocateMoves();
+    }
+    public static byte* AllocatePieces()
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc((nuint)64, alignment);
+        NativeMemory.Clear(block, (nuint)64);
+
+        return (byte*)block;
+    }
+    public static ulong* AllocateMoves()
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc((nuint)sizeof(ulong) * 800, alignment);
+        NativeMemory.Clear(block, (nuint)sizeof(ulong) * 800);
+
+        return (ulong*)block;
+    }
+
+
+    ~BoardState()
+    {
+        NativeMemory.AlignedFree(Pieces);
+        NativeMemory.AlignedFree(Moves);
+    }
 }

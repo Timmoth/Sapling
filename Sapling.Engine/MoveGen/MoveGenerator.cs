@@ -25,7 +25,7 @@ public static class MoveGenerator
         var oldEnpassant = board.EnPassantFile;
         var prevInCheck = board.InCheck;
         var prevCastleRights = board.CastleRights;
-        var prevFiftyMoveCounter = board.HalfMoveClock;
+        var prevHalfMoveClock = board.HalfMoveClock;
 
         // Evaluate each position
         for (var moveIndex = 0; moveIndex < moveCount; ++moveIndex)
@@ -37,7 +37,7 @@ public static class MoveGenerator
                 legalMoves.Add(m);
             }
 
-            board.PartialUnApply(m, oldHash, oldEnpassant, prevInCheck, prevCastleRights, prevFiftyMoveCounter);
+            board.PartialUnApply(m, oldHash, oldEnpassant, prevInCheck, prevCastleRights, prevHalfMoveClock);
         }
     }
 
@@ -135,7 +135,7 @@ public static class MoveGenerator
     #region Pawn
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetBlackPawnPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetBlackPawnPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -264,7 +264,7 @@ public static class MoveGenerator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetWhitePawnPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetWhitePawnPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -392,7 +392,7 @@ public static class MoveGenerator
     #region Knight
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetWhiteKnightPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetWhiteKnightPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -419,7 +419,7 @@ public static class MoveGenerator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetBlackKnightPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetBlackKnightPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -450,7 +450,7 @@ public static class MoveGenerator
     #region Rook
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetWhiteRookPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetWhiteRookPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -476,7 +476,7 @@ public static class MoveGenerator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetBlackRookPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetBlackRookPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -506,7 +506,7 @@ public static class MoveGenerator
     #region Bishop
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetWhiteBishopPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetWhiteBishopPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -532,7 +532,7 @@ public static class MoveGenerator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetBlackBishopPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetBlackBishopPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -562,7 +562,7 @@ public static class MoveGenerator
     #region Queen
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetWhiteQueenPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetWhiteQueenPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -589,7 +589,7 @@ public static class MoveGenerator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetBlackQueenPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetBlackQueenPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -620,7 +620,7 @@ public static class MoveGenerator
     #region King
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GenerateWhiteKingPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GenerateWhiteKingPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -676,7 +676,7 @@ public static class MoveGenerator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GetBlackKingPseudoLegalMoves(this BoardState board, Span<uint> moves,
+    public static unsafe void GetBlackKingPseudoLegalMoves(this BoardState board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {

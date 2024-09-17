@@ -5,9 +5,11 @@ namespace Sapling.Engine.MoveGen;
 
 public static class AttackTables
 {
-    private static readonly ulong[] RookAttackMasks = new ulong[64];
+    public static readonly ulong[] RookAttackMasks = new ulong[64];
+    public static readonly ulong[] RookAttackMasksAll = new ulong[64];
     public static readonly MagicBitBoard[] RookMagics = new MagicBitBoard[64];
-    private static readonly ulong[] BishopAttackMasks = new ulong[64];
+    public static readonly ulong[] BishopAttackMasks = new ulong[64];
+    public static readonly ulong[] BishopAttackMasksAll = new ulong[64];
     public static readonly MagicBitBoard[] BishopMagics = new MagicBitBoard[64];
 
     private static readonly int[] WhitePawnOffsets = { 7, 9 };
@@ -23,14 +25,19 @@ public static class AttackTables
     private static readonly ulong[] BishopPextOffset = new ulong[64];
     private static readonly ulong[] RookPextOffset = new ulong[64];
 
+    public static readonly ulong[][] LineBitBoards = new ulong[64][];
+
     static AttackTables()
     {
         var rand = Random.Shared;
         for (var i = 0; i < 64; i++)
         {
             RookAttackMasks[i] = RookAttackMask(i);
+            RookAttackMasksAll[i] = RookAttackMaskAll(i);
             BishopAttackMasks[i] = BishopAttackMask(i);
+            BishopAttackMasksAll[i] = BishopAttackMaskAll(i);
         }
+
 
         for (var i = 0; i < 64; i++)
         {
@@ -130,7 +137,79 @@ public static class AttackTables
                 PextAttacks[pextAttackIndex++] = RookMagics[square].GetMoves(blockers);
             }
         }
+
+        for (var i = 0; i < 64; i++)
+        {
+            var line = LineBitBoards[i] = new ulong[64];
+            for (var j = 0; j < 64; j++)
+            {
+                line[j] = CalculateLineBitBoard(i, j);
+            }
+        }
     }
+
+    private static ulong CalculateLineBitBoard(int i, int j)
+    {
+        // Convert squares i and j to (rank, file) coordinates
+        int rank1 = i / 8, file1 = i % 8;
+        int rank2 = j / 8, file2 = j % 8;
+
+        // If i and j are the same, return a bitboard with just that square
+        if (i == j)
+        {
+            return 1UL << i;
+        }
+
+        ulong bitboard = 0UL;
+
+        // Same rank (horizontal line)
+        if (rank1 == rank2)
+        {
+            int minFile = Math.Min(file1, file2);
+            int maxFile = Math.Max(file1, file2);
+            for (int file = minFile; file <= maxFile; file++)
+            {
+                bitboard |= 1UL << (rank1 * 8 + file);
+            }
+        }
+        // Same file (vertical line)
+        else if (file1 == file2)
+        {
+            int minRank = Math.Min(rank1, rank2);
+            int maxRank = Math.Max(rank1, rank2);
+            for (int rank = minRank; rank <= maxRank; rank++)
+            {
+                bitboard |= 1UL << (rank * 8 + file1);
+            }
+        }
+        // Same diagonal (positive slope)
+        else if (rank1 - file1 == rank2 - file2)
+        {
+            int minRank = Math.Min(rank1, rank2);
+            int maxRank = Math.Max(rank1, rank2);
+            for (int rank = minRank; rank <= maxRank; rank++)
+            {
+                int file = rank - (rank1 - file1); // file along the same diagonal
+                bitboard |= 1UL << (rank * 8 + file);
+            }
+        }
+        // Same anti-diagonal (negative slope)
+        else if (rank1 + file1 == rank2 + file2)
+        {
+            int minRank = Math.Min(rank1, rank2);
+            int maxRank = Math.Max(rank1, rank2);
+            for (int rank = minRank; rank <= maxRank; rank++)
+            {
+                int file = (rank1 + file1) - rank; // file along the same anti-diagonal
+                bitboard |= 1UL << (rank * 8 + file);
+            }
+        }
+
+        bitboard &= ~(1UL << i);
+        bitboard &= ~(1UL << j);
+        return bitboard; // If no alignment, bitboard will be 0 (empty)
+    }
+
 
     public static ulong RookAttackMask(int square)
     {
@@ -162,6 +241,7 @@ public static class AttackTables
 
         return attackMask;
     }
+
 
     public static ulong BishopAttackMask(int square)
     {
@@ -195,7 +275,61 @@ public static class AttackTables
 
         return attackMask;
     }
+    public static ulong RookAttackMaskAll(int square)
+    {
+        int rank = square / 8;
+        int file = square % 8;
+        ulong mask = 0UL;
 
+        // Horizontal (rank) attack mask
+        for (int f = 0; f < 8; f++)
+        {
+            if (f != file) // Skip the square itself
+            {
+                mask |= 1UL << (rank * 8 + f);
+            }
+        }
+
+        // Vertical (file) attack mask
+        for (int r = 0; r < 8; r++)
+        {
+            if (r != rank) // Skip the square itself
+            {
+                mask |= 1UL << (r * 8 + file);
+            }
+        }
+
+        return mask;
+    }
+
+    public static ulong BishopAttackMaskAll(int square)
+    {
+        int rank = square / 8;
+        int file = square % 8;
+        ulong mask = 0UL;
+
+        // Diagonal (positive slope, rank - file = constant)
+        for (int r = 0; r < 8; r++)
+        {
+            int f = file + (r - rank);
+            if (f >= 0 && f < 8 && r != rank) // Valid file and skip the square itself
+            {
+                mask |= 1UL << (r * 8 + f);
+            }
+        }
+
+        // Anti-diagonal (negative slope, rank + file = constant)
+        for (int r = 0; r < 8; r++)
+        {
+            int f = file - (r - rank);
+            if (f >= 0 && f < 8 && r != rank) // Valid file and skip the square itself
+            {
+                mask |= 1UL << (r * 8 + f);
+            }
+        }
+
+        return mask;
+    }
 
     private static ulong[] CreateAllBlockerBitBoards(ulong movementMask)
     {

@@ -45,6 +45,7 @@ public partial class Searcher
         var inCheck = Board.InCheck;
         var originalHash = Board.Hash;
         var oldEnpassant = Board.EnPassantFile;
+        var prevHalfMoveClock = Board.HalfMoveClock;
 
         var canPrune = false;
         uint transpositionBestMove = default;
@@ -61,11 +62,17 @@ public partial class Searcher
                 return alpha;
             }
 
-            if (Board.HalfMoveClock >= 100 || Board.InsufficientMatingMaterial() ||
-                RepetitionTable.DetectThreeFoldRepetition(Board.Hash))
+            if (Board.HalfMoveClock >= 100 || Board.InsufficientMatingMaterial())
             {
                 // Detect draw by Fifty move counter or repetition
                 return 0;
+            }
+
+            if (alpha < 0 && RepetitionDetector.HasRepetition(Board, depthFromRoot))
+            {
+                alpha = 0;
+                if (alpha >= beta)
+                    return alpha;
             }
 
             (var transpositionEvaluation, transpositionBestMove, transpositionType) =
@@ -106,7 +113,7 @@ public partial class Searcher
                     var nullMoveScore = -NegaMaxSearch(killers, counters, history, depthFromRoot + 1,
                         Math.Max(depth - reduction - 1, 0), -beta,
                         -beta + 1, true, prevMove);
-                    Board.UnApplyNullMove(originalHash, oldEnpassant, inCheck);
+                    Board.UnApplyNullMove(originalHash, oldEnpassant, inCheck, prevHalfMoveClock);
 
                     if (nullMoveScore >= beta)
                     {
@@ -161,14 +168,7 @@ public partial class Searcher
             depth--;
         }
 
-        if (depthFromRoot > 0)
-        {
-            // Push board state onto repetition table
-            RepetitionTable.Push(Board.Hash, prevMove.IsReset());
-        }
-
         var prevCastleRights = Board.CastleRights;
-        var prevFiftyMoveCounter = Board.HalfMoveClock;
         // Best move seen so far used in move ordering.
         var moveOrderingBestMove = depthFromRoot == 0
             ? BestSoFar
@@ -176,6 +176,17 @@ public partial class Searcher
         // Generate pseudo legal moves from this position
         Span<uint> moves = stackalloc uint[218];
         var psuedoMoveCount = Board.GeneratePseudoLegalMoves(moves, false);
+
+        if (psuedoMoveCount == 0)
+        {
+            // No available moves, either stalemate or checkmate
+            var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
+
+            TranspositionTableExtensions.Set(_transpositionTable, TtMask, Board.Hash, (byte)depth, depthFromRoot, eval,
+                TranspositionTableFlag.Exact);
+
+            return eval;
+        }
 
         // Get counter move
         var counterMove = prevMove == default
@@ -244,7 +255,7 @@ public partial class Searcher
             if (!Board.PartialApply(m))
             {
                 // Illegal move, undo
-                Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevFiftyMoveCounter);
+                Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevHalfMoveClock);
                 continue;
             }
 
@@ -259,7 +270,7 @@ public partial class Searcher
                 searchedMoves > depth * depth + 8)
             {
                 // Late move pruning
-                Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevFiftyMoveCounter);
+                Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevHalfMoveClock);
                 continue;
             }
 
@@ -306,7 +317,7 @@ public partial class Searcher
             }
 
             // Revert the move
-            Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevFiftyMoveCounter);
+            Board.PartialUnApply(m, originalHash, oldEnpassant, inCheck, prevCastleRights, prevHalfMoveClock);
 
             Board.Evaluator.WhiteMirrored = whiteMirrored;
             Board.Evaluator.BlackMirrored = blackMirrored;
@@ -363,12 +374,6 @@ public partial class Searcher
                     }
                 }
 
-                if (depthFromRoot > 0)
-                {
-                    // Ensure position is popped from repetition table before returning
-                    RepetitionTable.TryPop();
-                }
-
                 return score;
             }
 
@@ -384,12 +389,6 @@ public partial class Searcher
         {
             // Search was cancelled
             return 0;
-        }
-
-        if (depthFromRoot > 0)
-        {
-            // Ensure position is popped from repetition table before returning
-            RepetitionTable.TryPop();
         }
 
         if (searchedMoves == 0)

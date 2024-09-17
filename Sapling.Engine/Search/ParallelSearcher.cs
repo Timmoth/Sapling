@@ -168,7 +168,8 @@ public class ParallelSearcher
         var start = DateTime.Now;
 
         // Parallel search, with thread-local best move
-        Parallel.For(0, Searchers.Count, i => { results.Value = Searchers[i].DepthBoundSearch(depth); });
+        Parallel.For(0, Searchers.Count,
+            i => { results.Value = Searchers[i].Search(depthLimit: depth, writeInfo: i == 0); });
         var dt = DateTime.Now - start;
 
         Span<int> voteMap = stackalloc int[64 * 64];

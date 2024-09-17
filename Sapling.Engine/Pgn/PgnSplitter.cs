@@ -23,7 +23,7 @@ public static class PgnSplitter
         }
     }
 
-    public static string ConvertPosition(byte position)
+    public static string ConvertPosition(this byte position)
     {
         var rank = position.GetRankIndex();
         var file = position.GetFileIndex();

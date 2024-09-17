@@ -15,7 +15,7 @@ public static class Perft
         var oldEnpassant = board.EnPassantFile;
         var prevInCheck = board.InCheck;
         var prevCastleRights = board.CastleRights;
-        var prevFiftyMoveCounter = board.HalfMoveClock;
+        var prevHalfMoveClock = board.HalfMoveClock;
 
         ulong nodeCount = 0;
         for (var index = 0; index < moveCount; index++)
@@ -36,7 +36,7 @@ public static class Perft
                 }
             }
 
-            board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights, prevFiftyMoveCounter);
+            board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights, prevHalfMoveClock);
         }
 
         return nodeCount;

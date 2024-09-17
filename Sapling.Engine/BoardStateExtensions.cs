@@ -1,4 +1,6 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Drawing;
+using System;
+using System.Runtime.CompilerServices;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Pgn;
@@ -13,7 +15,7 @@ public static class BoardStateExtensions
         return board.EnPassantFile < 8;
     }
 
-    public static BoardState Clone(this BoardState other)
+    public static unsafe BoardState Clone(this BoardState other)
     {
         var board = new BoardState
         {
@@ -23,7 +25,6 @@ public static class BoardStateExtensions
             InCheck = other.InCheck,
             HalfMoveClock = other.HalfMoveClock,
             TurnCount = other.TurnCount,
-            RepetitionPositionHistory = new Stack<ulong>(other.RepetitionPositionHistory),
             WhiteToMove = other.WhiteToMove,
             WhitePawns = other.WhitePawns,
             WhiteKnights = other.WhiteKnights,
@@ -46,12 +47,13 @@ public static class BoardStateExtensions
             EnPassantFile = other.EnPassantFile
         };
 
-        Array.Copy(other.Pieces, board.Pieces, 64);
+        Unsafe.CopyBlock(board.Pieces, other.Pieces, 64);
+        Unsafe.CopyBlock(board.Moves, other.Moves, sizeof(ulong) * 800);
 
         return board;
     }
 
-    public static BoardState ResetTo(this BoardState board, BoardState other)
+    public static unsafe BoardState ResetTo(this BoardState board, BoardState other)
     {
         board.Occupancy = other.Occupancy;
         board.PieceCount = other.PieceCount;
@@ -59,7 +61,6 @@ public static class BoardStateExtensions
         board.InCheck = other.InCheck;
         board.HalfMoveClock = other.HalfMoveClock;
         board.TurnCount = other.TurnCount;
-        board.RepetitionPositionHistory = new Stack<ulong>(other.RepetitionPositionHistory);
         board.WhiteToMove = other.WhiteToMove;
         board.WhitePawns = other.WhitePawns;
         board.WhiteKnights = other.WhiteKnights;
@@ -81,7 +82,8 @@ public static class BoardStateExtensions
         board.EnPassantFile = other.EnPassantFile;
 
         board.Evaluator.ResetTo(other.Evaluator);
-        Array.Copy(other.Pieces, board.Pieces, 64);
+        Unsafe.CopyBlock(board.Pieces, other.Pieces, 64);
+        Unsafe.CopyBlock(board.Moves, other.Moves, sizeof(ulong) * 800);
 
         return board;
     }
@@ -112,7 +114,7 @@ public static class BoardStateExtensions
                (white == 0 || (whitePopCount == 1 && (board.WhiteKnights | board.WhiteBishops) == white));
     }
 
-    public static BoardState CreateBoardFromArray(Piece[] pieces)
+    public static unsafe BoardState CreateBoardFromArray(Piece[] pieces)
     {
         var boardState = new BoardState();
 
@@ -131,19 +133,19 @@ public static class BoardStateExtensions
         boardState.WhiteToMove = true;
         boardState.EnPassantFile = 8;
         boardState.Occupancy = boardState.WhitePieces | boardState.BlackPieces;
+        boardState.TurnCount = 1;
+        boardState.HalfMoveClock = 0;
 
         boardState.Hash = Zobrist.CalculateZobristKey(boardState);
-
+        boardState.Moves[boardState.TurnCount] = boardState.Hash;
         boardState.Evaluator = new NnueEvaluator();
-        boardState.Evaluator.ShouldWhiteMirrored = boardState.WhiteKingSquare.IsMirroredSide();
-        boardState.Evaluator.ShouldBlackMirrored = boardState.BlackKingSquare.IsMirroredSide();
         boardState.Evaluator.FillAccumulators(boardState);
 
         boardState.UpdateCheckStatus();
         return boardState;
     }
 
-    public static BoardState CreateBoardFromFen(string fen)
+    public static unsafe BoardState CreateBoardFromFen(string fen)
     {
         var boardState = new BoardState();
 
@@ -152,7 +154,10 @@ public static class BoardStateExtensions
         var rows = parts[0].Split('/');
         var turn = parts[1];
         var castleRights = parts[2];
-        var enPassantRights = parts[3];
+        var enPassantTarget = parts[3];
+
+        ushort halfMoveClock = parts.Length > 4 ? ushort.Parse(parts[4]) : (ushort)0;
+        ushort fullMoveNumber = parts.Length > 5 ? ushort.Parse(parts[5]) : (ushort)1;
 
         var index = 0;
         for (var i = rows.Length - 1; i >= 0; i--)
@@ -200,24 +205,25 @@ public static class BoardStateExtensions
             boardState.CastleRights |= CastleRights.BlackQueenSide;
         }
 
-        if (enPassantRights == "-")
+        if (enPassantTarget == "-")
         {
             boardState.EnPassantFile = 8;
         }
         else
         {
-            var (file, _) = enPassantRights.GetPosition();
+            var (file, _) = enPassantTarget.GetPosition();
             boardState.EnPassantFile = (byte)file;
         }
 
-        boardState.TurnCount = turn == "w" ? (ushort)0 : (ushort)1;
+        boardState.TurnCount = fullMoveNumber;
+        boardState.HalfMoveClock = halfMoveClock;
         boardState.WhiteToMove = turn == "w";
 
         boardState.Occupancy = boardState.WhitePieces | boardState.BlackPieces;
         boardState.Hash = Zobrist.CalculateZobristKey(boardState);
+        boardState.Moves[boardState.TurnCount] = boardState.Hash;
+
         boardState.Evaluator = new NnueEvaluator();
-        boardState.Evaluator.WhiteMirrored = boardState.WhiteKingSquare.IsMirroredSide();
-        boardState.Evaluator.BlackMirrored = boardState.BlackKingSquare.IsMirroredSide();
         boardState.Evaluator.FillAccumulators(boardState);
         boardState.UpdateCheckStatus();
 
@@ -466,7 +472,7 @@ public static class BoardStateExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool PartialApply(this BoardState board, uint m)
+    public static unsafe bool PartialApply(this BoardState board, uint m)
     {
         var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
 
@@ -579,6 +585,15 @@ public static class BoardStateExtensions
             }
         }
 
+        if (m.IsReset())
+        {
+            board.HalfMoveClock = 0;
+        }
+        else
+        {
+            board.HalfMoveClock++;
+        }
+
         board.TurnCount++;
         board.WhiteToMove = !board.WhiteToMove;
         board.Occupancy = board.WhitePieces | board.BlackPieces;
@@ -601,7 +616,7 @@ public static class BoardStateExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void FinishApply(this BoardState board, uint m,
+    public static unsafe void FinishApply(this BoardState board, uint m,
         int oldEnpassant,
         CastleRights prevCastle)
     {
@@ -743,15 +758,6 @@ public static class BoardStateExtensions
             board.Hash ^= Zobrist.BlackQueenSideCastlingRights;
         }
 
-        if (m.IsReset())
-        {
-            board.HalfMoveClock = 0;
-        }
-        else
-        {
-            board.HalfMoveClock++;
-        }
-
         if (movedPiece == Constants.WhiteKing && fromSquare.IsMirroredSide() != toSquare.IsMirroredSide())
         {
             board.Evaluator.ShouldWhiteMirrored = toSquare.IsMirroredSide();
@@ -760,37 +766,25 @@ public static class BoardStateExtensions
         {
             board.Evaluator.ShouldBlackMirrored = toSquare.IsMirroredSide();
         }
+
+        board.Moves[board.TurnCount - 1] = board.Hash;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void UpdateRepetitions(this BoardState board, uint move)
-    {
-        if (move.IsReset())
-        {
-            board.HalfMoveClock = 0;
-            board.RepetitionPositionHistory.Clear();
-        }
-        else
-        {
-            board.HalfMoveClock++;
-        }
-
-        board.RepetitionPositionHistory.Push(board.Hash);
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void PartialUnApply(this BoardState board, uint m,
+    public static unsafe void PartialUnApply(this BoardState board, uint m,
         ulong oldHash,
         byte oldEnpassant,
         bool prevInCheck,
         CastleRights prevCastleRights,
-        int prevFiftyMoveCounter)
+        int prevHalfMoveClock)
     {
         board.InCheck = prevInCheck;
         board.EnPassantFile = oldEnpassant;
         board.TurnCount--;
+        //board.Moves.RemoveAt(board.Moves.Count - 1);
         board.WhiteToMove = !board.WhiteToMove;
-        board.HalfMoveClock = prevFiftyMoveCounter;
+        board.HalfMoveClock = prevHalfMoveClock;
         board.Hash = oldHash;
 
         var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
@@ -894,89 +888,6 @@ public static class BoardStateExtensions
         board.Occupancy = board.WhitePieces | board.BlackPieces;
     }
 
-    //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    //public static void FinishUnApplyMove(this BoardState board, uint m, int oldEnpassantFile)
-    //{
-    //    var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
-
-    //    if (movedPiece == Constants.WhiteKing && fromSquare.IsMirroredSide() != toSquare.IsMirroredSide())
-    //    {
-    //        board.Evaluator.MirrorWhite(board);
-    //    }
-    //    else if (movedPiece == Constants.BlackKing && fromSquare.IsMirroredSide() != toSquare.IsMirroredSide())
-    //    {
-    //        board.Evaluator.MirrorBlack(board);
-    //    }
-
-    //    switch (moveType)
-    //    {
-    //        case Constants.EnPassant:
-    //            board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
-    //            board.Evaluator.Apply(capturedPiece, fromSquare.GetRankIndex() * 8 + oldEnpassantFile);
-    //            break;
-    //        case >= 4:
-    //        {
-    //            // Pawn Promotion
-    //            // [pawn, moveType] => piece
-    //            // [1, 4] => 3
-    //            // [2, 4] => 4
-    //            // [1, 5] => 5
-    //            // [2, 5] => 6
-    //            // [1, 6] => 7
-    //            // [2, 6] => 8
-    //            // [1, 7] => 9
-    //            // [2, 7] => 10
-    //            // a + 2b - 6
-
-    //            board.Evaluator.Deactivate(movedPiece + moveType + moveType - 6, toSquare);
-    //            board.Evaluator.Apply(movedPiece, fromSquare);
-
-    //            if (capturedPiece != Constants.None)
-    //            {
-    //                board.Evaluator.Apply(capturedPiece, toSquare);
-    //            }
-
-    //            break;
-    //        }
-    //        case Constants.Castle when toSquare == 62:
-    //            board.Evaluator.Replace(Constants.BlackRook, 61, 63);
-    //            board.Evaluator.Replace(Constants.BlackKing, toSquare, fromSquare);
-    //            break;
-    //        case Constants.Castle when toSquare == 58:
-    //            board.Evaluator.Replace(Constants.BlackRook, 59, 56);
-    //            board.Evaluator.Replace(Constants.BlackKing, toSquare, fromSquare);
-    //            break;
-    //        case Constants.Castle when toSquare == 6:
-    //            board.Evaluator.Replace(Constants.WhiteRook, 5, 7);
-    //            board.Evaluator.Replace(Constants.WhiteKing, toSquare, fromSquare);
-    //            break;
-    //        case Constants.Castle:
-    //        {
-    //            if (toSquare == 2)
-    //            {
-    //                board.Evaluator.Replace(Constants.WhiteRook, 3, 0);
-    //                board.Evaluator.Replace(Constants.WhiteKing, toSquare, fromSquare);
-    //            }
-
-    //            break;
-    //        }
-    //        case Constants.DoublePush:
-    //            board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
-    //            break;
-    //        default:
-    //        {
-    //            board.Evaluator.Replace(movedPiece, toSquare, fromSquare);
-
-    //            if (capturedPiece != Constants.None)
-    //            {
-    //                board.Evaluator.Apply(capturedPiece, toSquare);
-    //            }
-
-    //            break;
-    //        }
-    //    }
-    //}
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ApplyNullMove(this BoardState board)
     {
@@ -991,20 +902,22 @@ public static class BoardStateExtensions
         board.TurnCount++;
         board.WhiteToMove = !board.WhiteToMove;
         board.InCheck = false;
+        board.HalfMoveClock = 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UnApplyNullMove(this BoardState board, ulong oldHash, byte oldEnpassant, bool oldCheck)
+    public static void UnApplyNullMove(this BoardState board, ulong oldHash, byte oldEnpassant, bool oldCheck, int oldHalfMoveClock)
     {
         board.Hash = oldHash;
         board.EnPassantFile = oldEnpassant;
         board.TurnCount--;
         board.WhiteToMove = !board.WhiteToMove;
         board.InCheck = oldCheck;
+        board.HalfMoveClock = oldHalfMoveClock;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Set(this BoardState board, byte piece, int index)
+    private static unsafe void Set(this BoardState board, byte piece, int index)
     {
         board.Pieces[index] = piece;
         board.PieceCount++;
@@ -1042,7 +955,6 @@ public static class BoardStateExtensions
         board.PartialApply(move);
         board.UpdateCheckStatus();
         board.FinishApply(move, prevEnpassant, prevCastleRights);
-        board.UpdateRepetitions(move);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

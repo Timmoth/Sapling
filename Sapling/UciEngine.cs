@@ -139,6 +139,9 @@ public class UciEngine
                 case "datagen":
                     var dataGen = new DataGenerator();
                     dataGen.Start();
+                    break;              
+                case "bench":
+                    Bench.Run();
                     break;
                 case "version":
                     Console.WriteLine(_version);

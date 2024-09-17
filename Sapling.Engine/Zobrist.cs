@@ -32,7 +32,7 @@ public static class Zobrist
         }
     }
 
-    public static ulong CalculateZobristKey(BoardState board)
+    public static unsafe ulong CalculateZobristKey(BoardState board)
     {
         ulong zobristKey = 0;
 

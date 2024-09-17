@@ -25,7 +25,6 @@ public unsafe partial class Searcher
     private static readonly int[] AsperationWindows = { 40, 100, 300, 900, 2700, Constants.MaxScore };
     private readonly uint* _pVTable;
     private readonly Transposition* _transpositionTable;
-    public readonly RepetitionTable RepetitionTable = new();
     public readonly Transposition[] Transpositions;
     public readonly uint TtMask;
     private long _lockedUntil;
@@ -104,8 +103,6 @@ public unsafe partial class Searcher
 
         var maxDepth = depthLimit > 0 ? depthLimit : Constants.MaxSearchDepth;
 
-        RepetitionTable.Init(Board.RepetitionPositionHistory);
-        killers.Clear();
         var bestEval = lastIterationEval = NegaMaxSearch(killers, counters, history, 0, 0, alpha, beta, false);
 
         BestSoFar = _pVTable[0];
@@ -127,7 +124,6 @@ public unsafe partial class Searcher
                     ? Constants.MaxScore
                     : lastIterationEval + AsperationWindows[betaWindowIndex];
 
-                RepetitionTable.Init(Board.RepetitionPositionHistory);
                 killers.Clear();
 
                 var eval = NegaMaxSearch(killers, counters, history, 0, j, alpha, beta, false);
@@ -203,86 +199,84 @@ public unsafe partial class Searcher
         return $"cp {score}";
     }
 
-    public (List<uint> pv, int depthSearched, int score, int nodes) DepthBoundSearch(int depth)
-    {
-        NodesVisited = 0;
-        var depthSearched = 0;
-        _searchCancelled = false;
-        var alpha = Constants.MinScore;
-        var beta = Constants.MaxScore;
-        var lastIterationEval = 0;
-        BestSoFar = 0;
-        Span<uint> killers = stackalloc uint[Constants.MaxSearchDepth * 2];
-        Span<int> history = stackalloc int[13 * 64];
-        Span<uint> counters = stackalloc uint[13 * 64];
-        NativeMemory.Clear(_pVTable, _pvTableBytes);
-        var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
+    //public (List<uint> pv, int depthSearched, int score, int nodes) DepthBoundSearch(int depth)
+    //{
+    //    NodesVisited = 0;
+    //    var depthSearched = 0;
+    //    _searchCancelled = false;
+    //    var alpha = Constants.MinScore;
+    //    var beta = Constants.MaxScore;
+    //    var lastIterationEval = 0;
+    //    BestSoFar = 0;
+    //    Span<uint> killers = stackalloc uint[Constants.MaxSearchDepth * 2];
+    //    Span<int> history = stackalloc int[13 * 64];
+    //    Span<uint> counters = stackalloc uint[13 * 64];
+    //    NativeMemory.Clear(_pVTable, _pvTableBytes);
+    //    var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
 
-        RepetitionTable.Init(Board.RepetitionPositionHistory);
-        var bestEval = lastIterationEval = NegaMaxSearch(killers, counters, history, 0, 0, alpha, beta, false);
-        NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
-        BestSoFar = _pVTable[0];
+    //    var bestEval = lastIterationEval = NegaMaxSearch(killers, counters, history, 0, 0, alpha, beta, false);
+    //    NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
+    //    BestSoFar = _pVTable[0];
 
-        for (var j = 1; j <= depth; j++)
-        {
-            var alphaWindowIndex = 0;
-            var betaWindowIndex = 0;
-            do
-            {
-                if (alphaWindowIndex >= 5)
-                {
-                    alpha = Constants.MinScore;
-                }
-                else
-                {
-                    alpha = lastIterationEval - AsperationWindows[alphaWindowIndex];
-                }
+    //    for (var j = 1; j <= depth; j++)
+    //    {
+    //        var alphaWindowIndex = 0;
+    //        var betaWindowIndex = 0;
+    //        do
+    //        {
+    //            if (alphaWindowIndex >= 5)
+    //            {
+    //                alpha = Constants.MinScore;
+    //            }
+    //            else
+    //            {
+    //                alpha = lastIterationEval - AsperationWindows[alphaWindowIndex];
+    //            }
 
-                if (betaWindowIndex >= 5)
-                {
-                    beta = Constants.MaxScore;
-                }
-                else
-                {
-                    beta = lastIterationEval + AsperationWindows[betaWindowIndex];
-                }
+    //            if (betaWindowIndex >= 5)
+    //            {
+    //                beta = Constants.MaxScore;
+    //            }
+    //            else
+    //            {
+    //                beta = lastIterationEval + AsperationWindows[betaWindowIndex];
+    //            }
 
-                RepetitionTable.Init(Board.RepetitionPositionHistory);
-                var eval = NegaMaxSearch(killers, counters, history, 0, j, alpha, beta, false);
+    //            var eval = NegaMaxSearch(killers, counters, history, 0, j, alpha, beta, false);
 
-                if (eval <= alpha)
-                {
-                    ++alphaWindowIndex;
-                }
-                else if (eval >= beta)
-                {
-                    ++betaWindowIndex;
-                }
-                else
-                {
-                    lastIterationEval = eval;
-                    break;
-                }
-            } while (true);
+    //            if (eval <= alpha)
+    //            {
+    //                ++alphaWindowIndex;
+    //            }
+    //            else if (eval >= beta)
+    //            {
+    //                ++betaWindowIndex;
+    //            }
+    //            else
+    //            {
+    //                lastIterationEval = eval;
+    //                break;
+    //            }
+    //        } while (true);
 
-            if (_pVTable[0] == 0)
-            {
-                break;
-            }
+    //        if (_pVTable[0] == 0)
+    //        {
+    //            break;
+    //        }
 
-            BestSoFar = _pVTable[0];
-            NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
-            depthSearched = j;
-            bestEval = lastIterationEval;
+    //        BestSoFar = _pVTable[0];
+    //        NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
+    //        depthSearched = j;
+    //        bestEval = lastIterationEval;
 
-            if (_searchCancelled)
-            {
-                break;
-            }
-        }
+    //        if (_searchCancelled)
+    //        {
+    //            break;
+    //        }
+    //    }
 
-        return (GetPvMoveList(_pVTable), depthSearched, bestEval, NodesVisited);
-    }
+    //    return (GetPvMoveList(_pVTable), depthSearched, bestEval, NodesVisited);
+    //}
 
 
     public void Init(long currentUnixSeconds, BoardState board)

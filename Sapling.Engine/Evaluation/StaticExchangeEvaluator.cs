@@ -40,8 +40,7 @@ public static class StaticExchangeEvaluator
                          (AttackTables.KingAttackTable[targetSquare] & kings)) & occupancy;
 
         // Starts off as the opponents turn
-        var turn = (board.TurnCount % 2) ^ 1;
-
+        var turn = board.WhiteToMove ? 1 : 0;
         var cIndex = 1;
         do
         {

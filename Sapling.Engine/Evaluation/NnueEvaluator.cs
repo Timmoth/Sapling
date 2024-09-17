@@ -70,15 +70,6 @@ public unsafe class NnueEvaluator
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ClearAccumulators()
-    {
-        for (var i = AccumulatorSize - 1; i >= 0; i--)
-        {
-            WhiteAccumulator[i] = BlackAccumulator[i] = NnueWeights.FeatureBiases[i];
-        }
-    }
-
     ~NnueEvaluator()
     {
         NativeMemory.AlignedFree(WhiteAccumulator);
@@ -87,6 +78,10 @@ public unsafe class NnueEvaluator
 
     public void ResetTo(NnueEvaluator other)
     {
+        WhiteMirrored = other.WhiteMirrored;
+        BlackMirrored = other.BlackMirrored;
+        ShouldWhiteMirrored = other.ShouldWhiteMirrored;
+        ShouldBlackMirrored = other.ShouldBlackMirrored;
         SimdCopy(WhiteAccumulator, other.WhiteAccumulator);
         SimdCopy(BlackAccumulator, other.BlackAccumulator);
     }
@@ -160,15 +155,12 @@ public unsafe class NnueEvaluator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int BlackFeatureIndices(int piece, byte square)
     {
-        if (BlackMirrored)
-        {
-            square ^= 7;
-        }
+        var blackPieceSquare = BlackMirrored ? square ^ 0x38 ^ 7 : square ^ 0x38;
 
         var white = (piece + 1) % 2;
         var type = (piece >> 1) - white;
 
-        return (white * ColorStride + type * PieceStride + square) ^ 0x38;
+        return white * ColorStride + type * PieceStride + blackPieceSquare;
     }
 
     public void Deactivate(int piece, int square)
@@ -227,7 +219,12 @@ public unsafe class NnueEvaluator
 
     public void FillAccumulators(BoardState board)
     {
-        ClearAccumulators();
+        board.Evaluator.WhiteMirrored = board.Evaluator.ShouldWhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
+        board.Evaluator.BlackMirrored = board.Evaluator.ShouldBlackMirrored = board.BlackKingSquare.IsMirroredSide();
+        for (var i = AccumulatorSize - 1; i >= 0; i--)
+        {
+            WhiteAccumulator[i] = BlackAccumulator[i] = NnueWeights.FeatureBiases[i];
+        }
 
         // Accumulate layer weights
         Apply(Constants.WhiteKing, board.WhiteKingSquare);
@@ -317,7 +314,7 @@ public unsafe class NnueEvaluator
 
     public void MirrorWhite(BoardState board)
     {
-        WhiteMirrored = !WhiteMirrored;
+        WhiteMirrored = ShouldWhiteMirrored;
         for (var i = 0; i < AccumulatorSize; i++)
         {
             WhiteAccumulator[i] = NnueWeights.FeatureBiases[i];
@@ -412,7 +409,7 @@ public unsafe class NnueEvaluator
 
     public void MirrorBlack(BoardState board)
     {
-        BlackMirrored = !BlackMirrored;
+        BlackMirrored = ShouldBlackMirrored;
         for (var i = 0; i < AccumulatorSize; i++)
         {
             BlackAccumulator[i] = NnueWeights.FeatureBiases[i];
