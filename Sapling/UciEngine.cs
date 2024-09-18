@@ -78,14 +78,6 @@ public class UciEngine
                 }
                 break;
             }
-            case "uci_opponent":
-            {
-                if (tokens[3] == "value")
-                {
-                    LogToFile($"Opponent: '{tokens[4]}'");
-                }
-                break;
-            }
         }
     }
 
