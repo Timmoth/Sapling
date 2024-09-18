@@ -112,7 +112,7 @@ public class DataGenerator
                 var positions = 0;
                 var adjudicationCounter = 0;
                 var score = 0;
-                while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount)
+                while (!gameState.GameOver() && gameState.Board.Data.TurnCount < MaxTurnCount)
                 {
                     uint move = default;
                     if (randomMoveCount <= 9)
@@ -125,10 +125,10 @@ public class DataGenerator
                         var (pv, _, s, _, _) = searcher.NodeBoundSearch(gameState.Board, 5000, 15);
                         move = pv[0];
                         score = s;
-                        if (move.IsQuiet() && !gameState.Board.InCheck)
+                        if (move.IsQuiet() && !gameState.Board.Data.InCheck)
                         {
-                            turns[positions] = gameState.Board.WhiteToMove;
-                            dataGenPositions[positions] = BulletFormat.Pack(gameState.Board, (short)score, 0);
+                            turns[positions] = gameState.Board.Data.WhiteToMove;
+                            dataGenPositions[positions] = BulletFormat.Pack(ref gameState.Board.Data, (short)score, 0);
                             positions++;
                         }
                     }
@@ -154,7 +154,7 @@ public class DataGenerator
                 byte result;
                 if (adjudicationCounter > 4)
                 {
-                    result = boardState.WhiteToMove ? (byte)1 : (byte)2;
+                    result = boardState.Data.WhiteToMove ? (byte)1 : (byte)2;
                 }
                 else
                 {

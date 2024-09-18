@@ -39,7 +39,7 @@ public static class OutputHelpers
         return stringBuilder.ToString();
     }
 
-    public static unsafe string ToFen(this BoardState board)
+    public static unsafe string ToFen(this ref BoardStateData board)
     {
         var fen = new StringBuilder();
 
@@ -49,7 +49,7 @@ public static class OutputHelpers
 
             for (var col = 0; col < 8; col++)
             {
-                var piece = board.Pieces[row * 8 + col];
+                var piece = board.GetPiece(row * 8 + col);
                 if (piece == Constants.None)
                 {
                     emptyCount++;
@@ -224,7 +224,7 @@ public static class OutputHelpers
                 var fileIndex = blackAtTop ? x : 7 - x;
                 var squareIndex = rankIndex * 8 + fileIndex;
                 var highlight = squareIndex == lastMoveSquare;
-                var piece = gameState.Board.Pieces[squareIndex];
+                var piece = gameState.Board.Data.GetPiece(squareIndex);
                 if (piece != 0)
                 {
                     if (highlight)
@@ -261,19 +261,19 @@ public static class OutputHelpers
 
             if (includeFen)
             {
-                output.AppendLine($"Fen         : {gameState.Board.ToFen()}");
+                output.AppendLine($"Fen         : {gameState.Board.Data.ToFen()}");
             }
 
             if (includeZobristKey)
             {
-                output.AppendLine($"Zobrist Key : {gameState.Board.Hash}");
+                output.AppendLine($"Zobrist Key : {gameState.Board.Data.Hash}");
             }
         }
 
         return output.ToString();
     }
 
-    public static unsafe string CreateDiagram(this BoardState board, bool blackAtTop = true, bool includeFen = true,
+    public static unsafe string CreateDiagram(this BoardStateData board, bool blackAtTop = true, bool includeFen = true,
         bool includeZobristKey = true)
     {
         StringBuilder output = new();
@@ -287,7 +287,7 @@ public static class OutputHelpers
             {
                 var fileIndex = blackAtTop ? x : 7 - x;
                 var squareIndex = rankIndex * 8 + fileIndex;
-                var piece = board.Pieces[squareIndex];
+                var piece = board.GetPiece(squareIndex);
                 if (piece == 0)
                 {
                     output.Append("|   ");

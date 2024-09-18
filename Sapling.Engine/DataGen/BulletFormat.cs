@@ -82,7 +82,7 @@ public unsafe struct BulletFormat
         writer.Write(buffer);
     }
 
-    public static BulletFormat Pack(BoardState board, short score, byte wdl)
+    public static BulletFormat Pack(ref BoardStateData board, short score, byte wdl)
     {
         var data = new BulletFormat();
         Span<byte> pieces = stackalloc byte[16];
@@ -101,7 +101,7 @@ public unsafe struct BulletFormat
             while (bits != 0)
             {
                 var index = bits.PopLSB();
-                var piece = board.Pieces[index];
+                var piece = board.GetPiece(index);
                 var pieceBits = (piece % 2) << 3;
                 pieceBits |= (piece - 1) / 2;
                 var offset = 4 * (nextPiece & 1);
@@ -123,7 +123,7 @@ public unsafe struct BulletFormat
             while (bits != 0)
             {
                 var index = bits.PopLSB();
-                var piece = board.Pieces[index ^ 0x38];
+                var piece = board.GetPiece(index ^ 0x38);
                 var pieceBits = ((piece % 2) ^ 1) << 3;
                 pieceBits |= (piece - 1) / 2;
                 var offset = 4 * (nextPiece & 1);

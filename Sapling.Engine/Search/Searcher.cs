@@ -31,7 +31,6 @@ public unsafe partial class Searcher
 
     private bool _searchCancelled;
     public uint BestSoFar;
-    public BoardState Board = default!;
     public int NodesVisited;
 
     public Searcher(Transposition[] transpositions)
@@ -82,7 +81,7 @@ public unsafe partial class Searcher
     }
 
 
-    public (List<uint> pv, int depthSearched, int score, int nodes) Search(int nodeLimit = 0,
+    public (List<uint> pv, int depthSearched, int score, int nodes) Search(BoardState board, int nodeLimit = 0,
         int depthLimit = 0, bool writeInfo = false)
     {
         NodesVisited = 0;
@@ -103,7 +102,7 @@ public unsafe partial class Searcher
 
         var maxDepth = depthLimit > 0 ? depthLimit : Constants.MaxSearchDepth;
 
-        var bestEval = lastIterationEval = NegaMaxSearch(killers, counters, history, 0, 0, alpha, beta, false);
+        var bestEval = lastIterationEval = NegaMaxSearch(ref board.Data, board.WhiteAccumulator, board.BlackAccumulator, board.Moves, killers, counters, history, 0, 0, alpha, beta, false);
 
         BestSoFar = _pVTable[0];
         var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
@@ -126,7 +125,7 @@ public unsafe partial class Searcher
 
                 killers.Clear();
 
-                var eval = NegaMaxSearch(killers, counters, history, 0, j, alpha, beta, false);
+                var eval = NegaMaxSearch(ref board.Data, board.WhiteAccumulator, board.BlackAccumulator, board.Moves, killers, counters, history, 0, j, alpha, beta, false);
 
                 if (eval <= alpha)
                 {
@@ -279,11 +278,10 @@ public unsafe partial class Searcher
     //}
 
 
-    public void Init(long currentUnixSeconds, BoardState board)
+    public void Init(long currentUnixSeconds)
     {
         // Cancels active search
         _searchCancelled = true;
-        Board = board;
         _lockedUntil = currentUnixSeconds + 60;
     }
 

@@ -1,4 +1,5 @@
-﻿using Sapling.Engine.MoveGen;
+﻿using Sapling.Engine.Evaluation;
+using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine;
 
@@ -15,7 +16,7 @@ public sealed class GameState
         History = new List<uint>();
         TakenPieces = new List<Piece>();
         Moves = new List<uint>();
-        board.GenerateLegalMoves(Moves, false);
+        board.Data.GenerateLegalMoves(Moves, false);
     }
 
     public static GameState InitialState()
@@ -29,7 +30,7 @@ public sealed class GameState
         TakenPieces.Clear();
 
         Board.ResetTo(board);
-        Board.GenerateLegalMoves(Moves, false);
+        Board.Data.GenerateLegalMoves(Moves, false);
     }
 
     public void ResetTo(BoardState board, uint[] legalMoves)
@@ -42,16 +43,16 @@ public sealed class GameState
         Moves.AddRange(legalMoves);
     }
 
-    public bool Apply(uint move)
+    public unsafe bool Apply(uint move)
     {
         if (!Moves.Contains(move))
         {
             return false;
         }
 
-        Board.Apply(move);
+        Board.Data.Apply( Board.WhiteAccumulator, Board.BlackAccumulator, Board.Moves, move);
 
-        Board.GenerateLegalMoves(Moves, false);
+        Board.Data.GenerateLegalMoves(Moves, false);
         History.Add(move);
 
         if (move.IsCapture())
@@ -64,7 +65,7 @@ public sealed class GameState
 
     public bool GameOver()
     {
-        return Moves.Count == 0 || Board.HalfMoveClock >= 100 || Board.InsufficientMatingMaterial();
+        return Moves.Count == 0 || Board.Data.HalfMoveClock >= 100 || Board.Data.InsufficientMatingMaterial();
     }
 
     public byte WinDrawLoose()
@@ -75,7 +76,7 @@ public sealed class GameState
             return 0;
         }
 
-        if (Board.WhiteToMove)
+        if (Board.Data.WhiteToMove)
         {
             // Black wins
             return 1;

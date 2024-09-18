@@ -6,23 +6,18 @@ namespace Sapling.Engine.Search;
 
 public static class Perft
 {
-    private static ulong PerftInternal(this BoardState board, int depth)
+    private static ulong PerftInternal(this ref BoardStateData board, int depth)
     {
         Span<uint> moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, false);
-
-        var originalHash = board.Hash;
-        var oldEnpassant = board.EnPassantFile;
-        var prevInCheck = board.InCheck;
-        var prevCastleRights = board.CastleRights;
-        var prevHalfMoveClock = board.HalfMoveClock;
+        BoardStateData copy = default;
 
         ulong nodeCount = 0;
         for (var index = 0; index < moveCount; index++)
         {
             var m = moves[index];
-
-            if (board.PartialApply(m))
+            board.CloneTo(ref copy);
+            if (copy.PartialApply(m))
             {
                 if (depth <= 1)
                 {
@@ -31,47 +26,46 @@ public static class Perft
                 }
                 else
                 {
-                    board.UpdateCheckStatus();
-                    nodeCount += board.PerftInternal(depth - 1);
+                    copy.UpdateCheckStatus();
+                    nodeCount += copy.PerftInternal(depth - 1);
                 }
             }
-
-            board.PartialUnApply(m, originalHash, oldEnpassant, prevInCheck, prevCastleRights, prevHalfMoveClock);
         }
 
         return nodeCount;
     }
 
-    public static List<(ulong nodes, string move)> PerftRootSequential(this BoardState board, int depth)
+    public static List<(ulong nodes, string move)> PerftRootSequential(this ref BoardStateData board, int depth)
     {
         var moves = new uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves.AsSpan(), false);
+        BoardStateData copy = default;
 
         var rootMoves = new ConcurrentBag<(ulong nodes, string move)>();
         for (var i = 0; i < moveCount; i++)
         {
             var m = moves[i];
+            board.CloneTo(ref copy);
 
-            var tempBoard = board.Clone();
-            if (!tempBoard.PartialApply(m))
+            if (!copy.PartialApply(m))
             {
                 // Illegal move
                 continue;
             }
 
-            tempBoard.UpdateCheckStatus();
-            var nodeCount = tempBoard.PerftInternal(depth - 1);
+            copy.UpdateCheckStatus();
+            var nodeCount = copy.PerftInternal(depth - 1);
 
             Console.WriteLine(
-                $"{PgnSplitter.ConvertPosition(m.GetFromSquare())}{PgnSplitter.ConvertPosition(m.GetToSquare())} {nodeCount}");
+                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()} {nodeCount}");
             rootMoves.Add((nodeCount,
-                $"{PgnSplitter.ConvertPosition(m.GetFromSquare())}{PgnSplitter.ConvertPosition(m.GetToSquare())}"));
+                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()}"));
         }
 
         return rootMoves.ToList();
     }
 
-    public static List<(ulong nodes, string move)> PerftRootParallel(this BoardState board, int depth)
+    public static List<(ulong nodes, string move)> PerftRootParallel(this BoardStateData board, int depth)
     {
         var moves = new uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves.AsSpan(), false);
@@ -82,22 +76,24 @@ public static class Perft
             MaxDegreeOfParallelism = Environment.ProcessorCount
         }, i =>
         {
+            BoardStateData copy = default;
+            board.CloneTo(ref copy);
+
             var m = moves[i];
 
-            var tempBoard = board.Clone();
-            if (!tempBoard.PartialApply(m))
+            if (!copy.PartialApply(m))
             {
                 // Illegal move
                 return;
             }
 
-            tempBoard.UpdateCheckStatus();
-            var nodeCount = tempBoard.PerftInternal(depth - 1);
+            copy.UpdateCheckStatus();
+            var nodeCount = copy.PerftInternal(depth - 1);
 
             Console.WriteLine(
-                $"{PgnSplitter.ConvertPosition(m.GetFromSquare())}{PgnSplitter.ConvertPosition(m.GetToSquare())} {nodeCount}");
+                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()} {nodeCount}");
             rootMoves.Add((nodeCount,
-                $"{PgnSplitter.ConvertPosition(m.GetFromSquare())}{PgnSplitter.ConvertPosition(m.GetToSquare())}"));
+                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()}"));
         });
 
         return rootMoves.ToList();

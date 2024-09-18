@@ -1,12 +1,14 @@
-﻿namespace Sapling.Engine;
+﻿using System.Runtime.InteropServices;
 
-public static class PieceValues
+namespace Sapling.Engine;
+
+public static unsafe class PieceValues
 {
-    public static readonly short[] PieceValue;
+    public static readonly short* PieceValue;
 
     static PieceValues()
     {
-        PieceValue = new short[13];
+        PieceValue = Allocate(13);
 
         PieceValue[Constants.WhitePawn] = Constants.PawnValue;
         PieceValue[Constants.WhiteKnight] = Constants.KnightValue;
@@ -21,5 +23,15 @@ public static class PieceValues
         PieceValue[Constants.BlackRook] = Constants.RookValue;
         PieceValue[Constants.BlackQueen] = Constants.QueenValue;
         PieceValue[Constants.BlackKing] = Constants.KingValue;
+    }
+
+    public static short* Allocate(int count)
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc(sizeof(short) * (nuint)count, alignment);
+        NativeMemory.Clear(block, sizeof(short) * (nuint)count);
+
+        return (short*)block;
     }
 }

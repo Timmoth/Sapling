@@ -16,7 +16,6 @@ public static class ChessboardHelpers
     {
         var board = BoardStateExtensions.CreateBoardFromArray(pieces);
         var search = new Searcher(new Transposition[0xFF]);
-        search.Init(0, board);
         return (new GameState(board), search);
     }
 }

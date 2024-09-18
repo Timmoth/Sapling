@@ -52,10 +52,8 @@ public class ParallelSearcher
     public (List<uint> pv, int depthSearched, int score, int nodes, TimeSpan duration) NodeBoundSearch(
         BoardState state, int nodeLimit, int maxDepth)
     {
-        Searchers[0].Board = state;
-
         var start = DateTime.Now;
-        var searchResult = Searchers[0].Search(nodeLimit, maxDepth);
+        var searchResult = Searchers[0].Search(state, nodeLimit, maxDepth);
         return (searchResult.pv, searchResult.depthSearched, searchResult.score,
             searchResult.nodes, DateTime.Now - start);
     }
@@ -81,17 +79,11 @@ public class ParallelSearcher
             }
         });
 
-        // Initialize each searcher with its own copy of the board state
-        foreach (var searcher in Searchers)
-        {
-            searcher.Init(0, state.Clone());
-        }
-
         var start = DateTime.Now;
 
         if (Searchers.Count == 1)
         {
-            var searchResult = Searchers[0].Search(writeInfo: true);
+            var searchResult = Searchers[0].Search(state, writeInfo: true);
             return (searchResult.pv, searchResult.depthSearched, searchResult.score,
                 searchResult.nodes, DateTime.Now - start);
         }
@@ -104,7 +96,7 @@ public class ParallelSearcher
 
         // Parallel search, with thread-local best move
         Parallel.For(0, Searchers.Count,
-            i => { results.Value = Searchers[i].Search(writeInfo: i == 0); });
+            i => { results.Value = Searchers[i].Search(state, writeInfo: i == 0); });
 
         var dt = DateTime.Now - start;
 
@@ -154,11 +146,6 @@ public class ParallelSearcher
         var searchId = Guid.NewGuid();
         _prevSearchId = searchId;
 
-        // Initialize each searcher with its own copy of the board state
-        foreach (var searcher in Searchers)
-        {
-            searcher.Init(0, state.Clone());
-        }
 
         // Thread-local storage for best move in each thread
         var results =
@@ -169,7 +156,7 @@ public class ParallelSearcher
 
         // Parallel search, with thread-local best move
         Parallel.For(0, Searchers.Count,
-            i => { results.Value = Searchers[i].Search(depthLimit: depth, writeInfo: i == 0); });
+            i => { results.Value = Searchers[i].Search(state, depthLimit: depth, writeInfo: i == 0); });
         var dt = DateTime.Now - start;
 
         Span<int> voteMap = stackalloc int[64 * 64];

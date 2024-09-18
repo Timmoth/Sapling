@@ -7,7 +7,7 @@ namespace Sapling.Engine.Evaluation;
 public static class StaticExchangeEvaluator
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int StaticExchangeEvaluation(this BoardState board, Span<ulong> occupancyBitBoards,
+    public static unsafe int StaticExchangeEvaluation(this ref BoardStateData board, Span<ulong> occupancyBitBoards,
         Span<short> captures, uint move)
     {
         captures[0] = PieceValues.PieceValue[move.GetCapturedPiece()];

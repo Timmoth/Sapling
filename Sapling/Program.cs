@@ -69,12 +69,17 @@ internal class Program
         {
             UciEngine engine = new(logWriter);
 
-            string? command;
-            while ((command = Console.ReadLine()) != "quit")
+            while (true)
             {
+                var command = Console.ReadLine();
                 if (command == null)
                 {
                     continue;
+                }
+
+                if (command.Contains("quit"))
+                {
+                    break;
                 }
 
                 engine.ReceiveCommand(command);

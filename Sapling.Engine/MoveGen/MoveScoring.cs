@@ -36,7 +36,7 @@ public static class MoveScoring
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ScoreMove(this BoardState board, Span<int> history, Span<ulong> occupancyBitBoards,
+    public static int ScoreMove(this ref BoardStateData board, Span<int> history, Span<ulong> occupancyBitBoards,
         Span<short> captures,
         uint move,
         uint killerA,
@@ -98,7 +98,7 @@ public static class MoveScoring
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ScoreMoveQuiescence(this BoardState board, Span<ulong> occupancyBitBoards, Span<short> captures,
+    public static int ScoreMoveQuiescence(this ref BoardStateData board, Span<ulong> occupancyBitBoards, Span<short> captures,
         uint move,
         uint bestMove)
     {

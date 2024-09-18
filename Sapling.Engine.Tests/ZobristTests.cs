@@ -8,7 +8,7 @@ public class ZobristTests
     [Fact]
     public void InitialHash_Is_Correct()
     {
-        BoardStateExtensions.CreateBoardFromArray(Constants.InitialState).Hash.Should().Be(10825574554103633524UL);
+        BoardStateExtensions.CreateBoardFromArray(Constants.InitialState).Data.Hash.Should().Be(10825574554103633524UL);
     }
 
     [Theory]
@@ -42,7 +42,7 @@ public class ZobristTests
             gameState.Apply(mov);
         }
 
-        gameState.Board.Hash.Should().Be(hash);
+        gameState.Board.Data.Hash.Should().Be(hash);
     }
 
     [Theory]

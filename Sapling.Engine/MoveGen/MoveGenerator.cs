@@ -15,34 +15,28 @@ public static class MoveGenerator
     public const ulong WhiteQueenSideCastleEmptyPositions = (1UL << 1) | (1UL << 2) | (1UL << 3);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GenerateLegalMoves(this BoardState board, List<uint> legalMoves, bool captureOnly)
+    public static void GenerateLegalMoves(this ref BoardStateData board, List<uint> legalMoves, bool captureOnly)
     {
         legalMoves.Clear();
         Span<uint> moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, captureOnly);
 
-        var oldHash = board.Hash;
-        var oldEnpassant = board.EnPassantFile;
-        var prevInCheck = board.InCheck;
-        var prevCastleRights = board.CastleRights;
-        var prevHalfMoveClock = board.HalfMoveClock;
+        BoardStateData copy = default;
 
         // Evaluate each position
         for (var moveIndex = 0; moveIndex < moveCount; ++moveIndex)
         {
             var m = moves[moveIndex];
-
-            if (board.PartialApply(m))
+            board.CloneTo(ref copy);
+            if (copy.PartialApply(m))
             {
                 legalMoves.Add(m);
             }
-
-            board.PartialUnApply(m, oldHash, oldEnpassant, prevInCheck, prevCastleRights, prevHalfMoveClock);
         }
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GeneratePseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static int GeneratePseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         bool captureOnly)
     {
         byte moveIndex = 0;
@@ -133,9 +127,9 @@ public static class MoveGenerator
 
 
     #region Pawn
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetBlackPawnPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetBlackPawnPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -156,7 +150,7 @@ public static class MoveGenerator
         if ((board.WhitePieces & target) != 0)
         {
             toSquare = index.ShiftDownLeft();
-            var capturePiece = board.Pieces[toSquare];
+            var capturePiece = board.GetWhitePiece(toSquare);
 
             if (canPromote)
             {
@@ -190,7 +184,7 @@ public static class MoveGenerator
         if ((board.WhitePieces & target) != 0)
         {
             toSquare = index.ShiftDownRight();
-            var capturePiece = board.Pieces[toSquare];
+            var capturePiece = board.GetWhitePiece(toSquare);
 
             if (canPromote)
             {
@@ -262,9 +256,9 @@ public static class MoveGenerator
             moves[moveIndex++] = MoveExtensions.EncodeBlackDoublePushMove(index, toSquare.ShiftDown());
         }
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetWhitePawnPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetWhitePawnPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -285,7 +279,7 @@ public static class MoveGenerator
         if ((board.BlackPieces & target) != 0)
         {
             toSquare = index.ShiftUpLeft();
-            var capturePiece = board.Pieces[toSquare];
+            var capturePiece = board.GetBlackPiece(toSquare);
 
             if (canPromote)
             {
@@ -319,7 +313,7 @@ public static class MoveGenerator
         if ((board.BlackPieces & target) != 0)
         {
             toSquare = index.ShiftUpRight();
-            var capturePiece = board.Pieces[toSquare];
+            var capturePiece = board.GetBlackPiece(toSquare);
 
             if (canPromote)
             {
@@ -390,9 +384,9 @@ public static class MoveGenerator
     #endregion
 
     #region Knight
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetWhiteKnightPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetWhiteKnightPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -402,7 +396,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteKnight, index,
-                board.Pieces[i], i);
+                board.GetBlackPiece(i), i);
         }
 
         if (captureOnly)
@@ -417,9 +411,9 @@ public static class MoveGenerator
                 emptyMoves.PopLSB());
         }
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetBlackKnightPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetBlackKnightPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -429,7 +423,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackKnight, index,
-                board.Pieces[i], i);
+                board.GetWhitePiece(i), i);
         }
 
         if (captureOnly)
@@ -448,9 +442,9 @@ public static class MoveGenerator
     #endregion
 
     #region Rook
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetWhiteRookPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetWhiteRookPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -460,7 +454,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteRook, index,
-                board.Pieces[i], i);
+                board.GetBlackPiece(i), i);
         }
 
         if (captureOnly)
@@ -474,9 +468,9 @@ public static class MoveGenerator
             moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteRook, index, emptyMoves.PopLSB());
         }
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetBlackRookPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetBlackRookPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -486,7 +480,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackRook, index,
-                board.Pieces[i], i);
+                board.GetWhitePiece(i), i);
         }
 
         if (captureOnly)
@@ -504,9 +498,9 @@ public static class MoveGenerator
     #endregion
 
     #region Bishop
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetWhiteBishopPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetWhiteBishopPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -516,7 +510,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteBishop, index,
-                board.Pieces[i], i);
+                board.GetBlackPiece(i), i);
         }
 
         if (captureOnly)
@@ -530,9 +524,9 @@ public static class MoveGenerator
             moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteBishop, index, emptyMoves.PopLSB());
         }
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetBlackBishopPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetBlackBishopPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -542,7 +536,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackBishop, index,
-                board.Pieces[i], i);
+                board.GetWhitePiece(i), i);
         }
 
         if (captureOnly)
@@ -560,9 +554,9 @@ public static class MoveGenerator
     #endregion
 
     #region Queen
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetWhiteQueenPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetWhiteQueenPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -573,7 +567,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteQueen, index,
-                board.Pieces[i], i);
+                board.GetBlackPiece(i), i);
         }
 
         if (captureOnly)
@@ -587,9 +581,9 @@ public static class MoveGenerator
             moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteQueen, index, emptyMoves.PopLSB());
         }
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetBlackQueenPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetBlackQueenPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -600,7 +594,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackQueen, index,
-                board.Pieces[i], i);
+                board.GetWhitePiece(i), i);
         }
 
         if (captureOnly)
@@ -618,9 +612,9 @@ public static class MoveGenerator
     #endregion
 
     #region King
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GenerateWhiteKingPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GenerateWhiteKingPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -631,7 +625,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteKing, index,
-                board.Pieces[i], i);
+                board.GetBlackPiece(i), i);
         }
 
         if (captureOnly)
@@ -674,9 +668,9 @@ public static class MoveGenerator
                 2);
         }
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void GetBlackKingPseudoLegalMoves(this BoardState board, Span<uint> moves,
+
+    public static unsafe void GetBlackKingPseudoLegalMoves(this ref BoardStateData board, Span<uint> moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
@@ -686,7 +680,7 @@ public static class MoveGenerator
         {
             var i = captureMoves.PopLSB();
             moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackKing, index,
-                board.Pieces[i], i);
+                board.GetWhitePiece(i), i);
         }
 
         if (captureOnly)

@@ -1,9 +1,10 @@
 ﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 
 namespace Sapling.Engine.MoveGen;
 
-public static class AttackTables
+public static unsafe class AttackTables
 {
     public static readonly ulong[] RookAttackMasks = new ulong[64];
     public static readonly ulong[] RookAttackMasksAll = new ulong[64];
@@ -21,14 +22,28 @@ public static class AttackTables
     public static readonly ulong[] WhitePawnAttackTable = new ulong[64];
     public static readonly ulong[] BlackPawnAttackTable = new ulong[64];
 
-    private static readonly ulong[] PextAttacks = new ulong[5248 + 102400];
-    private static readonly ulong[] BishopPextOffset = new ulong[64];
-    private static readonly ulong[] RookPextOffset = new ulong[64];
+    private static readonly ulong* PextAttacks;
+    private static readonly ulong* BishopPextOffset;
+    private static readonly ulong* RookPextOffset;
 
     public static readonly ulong[][] LineBitBoards = new ulong[64][];
 
+    public static ulong* AllocateULong(int count)
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc(sizeof(ulong) * (nuint)count, alignment);
+        NativeMemory.Clear(block, sizeof(ulong) * (nuint)count);
+
+        return (ulong*)block;
+    }
+
     static AttackTables()
     {
+        PextAttacks = AllocateULong(5248 + 102400);
+        BishopPextOffset = AllocateULong(64);
+        RookPextOffset = AllocateULong(64);
+
         var rand = Random.Shared;
         for (var i = 0; i < 64; i++)
         {
@@ -650,7 +665,7 @@ public static class AttackTables
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsAttackedByWhite(this BoardState pieces, int index)
+    public static bool IsAttackedByWhite(this ref BoardStateData pieces, int index)
     {
         return (PextBishopAttacks(pieces.Occupancy, index) &
                 (pieces.WhiteBishops | pieces.WhiteQueens)) != 0 ||
@@ -662,7 +677,7 @@ public static class AttackTables
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsAttackedByBlack(this BoardState pieces, int index)
+    public static bool IsAttackedByBlack(this ref BoardStateData pieces, int index)
     {
         return (PextBishopAttacks(pieces.Occupancy, index) &
                 (pieces.BlackBishops | pieces.BlackQueens)) != 0 ||

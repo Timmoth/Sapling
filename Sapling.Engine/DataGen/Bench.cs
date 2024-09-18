@@ -86,10 +86,9 @@ namespace Sapling.Engine.DataGen
             {
                 Console.WriteLine(fen);
                 var state = BoardStateExtensions.CreateBoardFromFen(fen);
-                searcher.Init(0, state);
 
                 stopwatch.Restart();
-                var result = searcher.Search(depthLimit: depth, writeInfo: true);
+                var result = searcher.Search(state, depthLimit: depth, writeInfo: true);
 
                 totalTime += stopwatch.ElapsedMilliseconds;
                 totalNodes += result.nodes;

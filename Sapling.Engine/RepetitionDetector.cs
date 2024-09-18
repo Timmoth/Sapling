@@ -105,7 +105,8 @@ public static unsafe class RepetitionDetector
         }
     }
 
-    public static bool HasRepetition(BoardState pos, int depthFromRoot)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool HasRepetition(this ref BoardStateData pos, ulong* hashHistory, int depthFromRoot)
     {
         if (pos.HalfMoveClock < 3)
             return false;
@@ -115,7 +116,7 @@ public static unsafe class RepetitionDetector
         int slot;
         for (var i = 3; i <= pos.HalfMoveClock && i < lastMoveIndex; i += 2)
         {
-            var diff = pos.Hash ^ pos.Moves[lastMoveIndex - i];
+            var diff = pos.Hash ^ hashHistory[lastMoveIndex - i];
 
             if (diff != Keys[(slot = Hash1(diff))] &&
                 diff != Keys[(slot = Hash2(diff))])
@@ -133,9 +134,17 @@ public static unsafe class RepetitionDetector
             if (depthFromRoot > i)
                 return true;
 
-            var pc = (pos.Pieces[moveFrom] != Constants.None) ? pos.Pieces[moveFrom] % 2 : pos.Pieces[moveTo] % 2;
-            var stmColor = pos.WhiteToMove ? 0 : 1;
-            return pc == stmColor;
+            var isWhite = false;
+            if ((pos.Occupancy & (1ul << moveFrom)) != 0)
+            {
+                isWhite = (pos.WhitePieces & (1ul << moveFrom)) != 0;
+            }
+            else
+            {
+                isWhite = (pos.WhitePieces & (1ul << moveTo)) != 0;
+            }
+
+            return isWhite == pos.WhiteToMove;
         }
 
         return false;

@@ -187,7 +187,7 @@ public class UciEngine
             $"info depth {result.depthSearched} score {ScoreToString(result.score)} nodes {result.nodes} nps {nps} time {(int)result.duration.TotalMilliseconds} pv {(string.Join(" ", result.move.Select(m => m.ToUciMoveName())))}");
     }
 
-    private void ProcessGoCommand(string message)
+    private unsafe void ProcessGoCommand(string message)
     {
         var messageSegments = message.Split(' ');
         var loweredMessage = message.ToLower();
@@ -196,7 +196,7 @@ public class UciEngine
             var depth = int.Parse(messageSegments[2]);
             var stopWatch = Stopwatch.StartNew();
             ulong totalNodeCount = 0;
-            foreach (var (nodeCount, move) in _gameState.Board.PerftRootParallel(depth))
+            foreach (var (nodeCount, move) in _gameState.Board.Data.PerftRootParallel(depth))
             {
                 totalNodeCount += nodeCount;
             }
@@ -213,17 +213,17 @@ public class UciEngine
             var mov = _gameState.Moves.FirstOrDefault(m => m.ToUciMoveName() == seeMove);
             Span<ulong> occupancyBitBoards = stackalloc ulong[8]
             {
-                _gameState.Board.WhitePieces, _gameState.Board.BlackPieces,
-                _gameState.Board.BlackPawns | _gameState.Board.WhitePawns,
-                _gameState.Board.BlackKnights | _gameState.Board.WhiteKnights,
-                _gameState.Board.BlackBishops | _gameState.Board.WhiteBishops,
-                _gameState.Board.BlackRooks | _gameState.Board.WhiteRooks,
-                _gameState.Board.BlackQueens | _gameState.Board.WhiteQueens,
-                _gameState.Board.BlackKings | _gameState.Board.WhiteKings
+                _gameState.Board.Data.WhitePieces, _gameState.Board.Data.BlackPieces,
+                _gameState.Board.Data.BlackPawns | _gameState.Board.Data.WhitePawns,
+                _gameState.Board.Data.BlackKnights | _gameState.Board.Data.WhiteKnights,
+                _gameState.Board.Data.BlackBishops | _gameState.Board.Data.WhiteBishops,
+                _gameState.Board.Data.BlackRooks | _gameState.Board.Data.WhiteRooks,
+                _gameState.Board.Data.BlackQueens | _gameState.Board.Data.WhiteQueens,
+                _gameState.Board.Data.BlackKings | _gameState.Board.Data.WhiteKings
             };
 
             Span<short> captures = stackalloc short[32];
-            var seeScore = _gameState.Board.StaticExchangeEvaluation(occupancyBitBoards, captures, mov);
+            var seeScore = _gameState.Board.Data.StaticExchangeEvaluation(occupancyBitBoards, captures, mov);
             Console.WriteLine(seeScore);
             return;
         }
@@ -252,7 +252,7 @@ public class UciEngine
         {
             try
             {
-                Respond(_gameState.Board.Evaluate().ToString());
+                Respond(_gameState.Board.Data.Evaluate(_gameState.Board.WhiteAccumulator, _gameState.Board.BlackAccumulator).ToString());
             }
             catch (Exception ex)
             {
@@ -305,8 +305,8 @@ public class UciEngine
     public int ChooseThinkTime(int timeRemainingWhiteMs, int timeRemainingBlackMs, int incrementWhiteMs,
         int incrementBlackMs, int movesToGo)
     {
-        var myTimeRemainingMs = _gameState.Board.WhiteToMove ? timeRemainingWhiteMs : timeRemainingBlackMs;
-        var myIncrementMs = _gameState.Board.WhiteToMove ? incrementWhiteMs : incrementBlackMs;
+        var myTimeRemainingMs = _gameState.Board.Data.WhiteToMove ? timeRemainingWhiteMs : timeRemainingBlackMs;
+        var myIncrementMs = _gameState.Board.Data.WhiteToMove ? incrementWhiteMs : incrementBlackMs;
         // Get a fraction of remaining time to use for current move
         var thinkTimeMs = myTimeRemainingMs / (float)movesToGo;
 
@@ -356,14 +356,12 @@ public class UciEngine
         {
             //LogToFile($"startpos: {message}");
             _gameState.ResetTo(BoardStateExtensions.CreateBoardFromArray(Constants.InitialState));
-            _simpleSearcher.Init(0, _gameState.Board);
         }
         else if (message.ToLower().Contains("fen"))
         {
             var customFen = TryGetLabelledValue(message, "fen", PositionLabels);
             var state = BoardStateExtensions.CreateBoardFromFen(customFen.ToString());
             _gameState = new GameState(state);
-            _simpleSearcher.Init(0, _gameState.Board);
         }
         else
         {
@@ -381,7 +379,9 @@ public class UciEngine
         foreach (var move in moveList)
         {
             var mov = _gameState.Moves.FirstOrDefault(m => m.ToUciMoveName() == move);
+
             var isOk = _gameState.Apply(mov);
+
             if (isOk)
             {
                 continue;
@@ -390,7 +390,7 @@ public class UciEngine
             var moves = string.Join(",", _gameState.Moves.Select(m => m.ToUciMoveName()));
             LogToFile("ERRROR!");
             LogToFile("Couldn't apply move: " + move +
-                      $" for {(_gameState.Board.WhiteToMove ? "white" : "black")}");
+                      $" for {(_gameState.Board.Data.WhiteToMove ? "white" : "black")}");
             LogToFile("Valid moves: " + moves);
 
             LogToFile($"Error applying move: '{mov.ToMoveString()}'");

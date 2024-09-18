@@ -1,6 +1,8 @@
-﻿namespace Sapling.Engine;
+﻿using System.Runtime.InteropServices;
 
-public static class Zobrist
+namespace Sapling.Engine;
+
+public static unsafe class Zobrist
 {
     private const int PieceCount = 13;
 
@@ -9,12 +11,14 @@ public static class Zobrist
     public const ulong BlackKingSideCastlingRights = 18378780805759378610UL;
     public const ulong BlackQueenSideCastlingRights = 10633751885042570073UL;
     public const ulong SideToMove = 17258756683597918105UL;
-    public static readonly ulong[] PiecesArray = new ulong[PieceCount * 64];
+    public static readonly ulong* PiecesArray;
 
-    public static readonly ulong[] EnPassantFile = new ulong[8];
+    public static readonly ulong* EnPassantFile;
 
     static Zobrist()
     {
+        PiecesArray = AllocateULong(PieceCount * 64);
+        EnPassantFile = AllocateULong(8);
         const int seed = 69;
         var rng = new Random(seed);
 
@@ -26,19 +30,29 @@ public static class Zobrist
             }
         }
 
-        for (var i = 0; i < EnPassantFile.Length; i++)
+        for (var i = 0; i < 8; i++)
         {
             PiecesArray[i] = RandomUnsigned64BitNumber(rng);
         }
     }
 
-    public static unsafe ulong CalculateZobristKey(BoardState board)
+    public static ulong* AllocateULong(int count)
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc(sizeof(ulong) * (nuint)count, alignment);
+        NativeMemory.Clear(block, sizeof(ulong) * (nuint)count);
+
+        return (ulong*)block;
+    }
+
+    public static unsafe ulong CalculateZobristKey(ref BoardStateData board)
     {
         ulong zobristKey = 0;
 
         for (byte squareIndex = 0; squareIndex < 64; squareIndex++)
         {
-            var piece = board.Pieces[squareIndex];
+            var piece = board.GetPiece(squareIndex);
 
             if (piece != Constants.None)
             {

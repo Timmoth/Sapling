@@ -17,32 +17,31 @@ public class StaticExchangeTests
     [InlineData("r1bqkb1r/2pp1ppp/p1n5/1p2p3/3Pn3/1B3N2/PPP2PPP/RNBQ1RK1 b kq -", "c6d4", "PnNp")]
     [InlineData("6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - -", "f1f4", "pR")]
     [InlineData("4R3/2r3p1/5bk1/1p1r3p/p2PR1P1/P1BK1P2/1P6/8 b - -", "h5g4", "Pp")]
-    public void GetKingPosition_Returns_CorrectPosition(string fen, string uciMove, string exchange)
+    public unsafe void GetKingPosition_Returns_CorrectPosition(string fen, string uciMove, string exchange)
     {
         // Given
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
         var searcher = new Searcher(Array.Empty<Transposition>());
-        searcher.Init(0, board);
 
         var moves = new List<uint>();
-        board.GenerateLegalMoves(moves, true);
+        board.Data.GenerateLegalMoves(moves, true);
         var move = Assert.Single(moves.Where(m => m.ToUciMoveName() == uciMove));
 
         Span<ulong> occupancyBitBoards = stackalloc ulong[8]
         {
-            board.WhitePieces, board.BlackPieces,
-            board.BlackPawns | board.WhitePawns,
-            board.BlackKnights | board.WhiteKnights,
-            board.BlackBishops | board.WhiteBishops,
-            board.BlackRooks | board.WhiteRooks,
-            board.BlackQueens | board.WhiteQueens,
-            board.BlackKings | board.WhiteKings
+            board.Data.WhitePieces, board.Data.BlackPieces,
+            board.Data.BlackPawns | board.Data.WhitePawns,
+            board.Data.BlackKnights | board.Data.WhiteKnights,
+            board.Data.BlackBishops | board.Data.WhiteBishops,
+            board.Data.BlackRooks | board.Data.WhiteRooks,
+            board.Data.BlackQueens | board.Data.WhiteQueens,
+            board.Data.BlackKings | board.Data.WhiteKings
         };
 
         Span<short> captures = stackalloc short[32];
 
         // When
-        var seeScore = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
+        var seeScore = board.Data.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
 
         // Then
 
