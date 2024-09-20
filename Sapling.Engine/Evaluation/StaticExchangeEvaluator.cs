@@ -7,8 +7,8 @@ namespace Sapling.Engine.Evaluation;
 public static class StaticExchangeEvaluator
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe int StaticExchangeEvaluation(this ref BoardStateData board, Span<ulong> occupancyBitBoards,
-        Span<short> captures, uint move)
+    public static unsafe int StaticExchangeEvaluation(this ref BoardStateData board, ulong* occupancyBitBoards,
+        short* captures, uint move)
     {
         captures[0] = PieceValues.PieceValue[move.GetCapturedPiece()];
         var lastPieceValue = PieceValues.PieceValue[move.GetMovedPiece()];
@@ -21,7 +21,7 @@ public static class StaticExchangeEvaluator
 
         var targetSquare = move.GetToSquare();
         // all pieces except the two involved in the initial move
-        var occupancy = board.Occupancy & ~((1UL << move.GetFromSquare()) | (1UL << targetSquare));
+        var occupancy = board.Occupancy[Constants.Occupancy] & ~((1UL << move.GetFromSquare()) | (1UL << targetSquare));
 
         // Bit boards by piece type
         var pawns = occupancyBitBoards[2];
@@ -35,8 +35,8 @@ public static class StaticExchangeEvaluator
         var attackers = ((AttackTables.PextBishopAttacks(occupancy, targetSquare) & (queens | bishops)) |
                          (AttackTables.PextRookAttacks(occupancy, targetSquare) & (queens | rooks)) |
                          (AttackTables.KnightAttackTable[targetSquare] & knights) |
-                         (AttackTables.WhitePawnAttackTable[targetSquare] & board.BlackPawns) |
-                         (AttackTables.BlackPawnAttackTable[targetSquare] & board.WhitePawns) |
+                         (AttackTables.WhitePawnAttackTable[targetSquare] & board.Occupancy[Constants.BlackPawn]) |
+                         (AttackTables.BlackPawnAttackTable[targetSquare] & board.Occupancy[Constants.WhitePawn]) |
                          (AttackTables.KingAttackTable[targetSquare] & kings)) & occupancy;
 
         // Starts off as the opponents turn

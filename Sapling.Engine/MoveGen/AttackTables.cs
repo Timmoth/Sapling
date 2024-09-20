@@ -665,26 +665,26 @@ public static unsafe class AttackTables
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsAttackedByWhite(this ref BoardStateData pieces, int index)
+    public static bool IsAttackedByWhite(this ref BoardStateData board, int index)
     {
-        return (PextBishopAttacks(pieces.Occupancy, index) &
-                (pieces.WhiteBishops | pieces.WhiteQueens)) != 0 ||
-               (PextRookAttacks(pieces.Occupancy, index) & (pieces.WhiteRooks | pieces.WhiteQueens)) !=
+        return (PextBishopAttacks(board.Occupancy[Constants.Occupancy], index) &
+                (board.Occupancy[Constants.WhiteBishop] | board.Occupancy[Constants.WhiteQueen])) != 0 ||
+               (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.WhiteRook] | board.Occupancy[Constants.WhiteQueen])) !=
                0 ||
-               (KnightAttackTable[index] & pieces.WhiteKnights) != 0 ||
-               (BlackPawnAttackTable[index] & pieces.WhitePawns) != 0 ||
-               (KingAttackTable[index] & pieces.WhiteKings) != 0;
+               (KnightAttackTable[index] & board.Occupancy[Constants.WhiteKnight]) != 0 ||
+               (BlackPawnAttackTable[index] & board.Occupancy[Constants.WhitePawn]) != 0 ||
+               (KingAttackTable[index] & board.Occupancy[Constants.WhiteKing]) != 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsAttackedByBlack(this ref BoardStateData pieces, int index)
+    public static bool IsAttackedByBlack(this ref BoardStateData board, int index)
     {
-        return (PextBishopAttacks(pieces.Occupancy, index) &
-                (pieces.BlackBishops | pieces.BlackQueens)) != 0 ||
-               (PextRookAttacks(pieces.Occupancy, index) & (pieces.BlackRooks | pieces.BlackQueens)) !=
+        return (PextBishopAttacks(board.Occupancy[Constants.Occupancy], index) &
+                (board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.BlackQueen])) != 0 ||
+               (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.BlackQueen])) !=
                0 ||
-               (KnightAttackTable[index] & pieces.BlackKnights) != 0 ||
-               (WhitePawnAttackTable[index] & pieces.BlackPawns) != 0 ||
-               (KingAttackTable[index] & pieces.BlackKings) != 0;
+               (KnightAttackTable[index] & board.Occupancy[Constants.BlackKnight]) != 0 ||
+               (WhitePawnAttackTable[index] & board.Occupancy[Constants.BlackPawn]) != 0 ||
+               (KingAttackTable[index] & board.Occupancy[Constants.BlackKing]) != 0;
     }
 }

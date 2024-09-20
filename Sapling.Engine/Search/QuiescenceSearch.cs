@@ -77,7 +77,7 @@ public partial class Searcher
         }
 
         // Get all capturing moves
-        Span<uint> moves = stackalloc uint[218];
+        var moves = stackalloc uint[218];
         var psuedoMoveCount = board.GeneratePseudoLegalMoves(moves, !inCheck);
 
         if (psuedoMoveCount == 0)
@@ -101,19 +101,19 @@ public partial class Searcher
 
         Span<int> scores = stackalloc int[psuedoMoveCount];
 
-        Span<ulong> occupancyBitBoards = stackalloc ulong[8]
+        var occupancyBitBoards = stackalloc ulong[8]
         {
-            board.WhitePieces,
-            board.BlackPieces,
-            board.BlackPawns | board.WhitePawns,
-            board.BlackKnights | board.WhiteKnights,
-            board.BlackBishops | board.WhiteBishops,
-            board.BlackRooks | board.WhiteRooks,
-            board.BlackQueens | board.WhiteQueens,
-            board.BlackKings | board.WhiteKings
+            board.Occupancy[Constants.WhitePieces],
+            board.Occupancy[Constants.BlackPieces],
+            board.Occupancy[Constants.BlackPawn] | board.Occupancy[Constants.WhitePawn],
+            board.Occupancy[Constants.BlackKnight] | board.Occupancy[Constants.WhiteKnight],
+            board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.WhiteBishop],
+            board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.WhiteRook],
+            board.Occupancy[Constants.BlackQueen] | board.Occupancy[Constants.WhiteQueen],
+            board.Occupancy[Constants.BlackKing] | board.Occupancy[Constants.WhiteKing]
         };
 
-        Span<short> captures = stackalloc short[board.PieceCount];
+        var captures = stackalloc short[board.PieceCount];
 
         for (var i = 0; i < psuedoMoveCount; ++i)
         {

@@ -126,7 +126,7 @@ public static unsafe class RepetitionDetector
             int moveFrom = m.GetFromSquare();
             int moveTo = m.GetToSquare();
 
-            if ((pos.Occupancy & AttackTables.LineBitBoards[moveFrom][moveTo]) != 0)
+            if ((pos.Occupancy[Constants.Occupancy] & AttackTables.LineBitBoards[moveFrom][moveTo]) != 0)
             {
                 continue;
             }
@@ -135,13 +135,13 @@ public static unsafe class RepetitionDetector
                 return true;
 
             var isWhite = false;
-            if ((pos.Occupancy & (1ul << moveFrom)) != 0)
+            if ((pos.Occupancy[Constants.Occupancy] & (1ul << moveFrom)) != 0)
             {
-                isWhite = (pos.WhitePieces & (1ul << moveFrom)) != 0;
+                isWhite = (pos.Occupancy[Constants.WhitePieces] & (1ul << moveFrom)) != 0;
             }
             else
             {
-                isWhite = (pos.WhitePieces & (1ul << moveTo)) != 0;
+                isWhite = (pos.Occupancy[Constants.WhitePieces] & (1ul << moveTo)) != 0;
             }
 
             return isWhite == pos.WhiteToMove;

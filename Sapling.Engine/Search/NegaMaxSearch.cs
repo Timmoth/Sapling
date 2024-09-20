@@ -20,7 +20,7 @@ using VectorShort = Vector256<short>;
 public partial class Searcher
 {
     public unsafe int
-        NegaMaxSearch(ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, ulong* hashHistory, Span<uint> killers, Span<uint> counters, Span<int> history, int depthFromRoot, int depth,
+        NegaMaxSearch(ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, ulong* hashHistory, uint* killers, uint* counters, int* history, int depthFromRoot, int depth,
             int alpha, int beta, bool wasReducedMove, uint prevMove = default)
     {
         NodesVisited++;
@@ -174,7 +174,7 @@ public partial class Searcher
             ? BestSoFar
             : transpositionBestMove;
         // Generate pseudo legal moves from this position
-        Span<uint> moves = stackalloc uint[218];
+        var moves = stackalloc uint[218];
         var psuedoMoveCount = board.GeneratePseudoLegalMoves(moves, false);
 
         if (psuedoMoveCount == 0)
@@ -198,20 +198,20 @@ public partial class Searcher
         var killerB = killers[depthFromRoot * 2 + 1];
 
         // Data used in move ordering
-        Span<int> scores = stackalloc int[psuedoMoveCount];
-        Span<ulong> occupancyBitBoards = stackalloc ulong[8]
+        var scores = stackalloc int[psuedoMoveCount];
+        var occupancyBitBoards = stackalloc ulong[8]
         {
-            board.WhitePieces,
-            board.BlackPieces,
-            board.BlackPawns | board.WhitePawns,
-            board.BlackKnights | board.WhiteKnights,
-            board.BlackBishops | board.WhiteBishops,
-            board.BlackRooks | board.WhiteRooks,
-            board.BlackQueens | board.WhiteQueens,
-            board.BlackKings | board.WhiteKings
+            board.Occupancy[Constants.WhitePieces],
+            board.Occupancy[Constants.BlackPieces],
+            board.Occupancy[Constants.BlackPawn] | board.Occupancy[Constants.WhitePawn],
+            board.Occupancy[Constants.BlackKnight] | board.Occupancy[Constants.WhiteKnight],
+            board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.WhiteBishop],
+            board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.WhiteRook],
+            board.Occupancy[Constants.BlackQueen] | board.Occupancy[Constants.WhiteQueen],
+            board.Occupancy[Constants.BlackKing] | board.Occupancy[Constants.WhiteKing]
         };
 
-        Span<short> captures = stackalloc short[board.PieceCount];
+        var captures = stackalloc short[board.PieceCount];
 
         for (var i = 0; i < psuedoMoveCount; ++i)
         {
@@ -260,7 +260,7 @@ public partial class Searcher
             var isInteresting = inCheck || copy.InCheck || isPromotionThreat ||
                                 scores[moveIndex] > Constants.LosingCaptureBias;
 
-            if (!pvNode && depth <= 4 &&
+            if (canPrune &&
                 !isInteresting &&
                 searchedMoves > depth * depth + 8)
             {
@@ -346,7 +346,7 @@ public partial class Searcher
                     // Update move ordering heuristics for quiet moves that lead to a beta cut off
 
                     // History
-                    history.UpdateMovesHistory(moves, moveIndex, m, depth);
+                    HistoryHeuristicExtensions.UpdateMovesHistory(history, moves, moveIndex, m, depth);
 
                     if (m != killerA)
                     {

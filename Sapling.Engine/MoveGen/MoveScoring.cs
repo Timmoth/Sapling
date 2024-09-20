@@ -5,14 +5,14 @@ namespace Sapling.Engine.MoveGen;
 
 public static class MoveScoring
 {
-    private const int MaxMateDepth = 1000;
+    private const short MaxMateDepth = 1000;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int EvaluateFinalPosition(int ply, bool isInCheck)
+    public static short EvaluateFinalPosition(int ply, bool isInCheck)
     {
         if (isInCheck)
         {
-            return -Constants.ImmediateMateScore + ply;
+            return (short)(-Constants.ImmediateMateScore + ply);
         }
 
         return 0;
@@ -36,8 +36,8 @@ public static class MoveScoring
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ScoreMove(this ref BoardStateData board, Span<int> history, Span<ulong> occupancyBitBoards,
-        Span<short> captures,
+    public static unsafe int ScoreMove(this ref BoardStateData board, int* history, ulong* occupancyBitBoards,
+        short* captures,
         uint move,
         uint killerA,
         uint killerB,
@@ -98,7 +98,7 @@ public static class MoveScoring
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ScoreMoveQuiescence(this ref BoardStateData board, Span<ulong> occupancyBitBoards, Span<short> captures,
+    public static unsafe int ScoreMoveQuiescence(this ref BoardStateData board, ulong* occupancyBitBoards, short* captures,
         uint move,
         uint bestMove)
     {

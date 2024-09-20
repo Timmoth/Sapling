@@ -21,24 +21,24 @@ public class StaticExchangeTests
     {
         // Given
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
-        var searcher = new Searcher(Array.Empty<Transposition>());
 
         var moves = new List<uint>();
         board.Data.GenerateLegalMoves(moves, true);
         var move = Assert.Single(moves.Where(m => m.ToUciMoveName() == uciMove));
 
-        Span<ulong> occupancyBitBoards = stackalloc ulong[8]
+        var occupancyBitBoards = stackalloc ulong[8]
         {
-            board.Data.WhitePieces, board.Data.BlackPieces,
-            board.Data.BlackPawns | board.Data.WhitePawns,
-            board.Data.BlackKnights | board.Data.WhiteKnights,
-            board.Data.BlackBishops | board.Data.WhiteBishops,
-            board.Data.BlackRooks | board.Data.WhiteRooks,
-            board.Data.BlackQueens | board.Data.WhiteQueens,
-            board.Data.BlackKings | board.Data.WhiteKings
+            board.Data.Occupancy[Constants.WhitePieces],
+            board.Data.Occupancy[Constants.BlackPieces],
+            board.Data.Occupancy[Constants.BlackPawn] | board.Data.Occupancy[Constants.WhitePawn],
+            board.Data.Occupancy[Constants.BlackKnight] | board.Data.Occupancy[Constants.WhiteKnight],
+            board.Data.Occupancy[Constants.BlackBishop] | board.Data.Occupancy[Constants.WhiteBishop],
+            board.Data.Occupancy[Constants.BlackRook] | board.Data.Occupancy[Constants.WhiteRook],
+            board.Data.Occupancy[Constants.BlackQueen] | board.Data.Occupancy[Constants.WhiteQueen],
+            board.Data.Occupancy[Constants.BlackKing] | board.Data.Occupancy[Constants.WhiteKing]
         };
 
-        Span<short> captures = stackalloc short[32];
+        var captures = stackalloc short[32];
 
         // When
         var seeScore = board.Data.StaticExchangeEvaluation(occupancyBitBoards, captures, move);

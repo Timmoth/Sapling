@@ -353,7 +353,7 @@ public static class OutputHelpers
         }
 
         return
-            $"{PgnSplitter.ConvertPosition(move.GetFromSquare())}{PgnSplitter.ConvertPosition(move.GetToSquare())}{promotion}";
+            $"{move.GetFromSquare().ConvertPosition()}{move.GetToSquare().ConvertPosition()}{promotion}";
     }
 
     public static string ToPgnMoveName(this uint move)

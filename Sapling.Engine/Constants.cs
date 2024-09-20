@@ -12,7 +12,7 @@ public enum CastleRights : byte
 
 public static class Constants
 {
-    public const int ImmediateMateScore = 100000;
+    public const short ImmediateMateScore = 29_000;
 
     #region Bitboards
 
@@ -21,6 +21,7 @@ public static class Constants
 
     public const byte None = 0;
 
+    public const byte Occupancy = 0;
     public const byte BlackPawn = 1;
     public const byte BlackKnight = 3;
     public const byte BlackBishop = 5;
@@ -34,6 +35,9 @@ public static class Constants
     public const byte WhiteRook = 8;
     public const byte WhiteQueen = 10;
     public const byte WhiteKing = 12;
+
+    public const byte WhitePieces = 13;
+    public const byte BlackPieces = 14;
 
     public const byte Castle = 1;
     public const byte DoublePush = 2;
@@ -72,7 +76,7 @@ public static class Constants
     public const int QueenValue = 1250;
     public const int KingValue = 5000;
 
-    public const int MaxSearchDepth = 80;
+    public const int MaxSearchDepth = 120;
     public const int MaxScore = 99999999;
     public const int MinScore = -99999999;
 

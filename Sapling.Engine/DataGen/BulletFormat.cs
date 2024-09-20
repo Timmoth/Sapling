@@ -93,7 +93,7 @@ public unsafe struct BulletFormat
             data.OppKingSquare = (byte)(board.BlackKingSquare ^ 0x38);
             data.Score = score;
             data.Result = wdl;
-            data.Occupancy = board.Occupancy;
+            data.Occupancy = board.Occupancy[Constants.Occupancy];
 
             var nextPiece = 0;
 
@@ -115,7 +115,7 @@ public unsafe struct BulletFormat
             data.OppKingSquare = board.WhiteKingSquare;
             data.Score = score;
             data.Result = (byte)(-1 * (wdl - 1) + 1);
-            data.Occupancy = BinaryPrimitives.ReverseEndianness(board.Occupancy);
+            data.Occupancy = BinaryPrimitives.ReverseEndianness(board.Occupancy[Constants.Occupancy]);
 
             var nextPiece = 0;
 

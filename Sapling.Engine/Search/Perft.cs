@@ -6,9 +6,9 @@ namespace Sapling.Engine.Search;
 
 public static class Perft
 {
-    private static ulong PerftInternal(this ref BoardStateData board, int depth)
+    private static unsafe ulong PerftInternal(this ref BoardStateData board, int depth)
     {
-        Span<uint> moves = stackalloc uint[218];
+        var moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, false);
         BoardStateData copy = default;
 
@@ -35,10 +35,10 @@ public static class Perft
         return nodeCount;
     }
 
-    public static List<(ulong nodes, string move)> PerftRootSequential(this ref BoardStateData board, int depth)
+    public static unsafe List<(ulong nodes, string move)> PerftRootSequential(this ref BoardStateData board, int depth)
     {
-        var moves = new uint[218];
-        var moveCount = board.GeneratePseudoLegalMoves(moves.AsSpan(), false);
+        var moves = stackalloc uint[218];
+        var moveCount = board.GeneratePseudoLegalMoves(moves, false);
         BoardStateData copy = default;
 
         var rootMoves = new ConcurrentBag<(ulong nodes, string move)>();
@@ -65,10 +65,10 @@ public static class Perft
         return rootMoves.ToList();
     }
 
-    public static List<(ulong nodes, string move)> PerftRootParallel(this BoardStateData board, int depth)
+    public static unsafe List<(ulong nodes, string move)> PerftRootParallel(this BoardStateData board, int depth)
     {
-        var moves = new uint[218];
-        var moveCount = board.GeneratePseudoLegalMoves(moves.AsSpan(), false);
+        var moves = stackalloc uint[218];
+        var moveCount = board.GeneratePseudoLegalMoves(moves, false);
 
         var rootMoves = new ConcurrentBag<(ulong nodes, string move)>();
         Parallel.For(0, moveCount, new ParallelOptions

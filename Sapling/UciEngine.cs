@@ -203,18 +203,19 @@ public class UciEngine
         {
             var seeMove = messageSegments[2];
             var mov = _gameState.Moves.FirstOrDefault(m => m.ToUciMoveName() == seeMove);
-            Span<ulong> occupancyBitBoards = stackalloc ulong[8]
+            var occupancyBitBoards = stackalloc ulong[8]
             {
-                _gameState.Board.Data.WhitePieces, _gameState.Board.Data.BlackPieces,
-                _gameState.Board.Data.BlackPawns | _gameState.Board.Data.WhitePawns,
-                _gameState.Board.Data.BlackKnights | _gameState.Board.Data.WhiteKnights,
-                _gameState.Board.Data.BlackBishops | _gameState.Board.Data.WhiteBishops,
-                _gameState.Board.Data.BlackRooks | _gameState.Board.Data.WhiteRooks,
-                _gameState.Board.Data.BlackQueens | _gameState.Board.Data.WhiteQueens,
-                _gameState.Board.Data.BlackKings | _gameState.Board.Data.WhiteKings
+                _gameState.Board.Data.Occupancy[Constants.WhitePieces],
+                _gameState.Board.Data.Occupancy[Constants.BlackPieces],
+                _gameState.Board.Data.Occupancy[Constants.BlackPawn] | _gameState.Board.Data.Occupancy[Constants.WhitePawn],
+                _gameState.Board.Data.Occupancy[Constants.BlackKnight] | _gameState.Board.Data.Occupancy[Constants.WhiteKnight],
+                _gameState.Board.Data.Occupancy[Constants.BlackBishop] | _gameState.Board.Data.Occupancy[Constants.WhiteBishop],
+                _gameState.Board.Data.Occupancy[Constants.BlackRook] | _gameState.Board.Data.Occupancy[Constants.WhiteRook],
+                _gameState.Board.Data.Occupancy[Constants.BlackQueen] | _gameState.Board.Data.Occupancy[Constants.WhiteQueen],
+                _gameState.Board.Data.Occupancy[Constants.BlackKing] | _gameState.Board.Data.Occupancy[Constants.WhiteKing]
             };
 
-            Span<short> captures = stackalloc short[32];
+            var captures = stackalloc short[32];
             var seeScore = _gameState.Board.Data.StaticExchangeEvaluation(occupancyBitBoards, captures, mov);
             Console.WriteLine(seeScore);
             return;
