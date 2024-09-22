@@ -96,6 +96,11 @@ public class DataGenerator
         }
     }
 
+    static bool IsAdjudicatedDraw(GameState gameState, int drawScoreCount)
+    {
+        return gameState.Board.Data.TurnCount >= 60 && gameState.Board.Data.HalfMoveClock >= 20 && drawScoreCount >= 4;
+    }
+
     private void RunIteration(BinaryWriter writer, ParallelSearcher searcher)
     {
         try
@@ -112,7 +117,8 @@ public class DataGenerator
                 var positions = 0;
                 var adjudicationCounter = 0;
                 var score = 0;
-                while (!gameState.GameOver() && gameState.Board.Data.TurnCount < MaxTurnCount)
+                var drawScoreCount = 0;
+                while (!gameState.GameOver() && gameState.Board.Data.TurnCount < MaxTurnCount && !IsAdjudicatedDraw(gameState, drawScoreCount))
                 {
                     uint move = default;
                     if (randomMoveCount <= 9)
@@ -122,9 +128,19 @@ public class DataGenerator
                     }
                     else
                     {
-                        var (pv, _, s, _, _) = searcher.NodeBoundSearch(gameState.Board, 5000, 15);
+                        var (pv, _, s, _, _) = searcher.NodeBoundSearch(gameState.Board, 6500, 60);
                         move = pv[0];
                         score = s;
+
+                        if (score == 0)
+                        {
+                            drawScoreCount++;
+                        }
+                        else
+                        {
+                            drawScoreCount = 0;
+                        }
+
                         if (move.IsQuiet() && !gameState.Board.Data.InCheck)
                         {
                             turns[positions] = gameState.Board.Data.WhiteToMove;
@@ -155,6 +171,10 @@ public class DataGenerator
                 if (adjudicationCounter > 4)
                 {
                     result = boardState.Data.WhiteToMove ? (byte)1 : (byte)2;
+                }
+                else if (IsAdjudicatedDraw(gameState, drawScoreCount))
+                {
+                    result = 0;
                 }
                 else
                 {
