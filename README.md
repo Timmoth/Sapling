@@ -7,7 +7,7 @@
 ### A strong dotnet UCI Chess engine - My leaf nodes are growing
 
 > [!NOTE]  
-> Sapling is still in active development so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 13 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
+> Sapling is still in active development so expect certain features to be missing or experimental. Also the current release is using a NNUE net trained from self play starting with random weights and is only 14 iterations deep, expect the engine to be much stronger in the coming days as the training does takes a while.
 
 Play it here -> https://iblunder.com/
 
@@ -16,7 +16,7 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-### Latest Release [v1.0.4 20/09/2024](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.0.4)
+### Latest Release [v1.0.5 22/09/2024](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.0.5)
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
@@ -48,7 +48,7 @@ dotnet run --project .\Sapling\Sapling.csproj --configuration Release
 <Summary>General</Summary>
   
 - Bitboards 
-- NNUE (768 -> 768)x2 -> 8
+- NNUE (768 -> 1024)x2 -> 8
 - Horizontal mirroring
 - Output buckets x8
 - Transposition table
@@ -94,7 +94,7 @@ After any changes to the engine a SPRT test must be ran to ensure that the chang
 There is a script `sprt.bat` which contains the command to run a cutechess-cli SPRT test. Ensure that you've configured CuteChess to point to both `dev` and `base` engines before hand, and also update the opening book + endgame table base to point to one on your system.
 
 ## NNUE
-I'm in the process of training a  (768 -> 512)x2 -> 8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
+I'm in the process of training a  (768 -> 1024)x2 -> 8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the coming days / weeks. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
 
 ## Resources:
 - [Chess Programming Wiki](https://www.chessprogramming.org/)
