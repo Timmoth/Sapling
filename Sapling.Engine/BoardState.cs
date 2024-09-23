@@ -1,19 +1,6 @@
 ﻿using Sapling.Engine.Evaluation;
-using System.Runtime.Intrinsics.X86;
-using System.Runtime.Intrinsics;
 
 namespace Sapling.Engine;
-#if AVX512
-using AvxIntrinsics = System.Runtime.Intrinsics.X86.Avx512BW;
-using VectorType = System.Runtime.Intrinsics.Vector512;
-using VectorInt = System.Runtime.Intrinsics.Vector512<int>;
-using VectorShort = System.Runtime.Intrinsics.Vector512<short>;
-#else
-using AvxIntrinsics = Avx2;
-using VectorType = Vector256;
-using VectorInt = Vector256<int>;
-using VectorShort = Vector256<short>;
-#endif
 
 using System.Runtime.InteropServices;
 
