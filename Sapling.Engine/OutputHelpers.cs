@@ -266,7 +266,7 @@ public static class OutputHelpers
 
             if (includeZobristKey)
             {
-                output.AppendLine($"Zobrist Key : {gameState.Board.Data.Hash}");
+                output.AppendLine($"Zobrist Key : {gameState.Board.Data.Hash.ToString("X")}");
             }
         }
 

@@ -6,16 +6,47 @@
     <Nullable>enable</Nullable>
 	  <Platforms>AnyCPU;x64</Platforms>
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-
 	  <TieredPGO>true</TieredPGO>
 	  <TieredCompilation>true</TieredCompilation>
+
+	  <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+	  <PackageId>SaplingEngine</PackageId>
+	  <PackageVersion>1.1.0</PackageVersion>
+	  <Authors>Tim Jones</Authors>
+	  <Company>Aptacode</Company>
+	  <Description>A strong UCI chess engine</Description>
+	  <PackageProjectUrl>https://github.com/Timmoth/Sapling</PackageProjectUrl>
+	  <RepositoryUrl>https://github.com/Timmoth/Sapling</RepositoryUrl>
+	  <RepositoryType>git</RepositoryType>
+	  <PackageTags>Chess Engine</PackageTags>
+	  <Title>Sapling</Title>
+	  <GenerateDocumentationFile>True</GenerateDocumentationFile>
+	  <IncludeSymbols>true</IncludeSymbols>
+	  <ApplicationIcon>logo.ico</ApplicationIcon>
+	  <PackageIcon>logo.png</PackageIcon>
+	  <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="logo.ico" />
+  </ItemGroup>
 	<ItemGroup>
     <PackageReference Include="FluentResults" Version="3.16.0" />
   </ItemGroup>
 
 	<ItemGroup>
 		<EmbeddedResource Include="Resources\sapling.nnue" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Include="..\logo.png">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	  <None Include="..\README.md">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
 	</ItemGroup>
 
 </Project>

@@ -5,17 +5,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ApplicationIcon>logo.ico</ApplicationIcon>
-    <Title>Sapling</Title>
-	  <AssemblyVersion>1.1.1.0</AssemblyVersion>
-	  <FileVersion>1.1.1.0</FileVersion>
-	  <Version>1.1.1.0</Version>
-	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Content Include="logo.ico" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Sapling.Engine\Sapling.Engine.csproj" />
