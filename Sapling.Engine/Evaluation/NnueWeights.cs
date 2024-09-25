@@ -8,8 +8,8 @@ public static class NnueWeights
     public const int InputSize = 768;
     public const int Layer1Size = 1024;
 
+    public const short InputBuckets = 4;
     public const short OutputBuckets = 8;
-
     public static readonly unsafe VectorShort* FeatureWeights;
     public static readonly unsafe VectorShort* FeatureBiases;
     public static readonly unsafe VectorShort* OutputWeights;
@@ -23,7 +23,7 @@ public static class NnueWeights
         using var stream = assembly
             .GetManifestResourceStream($"{name}.Resources.sapling.nnue")!;
 
-        var featureWeights = new short[InputSize * Layer1Size];
+        var featureWeights = new short[InputSize * Layer1Size * InputBuckets];
         var featureBiases = new short[Layer1Size];
         var outputWeights = new short[Layer1Size * 2 * OutputBuckets];
 
@@ -68,6 +68,9 @@ public static class NnueWeights
             OutputBiases[i] = reader.ReadInt16();
         }
 
+        //var result = Encoding.UTF8.GetString(reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position)));
+        // Console.WriteLine(result);
+        
         // Allocate unmanaged memory
         FeatureWeights = AlignedAllocZeroedShort((nuint)featureWeights.Length);
         FeatureBiases = AlignedAllocZeroedShort((nuint)featureBiases.Length);

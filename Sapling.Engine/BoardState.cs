@@ -4,7 +4,7 @@ namespace Sapling.Engine;
 
 using System.Runtime.InteropServices;
 
-[StructLayout(LayoutKind.Explicit, Size = 142)] // Explicit layout with size control
+[StructLayout(LayoutKind.Explicit, Size = 144)] // Explicit layout with size control
 public unsafe struct BoardStateData
 {
     // 8-byte fields (grouped together for optimal alignment)
@@ -18,22 +18,23 @@ public unsafe struct BoardStateData
     // Grouped bools (using 1 byte each)
     [FieldOffset(131)] public bool WhiteToMove;         // 1 byte
     [FieldOffset(132)] public bool InCheck;             // 1 byte
-    [FieldOffset(133)] public bool ShouldWhiteMirrored; // 1 byte
-    [FieldOffset(134)] public bool ShouldBlackMirrored; // 1 byte
-    [FieldOffset(135)] public bool WhiteMirrored;       // 1 byte
-    [FieldOffset(136)] public bool BlackMirrored;       // 1 byte
+    [FieldOffset(133)] public bool WhiteMirrored;       // 1 byte
+    [FieldOffset(134)] public bool BlackMirrored;       // 1 byte
 
     // 4-byte field (for proper alignment)
 
     // CastleRights (assuming this is a byte-sized enum)
-    [FieldOffset(137)] public CastleRights CastleRights; // 1 byte
+    [FieldOffset(135)] public CastleRights CastleRights; // 1 byte
 
     // Smaller fields (grouped together for minimal padding)
-    [FieldOffset(138)] public byte WhiteKingSquare; // 1 byte
-    [FieldOffset(139)] public byte BlackKingSquare; // 1 byte
-    [FieldOffset(140)] public byte EnPassantFile;   // 1 byte
-    [FieldOffset(141)] public byte PieceCount;      // 1 byte
-
+    [FieldOffset(136)] public byte WhiteKingSquare; // 1 byte
+    [FieldOffset(137)] public byte BlackKingSquare; // 1 byte
+    [FieldOffset(138)] public byte EnPassantFile;   // 1 byte
+    [FieldOffset(139)] public byte PieceCount;      // 1 byte
+    [FieldOffset(140)] public byte WhiteInputBucket;      // 1 byte
+    [FieldOffset(141)] public byte BlackInputBucket;      // 1 byte
+    [FieldOffset(142)] public bool WhiteNeedsRefresh;      // 1 byte
+    [FieldOffset(143)] public bool BlackNeedsRefresh;      // 1 byte
     public void CloneTo(ref BoardStateData copy)
     {
         fixed (BoardStateData* sourcePtr = &this)

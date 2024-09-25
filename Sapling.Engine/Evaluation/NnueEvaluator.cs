@@ -22,6 +22,7 @@ public static unsafe class NnueEvaluator
     public const int AccumulatorSize = NnueWeights.Layer1Size / VectorSize;
 
     public const int L1ByteSize = sizeof(short) * NnueWeights.Layer1Size;
+    public const int InputBucketWeightCount = NnueWeights.InputSize * AccumulatorSize;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SimdCopy(VectorShort* destination, VectorShort* source)
@@ -36,14 +37,14 @@ public static unsafe class NnueEvaluator
 
     public static int Evaluate(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc)
     {
-        if (board.WhiteMirrored != board.ShouldWhiteMirrored)
+        if (board.WhiteNeedsRefresh)
         {
-            board.MirrorWhite(whiteAcc);
+            board.RefreshWhite(whiteAcc);
         }
 
-        if (board.BlackMirrored != board.ShouldBlackMirrored)
+        if (board.BlackNeedsRefresh)
         {
-            board.MirrorBlack(blackAcc);
+            board.RefreshBlack(blackAcc);
         }
 
         var bucket = (board.PieceCount - 2) / BucketDivisor;
@@ -96,15 +97,29 @@ public static unsafe class NnueEvaluator
     public static void Deactivate(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, int piece, int square)
     {
         var (bIdx, wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, square);
-        SubtractWeights(whiteAcc, wIdx);
-        SubtractWeights(blackAcc, bIdx);
+        if (!board.WhiteNeedsRefresh)
+        {
+            SubtractWeights(whiteAcc, board.WhiteInputBucket, wIdx);
+        }
+
+        if (!board.BlackNeedsRefresh)
+        {
+            SubtractWeights(blackAcc, board.BlackInputBucket, bIdx);
+        }
     }
 
     public static void Apply(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, int piece, int square)
     {
         var (bIdx, wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, square);
-        AddWeights(whiteAcc, wIdx);
-        AddWeights(blackAcc, bIdx);
+        if (!board.WhiteNeedsRefresh)
+        {
+            AddWeights(whiteAcc, board.WhiteInputBucket, wIdx);
+        }
+
+        if (!board.BlackNeedsRefresh)
+        {
+            AddWeights(blackAcc, board.BlackInputBucket, bIdx);
+        }
     }
 
     public static void Replace(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, int piece, int from, int to)
@@ -112,15 +127,22 @@ public static unsafe class NnueEvaluator
         var (from_bIdx, from_wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, from);
         var (to_bIdx, to_wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, to);
 
-        ReplaceWeights(whiteAcc, to_wIdx, from_wIdx);
-        ReplaceWeights(blackAcc, to_bIdx, from_bIdx);
+        if (!board.WhiteNeedsRefresh)
+        {
+            ReplaceWeights(whiteAcc, board.WhiteInputBucket, to_wIdx, from_wIdx);
+        }
+
+        if (!board.BlackNeedsRefresh)
+        {
+            ReplaceWeights(blackAcc, board.BlackInputBucket, to_bIdx, from_bIdx);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ReplaceWeights(VectorShort* accuPtr, int addFeatureIndex, int removeFeatureIndex)
+    private static void ReplaceWeights(VectorShort* accuPtr, int inputBucket, int addFeatureIndex, int removeFeatureIndex)
     {
-        var addFeatureOffsetPtr = NnueWeights.FeatureWeights + addFeatureIndex * AccumulatorSize;
-        var removeFeatureOffsetPtr = NnueWeights.FeatureWeights + removeFeatureIndex * AccumulatorSize;
+        var addFeatureOffsetPtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + addFeatureIndex * AccumulatorSize;
+        var removeFeatureOffsetPtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + removeFeatureIndex * AccumulatorSize;
         for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
             accuPtr[i] += addFeatureOffsetPtr[i] - removeFeatureOffsetPtr[i];
@@ -128,9 +150,9 @@ public static unsafe class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SubtractWeights(VectorShort* accuPtr, int inputFeatureIndex)
+    private static void SubtractWeights(VectorShort* accuPtr, int inputBucket, int inputFeatureIndex)
     {
-        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * AccumulatorSize;
+        var featurePtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + inputFeatureIndex * AccumulatorSize;
         for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
             accuPtr[i] -= featurePtr[i];
@@ -138,19 +160,40 @@ public static unsafe class NnueEvaluator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AddWeights(VectorShort* accuPtr, int inputFeatureIndex)
+    private static void AddWeights(VectorShort* accuPtr, int inputBucket, int inputFeatureIndex)
     {
-        var featurePtr = NnueWeights.FeatureWeights + inputFeatureIndex * AccumulatorSize;
+        var featurePtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + inputFeatureIndex * AccumulatorSize;
         for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
             accuPtr[i] += featurePtr[i];
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte GetKingBucket(byte index)
+    {
+        if (index < 2) // Indices 0-1 -> 0
+            return 0;
+        if (index < 6) // Indices 2-5 -> 1
+            return 1;
+        if (index < 8) // Indices 6-7 -> 0
+            return 0;
+        if (index < 16) // Indices 8-15 -> 2
+            return 2;
+
+        // Indices 16-63 -> 3
+        return 3;
+    }
+
     public static void FillAccumulators(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc)
     {
-        board.WhiteMirrored = board.ShouldWhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
-        board.BlackMirrored = board.ShouldBlackMirrored = board.BlackKingSquare.IsMirroredSide();
+        board.WhiteNeedsRefresh = false;
+        board.BlackNeedsRefresh = false;
+        board.WhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
+        board.WhiteInputBucket = GetKingBucket(board.WhiteKingSquare);
+        board.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
+        board.BlackInputBucket = GetKingBucket((byte)(board.BlackKingSquare ^ 0x38));
+
         for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
             whiteAcc[i] = blackAcc[i] = NnueWeights.FeatureBiases[i];
@@ -243,171 +286,178 @@ public static unsafe class NnueEvaluator
         return VectorType.Sum(sum);
     }
 
-    public static void MirrorWhite(this ref BoardStateData board, VectorShort* whiteAcc)
+    public static void RefreshWhite(this ref BoardStateData board, VectorShort* whiteAcc)
     {
-        board.WhiteMirrored = board.ShouldWhiteMirrored;
+        board.WhiteNeedsRefresh = false;
+        board.WhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
+        board.WhiteInputBucket = NnueEvaluator.GetKingBucket(board.WhiteKingSquare);
+
         for (var i = 0; i < AccumulatorSize; i++)
         {
             whiteAcc[i] = NnueWeights.FeatureBiases[i];
         }
 
         // Accumulate layer weights
-        AddWeights(whiteAcc, WhiteFeatureIndices(board.WhiteMirrored, Constants.WhiteKing, board.WhiteKingSquare));
+        AddWeights(whiteAcc, board.WhiteInputBucket, WhiteFeatureIndices(board.WhiteMirrored, Constants.WhiteKing, board.WhiteKingSquare));
 
         var bitboards = board.Occupancy[Constants.WhitePawn];
 
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.WhitePawn, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteKnight];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.WhiteKnight, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteBishop];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.WhiteBishop, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteRook];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.WhiteRook, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteQueen];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.WhiteQueen, bitboards.PopLSB()));
         }
 
-        AddWeights(whiteAcc, WhiteFeatureIndices(board.WhiteMirrored, Constants.BlackKing, board.BlackKingSquare));
+        AddWeights(whiteAcc, board.WhiteInputBucket, WhiteFeatureIndices(board.WhiteMirrored, Constants.BlackKing, board.BlackKingSquare));
 
         bitboards = board.Occupancy[Constants.BlackPawn];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.BlackPawn, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackKnight];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.BlackKnight, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackBishop];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.BlackBishop, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackRook];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.BlackRook, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackQueen];
         while (bitboards != 0)
         {
-            AddWeights(whiteAcc,
+            AddWeights(whiteAcc, board.WhiteInputBucket,
                 WhiteFeatureIndices(board.WhiteMirrored, Constants.BlackQueen, bitboards.PopLSB()));
         }
     }
 
-    public static void MirrorBlack(this ref BoardStateData board, VectorShort* blackAcc)
+    public static void RefreshBlack(this ref BoardStateData board, VectorShort* blackAcc)
     {
-        board.BlackMirrored = board.ShouldBlackMirrored;
+        board.BlackNeedsRefresh = false;
+        board.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
+        board.BlackInputBucket = NnueEvaluator.GetKingBucket((byte)(board.BlackKingSquare ^ 0x38));
+
+
         for (var i = 0; i < AccumulatorSize; i++)
         {
             blackAcc[i] = NnueWeights.FeatureBiases[i];
         }
 
         // Accumulate layer weights
-        AddWeights(blackAcc, BlackFeatureIndices(board.BlackMirrored, Constants.WhiteKing, board.WhiteKingSquare));
+        AddWeights(blackAcc, board.BlackInputBucket, BlackFeatureIndices(board.BlackMirrored, Constants.WhiteKing, board.WhiteKingSquare));
 
         var bitboards = board.Occupancy[Constants.WhitePawn];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.WhitePawn, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteKnight];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.WhiteKnight, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteBishop];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.WhiteBishop, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteRook];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.WhiteRook, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.WhiteQueen];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.WhiteQueen, bitboards.PopLSB()));
         }
 
-        AddWeights(blackAcc, BlackFeatureIndices(board.BlackMirrored, Constants.BlackKing, board.BlackKingSquare));
+        AddWeights(blackAcc, board.BlackInputBucket, BlackFeatureIndices(board.BlackMirrored, Constants.BlackKing, board.BlackKingSquare));
 
         bitboards = board.Occupancy[Constants.BlackPawn];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.BlackPawn, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackKnight];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.BlackKnight, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackBishop];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.BlackBishop, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackRook];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.BlackRook, bitboards.PopLSB()));
         }
 
         bitboards = board.Occupancy[Constants.BlackQueen];
         while (bitboards != 0)
         {
-            AddWeights(blackAcc,
+            AddWeights(blackAcc, board.BlackInputBucket,
                 BlackFeatureIndices(board.BlackMirrored, Constants.BlackQueen, bitboards.PopLSB()));
         }
     }

@@ -376,24 +376,6 @@ public static class BoardStateExtensions
             board.Hash ^= Zobrist.BlackQueenSideCastlingRights;
         }
     }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateMirrorStatus(this ref BoardStateData board,byte piece, bool fromMirroredSide, bool toMirroredSide)
-    {
-        if (fromMirroredSide == toMirroredSide)
-        {
-            return;
-        }
-
-        if (piece == Constants.WhiteKing)
-        {
-            board.ShouldWhiteMirrored = toMirroredSide;
-        }
-        
-        if (piece == Constants.BlackKing)
-        {
-            board.ShouldBlackMirrored = toMirroredSide;
-        }
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void FinishApply(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, ulong* hashHistory, uint m,
@@ -403,6 +385,15 @@ public static class BoardStateExtensions
         board.Hash ^= Zobrist.SideToMove;
 
         var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = m.Deconstruct();
+
+        if (movedPiece == Constants.WhiteKing)
+        {
+            board.WhiteNeedsRefresh |= board.WhiteMirrored != toSquare.IsMirroredSide() || board.WhiteInputBucket != NnueEvaluator.GetKingBucket(toSquare);
+        }
+        else if (movedPiece == Constants.BlackKing)
+        {
+            board.BlackNeedsRefresh |= board.BlackMirrored != toSquare.IsMirroredSide() || board.BlackInputBucket != NnueEvaluator.GetKingBucket((byte)(toSquare ^ 0x38));
+        }
 
         if (moveType == 0)
         {
@@ -427,8 +418,8 @@ public static class BoardStateExtensions
             // Castle move
             if (toSquare == 62)
             {
-                board.Replace(whiteAcc, blackAcc, Constants.BlackRook, 63, 61);
-                board.Replace(whiteAcc, blackAcc, Constants.BlackKing, fromSquare, toSquare);
+                board.Replace( whiteAcc, blackAcc, Constants.BlackRook, 63, 61);
+                board.Replace( whiteAcc, blackAcc, Constants.BlackKing, fromSquare, toSquare);
                 board.Hash ^= Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
                               Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare] ^
                               Zobrist.PiecesArray[Constants.BlackRook * 64 + 63] ^
@@ -514,7 +505,6 @@ public static class BoardStateExtensions
         }
 
         board.UpdateCastleStatus(prevCastle);
-        board.UpdateMirrorStatus(movedPiece, fromSquare.IsMirroredSide(), toSquare.IsMirroredSide());
 
         hashHistory[board.TurnCount - 1] = board.Hash;
     }
