@@ -397,19 +397,22 @@ public static class BoardStateExtensions
 
         if (moveType == 0)
         {
-            board.Replace(whiteAcc, blackAcc, movedPiece, fromSquare, toSquare);
             board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
                           Zobrist.PiecesArray[movedPiece * 64 + toSquare];
 
             if (capturedPiece != Constants.None)
             {
-                board.Deactivate(whiteAcc, blackAcc, capturedPiece, toSquare);
+                board.ApplyCapture(whiteAcc, blackAcc, movedPiece, fromSquare, movedPiece, toSquare, capturedPiece, toSquare);
                 board.Hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
+            }
+            else
+            {
+                board.ApplyQuiet(whiteAcc, blackAcc, movedPiece, fromSquare, movedPiece, toSquare);
             }
         }
         else if (moveType == Constants.DoublePush)
         {
-            board.Replace(whiteAcc, blackAcc, movedPiece, fromSquare, toSquare);
+            board.ApplyQuiet(whiteAcc, blackAcc, movedPiece, fromSquare, movedPiece, toSquare);
             board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
                           Zobrist.PiecesArray[movedPiece * 64 + toSquare];
         }
@@ -418,8 +421,7 @@ public static class BoardStateExtensions
             // Castle move
             if (toSquare == 62)
             {
-                board.Replace( whiteAcc, blackAcc, Constants.BlackRook, 63, 61);
-                board.Replace( whiteAcc, blackAcc, Constants.BlackKing, fromSquare, toSquare);
+                board.ApplyCastle(whiteAcc, blackAcc, Constants.BlackKing, fromSquare, toSquare, Constants.BlackRook, 63, 61);
                 board.Hash ^= Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
                               Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare] ^
                               Zobrist.PiecesArray[Constants.BlackRook * 64 + 63] ^
@@ -427,8 +429,7 @@ public static class BoardStateExtensions
             }
             else if (toSquare == 58)
             {
-                board.Replace(whiteAcc, blackAcc, Constants.BlackRook, 56, 59);
-                board.Replace(whiteAcc, blackAcc, Constants.BlackKing, fromSquare, toSquare);
+                board.ApplyCastle(whiteAcc, blackAcc, Constants.BlackKing, fromSquare, toSquare, Constants.BlackRook, 56, 59);
                 board.Hash ^= Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
                               Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare]
                               ^ Zobrist.PiecesArray[Constants.BlackRook * 64 + 56] ^
@@ -436,8 +437,7 @@ public static class BoardStateExtensions
             }
             else if (toSquare == 6)
             {
-                board.Replace(whiteAcc, blackAcc, Constants.WhiteRook, 7, 5);
-                board.Replace(whiteAcc, blackAcc, Constants.WhiteKing, fromSquare, toSquare);
+                board.ApplyCastle(whiteAcc, blackAcc, Constants.WhiteKing, fromSquare, toSquare, Constants.WhiteRook, 7, 5);
                 board.Hash ^= Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
                               Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
                               Zobrist.PiecesArray[Constants.WhiteRook * 64 + 7] ^
@@ -445,8 +445,7 @@ public static class BoardStateExtensions
             }
             else if (toSquare == 2)
             {
-                board.Replace(whiteAcc, blackAcc, Constants.WhiteRook, 0, 3);
-                board.Replace(whiteAcc, blackAcc, Constants.WhiteKing, fromSquare, toSquare);
+                board.ApplyCastle(whiteAcc, blackAcc, Constants.WhiteKing, fromSquare, toSquare, Constants.WhiteRook, 0, 3);
                 board.Hash ^= Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
                               Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
                               Zobrist.PiecesArray[Constants.WhiteRook * 64 + 0] ^
@@ -467,24 +466,24 @@ public static class BoardStateExtensions
             // [2, 7] => 10
             // a + 2b - 6
             var promotionPiece = movedPiece + moveType + moveType - 6;
-            board.Apply(whiteAcc, blackAcc, promotionPiece, toSquare);
-            board.Deactivate(whiteAcc, blackAcc, movedPiece, fromSquare);
             board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
                           Zobrist.PiecesArray[promotionPiece * 64 + toSquare];
 
             if (capturedPiece != Constants.None)
             {
-                board.Deactivate(whiteAcc, blackAcc, capturedPiece, toSquare);
+                board.ApplyCapture(whiteAcc, blackAcc, movedPiece, fromSquare, promotionPiece, toSquare, capturedPiece, toSquare);
                 board.Hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
+            }
+            else
+            {
+                board.ApplyQuiet(whiteAcc, blackAcc, movedPiece, fromSquare, promotionPiece, toSquare);
             }
         }
         else
         {
             // Enpassant
-            board.Replace(whiteAcc, blackAcc, movedPiece, fromSquare, toSquare);
-
             var enpassantSquare = fromSquare.GetRankIndex() * 8 + oldEnpassant;
-            board.Deactivate(whiteAcc, blackAcc, capturedPiece, enpassantSquare);
+            board.ApplyCapture(whiteAcc, blackAcc, movedPiece, fromSquare, movedPiece, toSquare, capturedPiece, enpassantSquare);
 
             board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
                           Zobrist.PiecesArray[movedPiece * 64 + toSquare] ^

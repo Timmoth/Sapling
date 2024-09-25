@@ -94,20 +94,125 @@ public static unsafe class NnueEvaluator
         return white * ColorStride + type * PieceStride + blackPieceSquare;
     }
 
-    public static void Deactivate(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, int piece, int square)
+    public static void ApplyQuiet(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc,
+        int fromPiece, int fromSquare, 
+        int toPiece, int toSquare)
     {
-        var (bIdx, wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, square);
+        var (fromBIndex, fromWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, fromPiece, fromSquare);
+        var (toBIndex, toWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, toPiece, toSquare);
+
         if (!board.WhiteNeedsRefresh)
         {
-            SubtractWeights(whiteAcc, board.WhiteInputBucket, wIdx);
+            var featurePtr = NnueWeights.FeatureWeights + board.WhiteInputBucket * InputBucketWeightCount;
+
+            var addFeaturePtr = featurePtr + toWIndex * AccumulatorSize;
+            var subFeaturePtr = featurePtr + fromWIndex * AccumulatorSize;
+
+            for (var i = AccumulatorSize - 1; i >= 0; i--)
+            {
+                whiteAcc[i] =
+                    AvxIntrinsics.Add(whiteAcc[i], AvxIntrinsics.Subtract(addFeaturePtr[i], subFeaturePtr[i]));
+            }
         }
 
         if (!board.BlackNeedsRefresh)
         {
-            SubtractWeights(blackAcc, board.BlackInputBucket, bIdx);
+            var featurePtr = NnueWeights.FeatureWeights + board.BlackInputBucket * InputBucketWeightCount;
+
+            var addFeaturePtr = featurePtr + toBIndex * AccumulatorSize;
+            var subFeaturePtr = featurePtr + fromBIndex * AccumulatorSize;
+
+            for (var i = AccumulatorSize - 1; i >= 0; i--)
+            {
+                blackAcc[i] =
+                    AvxIntrinsics.Add(blackAcc[i], AvxIntrinsics.Subtract(addFeaturePtr[i], subFeaturePtr[i]));
+            }
         }
     }
 
+    public static void ApplyCapture(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc,
+        int fromPiece, int fromSquare,
+        int toPiece, int toSquare,
+        int capturedPiece, int capturedSquare
+        )
+    {
+        var (fromBIndex, fromWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, fromPiece, fromSquare);
+        var (toBIndex, toWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, toPiece, toSquare);
+        var (capBIndex, capWindex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, capturedPiece, capturedSquare);
+        if (!board.WhiteNeedsRefresh)
+        {
+            var featurePtr = NnueWeights.FeatureWeights + board.WhiteInputBucket * InputBucketWeightCount;
+
+            var addFeaturePtr = featurePtr + toWIndex * AccumulatorSize;
+            var subFeaturePtr = featurePtr + fromWIndex * AccumulatorSize;
+            var sub2FeaturePtr = featurePtr + capWindex * AccumulatorSize;
+
+            for (var i = AccumulatorSize - 1; i >= 0; i--)
+            {
+                whiteAcc[i] = AvxIntrinsics.Add(whiteAcc[i], AvxIntrinsics.Subtract(addFeaturePtr[i],
+                    AvxIntrinsics.Add(subFeaturePtr[i], sub2FeaturePtr[i])));
+            }
+        }
+
+        if (!board.BlackNeedsRefresh)
+        {
+            var featurePtr = NnueWeights.FeatureWeights + board.BlackInputBucket * InputBucketWeightCount;
+
+            var addFeaturePtr = featurePtr + toBIndex * AccumulatorSize;
+            var subFeaturePtr = featurePtr + fromBIndex * AccumulatorSize;
+            var sub2FeaturePtr = featurePtr + capBIndex * AccumulatorSize;
+
+            for (var i = AccumulatorSize - 1; i >= 0; i--)
+            {
+                blackAcc[i] = AvxIntrinsics.Add(blackAcc[i], AvxIntrinsics.Subtract(addFeaturePtr[i],
+                    AvxIntrinsics.Add(subFeaturePtr[i], sub2FeaturePtr[i])));
+            }
+        }
+    }
+
+    public static void ApplyCastle(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, 
+        int kingPiece, int fromKingSquare, int toKingSquare,
+        int rookPiece, int fromRookSquare, int toRookSquare)
+    {
+        var (fromKingBIndex, fromKingWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, kingPiece, fromKingSquare);
+        var (toKingBIndex, toKingWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, kingPiece, toKingSquare);
+        var (fromRookBIndex, fromRookWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, rookPiece, fromRookSquare);
+        var (toRookBIndex, toRookWIndex) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, rookPiece, toRookSquare);
+
+        if (!board.WhiteNeedsRefresh)
+        {
+            var featurePtr = NnueWeights.FeatureWeights + board.WhiteInputBucket * InputBucketWeightCount;
+
+            var addFeaturePtr = featurePtr + toKingWIndex * AccumulatorSize;
+            var subFeaturePtr = featurePtr + fromKingWIndex * AccumulatorSize;
+            var add2FeaturePtr = featurePtr + toRookWIndex * AccumulatorSize;
+            var sub2FeaturePtr = featurePtr + fromRookWIndex * AccumulatorSize;
+
+            for (var i = AccumulatorSize - 1; i >= 0; i--)
+            {
+                whiteAcc[i] = AvxIntrinsics.Add(whiteAcc[i], AvxIntrinsics.Subtract(
+                    AvxIntrinsics.Add(addFeaturePtr[i], add2FeaturePtr[i]),
+                    AvxIntrinsics.Add(subFeaturePtr[i], sub2FeaturePtr[i])));
+            }
+        }
+
+        if (!board.BlackNeedsRefresh)
+        {
+            var featurePtr = NnueWeights.FeatureWeights + board.BlackInputBucket * InputBucketWeightCount;
+
+            var addFeaturePtr = featurePtr + toKingBIndex * AccumulatorSize;
+            var subFeaturePtr = featurePtr + fromKingBIndex * AccumulatorSize;
+            var add2FeaturePtr = featurePtr + toRookBIndex * AccumulatorSize;
+            var sub2FeaturePtr = featurePtr + fromRookBIndex * AccumulatorSize;
+
+            for (var i = AccumulatorSize - 1; i >= 0; i--)
+            {
+                blackAcc[i] = AvxIntrinsics.Add(blackAcc[i], AvxIntrinsics.Subtract(
+                    AvxIntrinsics.Add(addFeaturePtr[i], add2FeaturePtr[i]),
+                    AvxIntrinsics.Add(subFeaturePtr[i], sub2FeaturePtr[i])));
+            }
+        }
+    }
     public static void Apply(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, int piece, int square)
     {
         var (bIdx, wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, square);
@@ -122,50 +227,13 @@ public static unsafe class NnueEvaluator
         }
     }
 
-    public static void Replace(this ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, int piece, int from, int to)
-    {
-        var (from_bIdx, from_wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, from);
-        var (to_bIdx, to_wIdx) = FeatureIndices(board.WhiteMirrored, board.BlackMirrored, piece, to);
-
-        if (!board.WhiteNeedsRefresh)
-        {
-            ReplaceWeights(whiteAcc, board.WhiteInputBucket, to_wIdx, from_wIdx);
-        }
-
-        if (!board.BlackNeedsRefresh)
-        {
-            ReplaceWeights(blackAcc, board.BlackInputBucket, to_bIdx, from_bIdx);
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ReplaceWeights(VectorShort* accuPtr, int inputBucket, int addFeatureIndex, int removeFeatureIndex)
-    {
-        var addFeatureOffsetPtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + addFeatureIndex * AccumulatorSize;
-        var removeFeatureOffsetPtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + removeFeatureIndex * AccumulatorSize;
-        for (var i = AccumulatorSize - 1; i >= 0; i--)
-        {
-            accuPtr[i] += addFeatureOffsetPtr[i] - removeFeatureOffsetPtr[i];
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SubtractWeights(VectorShort* accuPtr, int inputBucket, int inputFeatureIndex)
-    {
-        var featurePtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + inputFeatureIndex * AccumulatorSize;
-        for (var i = AccumulatorSize - 1; i >= 0; i--)
-        {
-            accuPtr[i] -= featurePtr[i];
-        }
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AddWeights(VectorShort* accuPtr, int inputBucket, int inputFeatureIndex)
     {
         var featurePtr = NnueWeights.FeatureWeights + inputBucket * InputBucketWeightCount + inputFeatureIndex * AccumulatorSize;
         for (var i = AccumulatorSize - 1; i >= 0; i--)
         {
-            accuPtr[i] += featurePtr[i];
+            accuPtr[i] = AvxIntrinsics.Add(accuPtr[i], featurePtr[i]);
         }
     }
 
