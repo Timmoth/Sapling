@@ -13,7 +13,7 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-### Latest Release [v1.1.1 24/09/2024](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.1.1)
+### Latest Release [v1.1.2 27/09/2024](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.1.2)
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
@@ -91,7 +91,7 @@ After any changes to the engine a SPRT test must be ran to ensure that the chang
 There is a script `sprt.bat` which contains the command to run a cutechess-cli SPRT test. Ensure that you've configured CuteChess to point to both `dev` and `base` engines before hand, and also update the opening book + endgame table base to point to one on your system.
 
 ## NNUE
-I'm in the process of training a  (768 -> 1024)x2 -> 8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger in the weeks. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
+I'm in the process of training a (768x8->1024)x2-8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger as I improve the network. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
 
 ## Resources:
 - [Chess Programming Wiki](https://www.chessprogramming.org/)
