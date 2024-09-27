@@ -1,5 +1,7 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
+using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 
@@ -11,8 +13,7 @@ public unsafe partial class Searcher
     private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
     private static readonly int[] AsperationWindows = { 40, 100, 300, 900, 2700, Constants.MaxScore };
     private readonly uint* _pVTable;
-    private readonly Transposition* _transpositionTable;
-    public readonly Transposition[] Transpositions;
+    public readonly Transposition* Transpositions;
     public readonly uint TtMask;
     private long _lockedUntil;
 
@@ -20,16 +21,75 @@ public unsafe partial class Searcher
     public uint BestSoFar;
     public int NodesVisited;
 
-    public Searcher(Transposition[] transpositions)
+    public Searcher(Transposition* transpositions, int ttCount)
     {
         Transpositions = transpositions;
-        fixed (Transposition* p = transpositions)
+
+        TtMask = (uint)ttCount - 1;
+        _pVTable = AlignedAllocZeroed();
+
+        SearchStack = AllocateSearchStack(Constants.MaxSearchDepth + 1);
+        for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
-            _transpositionTable = p; // Store the pointer
+            SearchStack[i] = new BoardStateEntry();
         }
 
-        TtMask = (uint)transpositions.Length - 1;
-        _pVTable = AlignedAllocZeroed();
+        MoveStack = AllocateUlong(800);
+        killers = AllocateUInt((nuint)killersLength);
+        counters = AllocateUInt((nuint)countersLength);
+        history = AllocateInt((nuint)historyLength);
+    }
+    public static unsafe BoardStateEntry* AllocateSearchStack(nuint items)
+    {
+        const nuint alignment = 64;
+
+        nuint bytes = ((nuint)sizeof(BoardStateEntry) * (nuint)items);
+        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
+        NativeMemory.Clear(block, bytes);
+
+        return (BoardStateEntry*)block;
+    }
+    public static ulong* AllocateUlong(nuint count)
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc((nuint)sizeof(ulong) * count, alignment);
+        NativeMemory.Clear(block, (nuint)sizeof(ulong) * count);
+
+        return (ulong*)block;
+    }
+
+    public static uint* AllocateUInt(nuint count)
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc((nuint)sizeof(uint) * count, alignment);
+        NativeMemory.Clear(block, (nuint)sizeof(uint) * count);
+
+        return (uint*)block;
+    }
+    public static int* AllocateInt(nuint count)
+    {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc((nuint)sizeof(int) * count, alignment);
+        NativeMemory.Clear(block, (nuint)sizeof(int) * count);
+
+        return (int*)block;
+    }
+
+    ~Searcher()
+    {
+        NativeMemory.AlignedFree(MoveStack);
+        NativeMemory.AlignedFree(killers);
+        NativeMemory.AlignedFree(counters);
+        NativeMemory.AlignedFree(history);
+        for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
+        {
+            ref var entry = ref SearchStack[i];
+            entry.Dispose();
+        }
+        NativeMemory.AlignedFree(SearchStack);
     }
 
     public static uint* AlignedAllocZeroed()
@@ -71,8 +131,13 @@ public unsafe partial class Searcher
     private const int historyLength = 13 * 64;
     private const int countersLength = 13 * 64;
 
+    public readonly BoardStateEntry* SearchStack;
+    public readonly ulong* MoveStack;
 
-    public (List<uint> pv, int depthSearched, int score, int nodes) Search(BoardState board, int nodeLimit = 0,
+    public readonly uint* killers;
+    public readonly int* history;
+    public readonly uint* counters;
+    public (List<uint> pv, int depthSearched, int score, int nodes) Search(GameState inputBoard, int nodeLimit = 0,
         int depthLimit = 0, bool writeInfo = false)
     {
         NodesVisited = 0;
@@ -81,11 +146,11 @@ public unsafe partial class Searcher
         var depthSearched = 0;
         _searchCancelled = false;
 
-        var killers = stackalloc uint[killersLength];
-        var history = stackalloc int[historyLength];
-        var counters = stackalloc uint[countersLength];
-
+        NativeMemory.Clear(history, (nuint)historyLength);
+        NativeMemory.Clear(killers, (nuint)killersLength);
+        NativeMemory.Clear(counters, (nuint)countersLength);
         NativeMemory.Clear(_pVTable, _pvTableBytes);
+        Unsafe.CopyBlock(MoveStack, inputBoard.Moves, sizeof(ulong) * 800);
 
         var alpha = Constants.MinScore;
         var beta = Constants.MaxScore;
@@ -93,7 +158,11 @@ public unsafe partial class Searcher
 
         var maxDepth = depthLimit > 0 ? depthLimit : Constants.MaxSearchDepth;
 
-        var bestEval = lastIterationEval = NegaMaxSearch(ref board.Data, board.WhiteAccumulator, board.BlackAccumulator, board.Moves, killers, counters, history, 0, 0, alpha, beta, false);
+        ref var rootBoard = ref SearchStack[0];
+        inputBoard.Board.CloneTo(ref rootBoard.Data);
+        rootBoard.Data.FillAccumulators(ref rootBoard.AccumulatorState, rootBoard.WhiteAccumulator, rootBoard.BlackAccumulator);
+
+        var bestEval = lastIterationEval = NegaMaxSearch(0, 0, alpha, beta, false);
 
         BestSoFar = _pVTable[0];
         var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
@@ -117,7 +186,7 @@ public unsafe partial class Searcher
                 NativeMemory.Clear(killers, (nuint)killersLength);
                 NativeMemory.Clear(counters, (nuint)countersLength);
 
-                var eval = NegaMaxSearch(ref board.Data, board.WhiteAccumulator, board.BlackAccumulator, board.Moves, killers, counters, history, 0, j, alpha, beta, false);
+                var eval = NegaMaxSearch(0, j, alpha, beta, false);
 
                 if (eval <= alpha)
                 {
@@ -145,7 +214,7 @@ public unsafe partial class Searcher
             }
 
             BestSoFar = _pVTable[0];
-            NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
+            NativeMemory.Copy(_pVTable, pvMoves, (nuint)j * sizeof(uint));
             depthSearched = j;
             bestEval = lastIterationEval;
 
@@ -154,7 +223,7 @@ public unsafe partial class Searcher
                 var dt = DateTime.Now - startTime;
                 var nps = (int)(NodesVisited / dt.TotalSeconds);
                 var sb = new StringBuilder();
-                for (var i = 0; i < Constants.MaxSearchDepth; i++)
+                for (var i = 0; i <= j; i++)
                 {
                     if (pvMoves[i] == 0)
                     {

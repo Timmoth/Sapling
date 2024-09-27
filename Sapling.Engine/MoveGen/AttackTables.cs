@@ -6,10 +6,10 @@ namespace Sapling.Engine.MoveGen;
 
 public static unsafe class AttackTables
 {
-    public static readonly ulong[] RookAttackMasks = new ulong[64];
+    public static readonly ulong* RookAttackMasks;
     public static readonly ulong[] RookAttackMasksAll = new ulong[64];
     public static readonly MagicBitBoard[] RookMagics = new MagicBitBoard[64];
-    public static readonly ulong[] BishopAttackMasks = new ulong[64];
+    public static readonly ulong* BishopAttackMasks;
     public static readonly ulong[] BishopAttackMasksAll = new ulong[64];
     public static readonly MagicBitBoard[] BishopMagics = new MagicBitBoard[64];
 
@@ -17,16 +17,16 @@ public static unsafe class AttackTables
     private static readonly int[] BlackPawnOffsets = { -7, -9 };
     private static readonly int[] KnightOffsets = { 17, 15, 10, 6, -6, -10, -15, -17 };
     private static readonly int[] KingOffsets = { 1, -1, 8, -8, 9, -9, 7, -7 };
-    public static readonly ulong[] KnightAttackTable = new ulong[64];
-    public static readonly ulong[] KingAttackTable = new ulong[64];
-    public static readonly ulong[] WhitePawnAttackTable = new ulong[64];
-    public static readonly ulong[] BlackPawnAttackTable = new ulong[64];
+    public static readonly ulong* KnightAttackTable;
+    public static readonly ulong* KingAttackTable;
+    public static readonly ulong* WhitePawnAttackTable;
+    public static readonly ulong* BlackPawnAttackTable;
 
     private static readonly ulong* PextAttacks;
     private static readonly ulong* BishopPextOffset;
     private static readonly ulong* RookPextOffset;
 
-    public static readonly ulong[][] LineBitBoards = new ulong[64][];
+    public static readonly ulong* LineBitBoards;
 
     public static ulong* AllocateULong(int count)
     {
@@ -43,7 +43,13 @@ public static unsafe class AttackTables
         PextAttacks = AllocateULong(5248 + 102400);
         BishopPextOffset = AllocateULong(64);
         RookPextOffset = AllocateULong(64);
-
+        KnightAttackTable = AllocateULong(64);
+        KingAttackTable = AllocateULong(64);
+        WhitePawnAttackTable = AllocateULong(64);
+        BlackPawnAttackTable = AllocateULong(64);
+        RookAttackMasks = AllocateULong(64);
+        BishopAttackMasks = AllocateULong(64);
+        LineBitBoards = AllocateULong(64 * 64);
         var rand = Random.Shared;
         for (var i = 0; i < 64; i++)
         {
@@ -155,15 +161,14 @@ public static unsafe class AttackTables
 
         for (var i = 0; i < 64; i++)
         {
-            var line = LineBitBoards[i] = new ulong[64];
             for (var j = 0; j < 64; j++)
             {
-                line[j] = CalculateLineBitBoard(i, j);
+                CalculateLineBitBoard(i, j);
             }
         }
     }
 
-    private static ulong CalculateLineBitBoard(int i, int j)
+    private static void CalculateLineBitBoard(int i, int j)
     {
         // Convert squares i and j to (rank, file) coordinates
         int rank1 = i / 8, file1 = i % 8;
@@ -172,7 +177,8 @@ public static unsafe class AttackTables
         // If i and j are the same, return a bitboard with just that square
         if (i == j)
         {
-            return 1UL << i;
+            LineBitBoards[i*64 + j] = 1UL << i;
+            return;
         }
 
         ulong bitboard = 0UL;
@@ -222,7 +228,8 @@ public static unsafe class AttackTables
 
         bitboard &= ~(1UL << i);
         bitboard &= ~(1UL << j);
-        return bitboard; // If no alignment, bitboard will be 0 (empty)
+
+        LineBitBoards[i * 64 + j] = bitboard;
     }
 
 

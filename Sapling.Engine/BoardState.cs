@@ -1,73 +1,130 @@
-﻿using Sapling.Engine.Evaluation;
+﻿using System.Runtime.CompilerServices;
+using Sapling.Engine.Evaluation;
+using System.Runtime.InteropServices;
 
 namespace Sapling.Engine;
 
-using System.Runtime.InteropServices;
-
-[StructLayout(LayoutKind.Explicit, Size = 144)] // Explicit layout with size control
+[StructLayout(LayoutKind.Explicit, Size = 138)]
 public unsafe struct BoardStateData
 {
-    // 8-byte fields (grouped together for optimal alignment)
     [FieldOffset(0)] public fixed ulong Occupancy[15];
+    [FieldOffset(120)] public ulong Hash;
+    [FieldOffset(128)] public ushort TurnCount;
+    [FieldOffset(130)] public byte HalfMoveClock;
+    [FieldOffset(131)] public bool WhiteToMove;
+    [FieldOffset(132)] public bool InCheck;
+    [FieldOffset(133)] public CastleRights CastleRights;
+    [FieldOffset(134)] public byte WhiteKingSquare;
+    [FieldOffset(135)] public byte BlackKingSquare;
+    [FieldOffset(136)] public byte EnPassantFile;
+    [FieldOffset(137)] public byte PieceCount;
+}
 
-    // Hash, which is 8 bytes
-    [FieldOffset(120)] public ulong Hash;         // 8 bytes
-    [FieldOffset(128)] public ushort TurnCount;     // 2 bytes
-    [FieldOffset(130)] public byte HalfMoveClock;        // 1 bytes
-
-    // Grouped bools (using 1 byte each)
-    [FieldOffset(131)] public bool WhiteToMove;         // 1 byte
-    [FieldOffset(132)] public bool InCheck;             // 1 byte
-    [FieldOffset(133)] public bool WhiteMirrored;       // 1 byte
-    [FieldOffset(134)] public bool BlackMirrored;       // 1 byte
-
-    // 4-byte field (for proper alignment)
-
-    // CastleRights (assuming this is a byte-sized enum)
-    [FieldOffset(135)] public CastleRights CastleRights; // 1 byte
-
-    // Smaller fields (grouped together for minimal padding)
-    [FieldOffset(136)] public byte WhiteKingSquare; // 1 byte
-    [FieldOffset(137)] public byte BlackKingSquare; // 1 byte
-    [FieldOffset(138)] public byte EnPassantFile;   // 1 byte
-    [FieldOffset(139)] public byte PieceCount;      // 1 byte
-    [FieldOffset(140)] public byte WhiteInputBucket;      // 1 byte
-    [FieldOffset(141)] public byte BlackInputBucket;      // 1 byte
-    [FieldOffset(142)] public bool WhiteNeedsRefresh;      // 1 byte
-    [FieldOffset(143)] public bool BlackNeedsRefresh;      // 1 byte
-    public void CloneTo(ref BoardStateData copy)
+public static unsafe class AccumulatorStateExtensions
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void CloneTo(this ref BoardStateData board, ref BoardStateData copy)
     {
-        fixed (BoardStateData* sourcePtr = &this)
+        fixed (BoardStateData* sourcePtr = &board)
         fixed (BoardStateData* destPtr = &copy)
         {
             // Copy the memory block from source to destination
             Buffer.MemoryCopy(sourcePtr, destPtr, sizeof(BoardStateData), sizeof(BoardStateData));
         }
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void UpdateWhiteTo(this ref AccumulatorState state, ref BoardStateData board)
+    {
+        state.Evaluation = null;
+        state.WhiteNeedsRefresh = false;
+        state.WhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
+        state.WhiteInputBucket = NnueWeights.BucketLayout[board.WhiteKingSquare];
+        state.WhiteAccumulatorUpToDate = true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void UpdateBlackTo(this ref AccumulatorState state, ref BoardStateData board)
+    {
+        state.Evaluation = null;
+        state.BlackNeedsRefresh = false;
+        state.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
+        state.BlackInputBucket = NnueWeights.BucketLayout[board.BlackKingSquare ^ 0x38];
+        state.BlackAccumulatorUpToDate = true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void UpdateTo(this ref AccumulatorState state, ref BoardStateData board)
+    {
+        state.Evaluation = null;
+        state.WhiteNeedsRefresh = state.BlackNeedsRefresh = false;
+        state.WhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
+        state.WhiteInputBucket = NnueWeights.BucketLayout[board.WhiteKingSquare];
+        state.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
+        state.BlackInputBucket = NnueWeights.BucketLayout[board.BlackKingSquare ^ 0x38];
+        state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void UpdateToParent(this ref AccumulatorState state, ref AccumulatorState other, ref BoardStateData board)
+    {
+        state.Evaluation = null;
+        state.WhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
+        state.WhiteInputBucket = NnueWeights.BucketLayout[board.WhiteKingSquare];
+        state.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
+        state.BlackInputBucket = NnueWeights.BucketLayout[board.BlackKingSquare ^ 0x38];
+        state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = false;
+
+        state.ChangeType = AccumulatorChangeType.None;
+
+        state.WhiteNeedsRefresh = other.WhiteMirrored != state.WhiteMirrored || other.WhiteInputBucket != state.WhiteInputBucket;
+        state.BlackNeedsRefresh = other.BlackMirrored != state.BlackMirrored || other.BlackInputBucket != state.BlackInputBucket;
+
+        state.WhiteMirrored = other.WhiteMirrored;
+        state.BlackMirrored = other.BlackMirrored;
+        state.WhiteInputBucket = other.WhiteInputBucket;
+        state.BlackInputBucket = other.BlackInputBucket;
+    }
 }
 
-public sealed unsafe class BoardState
+public enum AccumulatorChangeType : byte
 {
-    public BoardStateData Data;
-    public readonly ulong* Moves;
-    public VectorShort* BlackAccumulator;
-    public VectorShort* WhiteAccumulator;
+    None = 0,
+    SubAdd = 1,
+    SubSubAdd = 2,
+    SubSubAddAdd = 3,
+}
 
-    public BoardState()
+[StructLayout(LayoutKind.Explicit, Size = 45)]
+public unsafe struct AccumulatorState
+{
+    [FieldOffset(0)] public fixed int WhiteAddFeatureUpdates[2];
+    [FieldOffset(8)] public fixed int WhiteSubFeatureUpdates[2]; 
+    [FieldOffset(16)] public fixed int BlackAddFeatureUpdates[2];
+    [FieldOffset(24)] public fixed int BlackSubFeatureUpdates[2];
+    [FieldOffset(32)] public AccumulatorChangeType ChangeType;
+    [FieldOffset(33)] public bool BlackAccumulatorUpToDate;
+    [FieldOffset(34)] public bool WhiteAccumulatorUpToDate;
+    [FieldOffset(35)] public bool WhiteMirrored;
+    [FieldOffset(36)] public bool BlackMirrored;
+    [FieldOffset(37)] public byte WhiteInputBucket;
+    [FieldOffset(38)] public byte BlackInputBucket;
+    [FieldOffset(39)] public bool WhiteNeedsRefresh;
+    [FieldOffset(40)] public bool BlackNeedsRefresh;
+    [FieldOffset(41)] public int? Evaluation;
+}
+
+public unsafe struct BoardStateEntry
+{
+    public BoardStateData Data = default;
+    public readonly VectorShort* BlackAccumulator;
+    public readonly VectorShort* WhiteAccumulator;
+    public AccumulatorState AccumulatorState = default;
+
+    public BoardStateEntry()
     {
         WhiteAccumulator = AllocateAccumulator();
         BlackAccumulator = AllocateAccumulator();
-        Moves = AllocateMoves();
-    }
-
-    public static ulong* AllocateMoves()
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc((nuint)sizeof(ulong) * 800, alignment);
-        NativeMemory.Clear(block, (nuint)sizeof(ulong) * 800);
-
-        return (ulong*)block;
     }
     public static VectorShort* AllocateAccumulator()
     {
@@ -78,10 +135,8 @@ public sealed unsafe class BoardState
 
         return (VectorShort*)block;
     }
-
-    ~BoardState()
+    public void Dispose()
     {
-        NativeMemory.AlignedFree(Moves);
         NativeMemory.AlignedFree(WhiteAccumulator);
         NativeMemory.AlignedFree(BlackAccumulator);
     }

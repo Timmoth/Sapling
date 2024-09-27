@@ -7,14 +7,14 @@ public static class MoveExtensions
 {
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static (byte movedPiece, byte fromSquare, byte toSquare, byte capturedPiece, byte moveType) Deconstruct(
-        this uint move)
+    public static void Deconstruct(
+        this uint move, out byte movedPiece, out byte fromSquare, out byte toSquare, out byte capturedSquare, out byte moveType)
     {
-        return (BitFieldExtract(move, 0, 4),
-            BitFieldExtract(move, 4, 6),
-            BitFieldExtract(move, 10, 6),
-            BitFieldExtract(move, 16, 4),
-            BitFieldExtract(move, 20, 4));
+        movedPiece = BitFieldExtract(move, 0, 4);
+        fromSquare = BitFieldExtract(move, 4, 6);
+        toSquare = BitFieldExtract(move, 10, 6);
+        capturedSquare = BitFieldExtract(move, 16, 4);
+        moveType = BitFieldExtract(move, 20, 4);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

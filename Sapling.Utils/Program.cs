@@ -5,6 +5,7 @@ using Sapling.Engine.MoveGen;
 
 namespace Sapling.Utils
 {
+
     internal class Program
     {
         public static string PolyGlotToUciMove(ushort move)
@@ -144,7 +145,7 @@ namespace Sapling.Utils
             for (var i = 0; i < 5000000; i++)
             {
                     gameState.ResetTo(initialGameState.Board);
-                    var firstMove = gameState.Moves[Random.Shared.Next(0, gameState.Moves.Count)];
+                    var firstMove = gameState.LegalMoves[Random.Shared.Next(0, gameState.LegalMoves.Count)];
                     gameState.Apply(firstMove);
 
                     var openingMovesBuilder = new StringBuilder();
@@ -162,25 +163,25 @@ namespace Sapling.Utils
                         }
 
                         var randomOpeningMove = openingMoveList[Random.Shared.Next(0, openingMoveList.Count)];
-                        var mv = gameState.Moves.FirstOrDefault(m => ToOpeningMove(m) == randomOpeningMove);
+                        var mv = gameState.LegalMoves.FirstOrDefault(m => ToOpeningMove(m) == randomOpeningMove);
                         if (mv == default)
                         {
                             var uciMove = PolyGlotToUciMove(randomOpeningMove);
                             if (uciMove == "e1h1")
                             {
-                                mv = gameState.Moves.FirstOrDefault(m => m.ToUciMoveName() == "e1g1");
+                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e1g1");
                             }
                             else if (uciMove == "e1a1")
                             {
-                                mv = gameState.Moves.FirstOrDefault(m => m.ToUciMoveName() == "e1b1");
+                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e1b1");
                             }
                             else if (uciMove == "e8h8")
                             {
-                                mv = gameState.Moves.FirstOrDefault(m => m.ToUciMoveName() == "e8g8");
+                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e8g8");
                             }
                             else if (uciMove == "e8a8")
                             {
-                                mv = gameState.Moves.FirstOrDefault(m => m.ToUciMoveName() == "e8b8");
+                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e8b8");
                             }
                         }
 

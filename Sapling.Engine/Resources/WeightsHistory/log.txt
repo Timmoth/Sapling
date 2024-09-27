@@ -150,3 +150,11 @@ Data: 1.5bn positions
 WDL: 0.3
 LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
 SuperBatches: 200
+
+----------------------------------
+18_(768x8-1024)x2-8.bin
+----------------------------------
+Data: 1.5bn positions
+WDL: 0.3
+LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
+SuperBatches: 240

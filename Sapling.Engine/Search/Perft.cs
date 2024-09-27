@@ -17,18 +17,20 @@ public static class Perft
         {
             var m = moves[index];
             board.CloneTo(ref copy);
-            if (copy.PartialApply(m))
+            if (!copy.PartialApply(m))
             {
-                if (depth <= 1)
-                {
-                    // Leaf node, don't search any deeper
-                    nodeCount++;
-                }
-                else
-                {
-                    copy.UpdateCheckStatus();
-                    nodeCount += copy.PerftInternal(depth - 1);
-                }
+                continue;
+            }
+
+            if (depth <= 1)
+            {
+                // Leaf node, don't search any deeper
+                nodeCount++;
+            }
+            else
+            {
+                copy.UpdateCheckStatus();
+                nodeCount += copy.PerftInternal(depth - 1);
             }
         }
 

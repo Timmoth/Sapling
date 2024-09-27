@@ -29,7 +29,7 @@ public class ZobristTests
         {
             var turns = move.Split(' ');
 
-            var mov = PgnParser.Parse(turns[0], gameState.Moves);
+            var mov = PgnParser.Parse(turns[0], gameState.LegalMoves);
 
             gameState.Apply(mov);
 
@@ -38,7 +38,7 @@ public class ZobristTests
                 break;
             }
 
-            mov = PgnParser.Parse(turns[1], gameState.Moves);
+            mov = PgnParser.Parse(turns[1], gameState.LegalMoves);
             gameState.Apply(mov);
         }
 
@@ -69,7 +69,7 @@ public class ZobristTests
         {
             var turns = move.Split(' ');
 
-            var mov = PgnParser.Parse(turns[0], gameState.Moves);
+            var mov = PgnParser.Parse(turns[0], gameState.LegalMoves);
 
             gameState.Apply(mov);
 
@@ -78,7 +78,7 @@ public class ZobristTests
                 break;
             }
 
-            mov = PgnParser.Parse(turns[1], gameState.Moves);
+            mov = PgnParser.Parse(turns[1], gameState.LegalMoves);
 
             gameState.Apply(mov);
         }

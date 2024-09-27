@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Collections.Concurrent;
+using System.Reflection;
 using System.Runtime.Intrinsics.X86;
 
 namespace Sapling;
@@ -53,6 +54,12 @@ internal class Program
             return;
         }
 
+        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+        {
+            // Log the exception or take appropriate action
+            Console.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
+        };
+
         var logDirectory = Path.Combine(Environment.CurrentDirectory, "logs");
         if (!Directory.Exists(logDirectory))
         {
@@ -64,35 +71,58 @@ internal class Program
         var logFilePath = Path.Combine(logDirectory, $"{fileName}.txt");
         using var fileStream = new FileStream(logFilePath, FileMode.Append, FileAccess.Write);
         using var logWriter = new StreamWriter(fileStream);
-
+        
         try
         {
             UciEngine engine = new(logWriter);
 
-            while (true)
+            var commandQueue = new ConcurrentQueue<string>();
+
+            var hasQuit = false;
+            _ = Task.Run(() =>
             {
-                var command = Console.ReadLine();
-                if (command == null)
+                while (true)
                 {
-                    continue;
-                }
+                    var command = Console.ReadLine();
+                    if (string.IsNullOrEmpty(command))
+                    {
+                        continue;
+                    }
 
-                if (command.Contains("quit"))
+                    if (command.Contains("quit"))
+                    {
+                        hasQuit = true;
+                        break;
+                    }
+
+                    if (command.Contains("stop"))
+                    {
+                        engine.ReceiveCommand(command);
+                        continue;
+                    }
+
+                    commandQueue.Enqueue(command);
+                }
+            });
+
+            while (!hasQuit)
+            {
+                if (commandQueue.TryDequeue(out var command))
                 {
-                    break;
+                    engine.ReceiveCommand(command);
                 }
-
-                engine.ReceiveCommand(command);
             }
         }
         catch (Exception ex)
         {
-            logWriter.WriteAsync("[FATAL ERROR]");
-            logWriter.WriteAsync("----------");
-            logWriter.WriteAsync(ex.ToString());
-            logWriter.WriteAsync("----------");
+            logWriter.WriteLine("[FATAL ERROR]");
+            logWriter.WriteLine("----------");
+            logWriter.WriteLine(ex.ToString());
+            logWriter.WriteLine("----------");
         }
-
-        logWriter.Flush();
+        finally
+        {
+            logWriter.Flush();
+        }
     }
 }

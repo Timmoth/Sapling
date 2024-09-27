@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
+using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.DataGen;
 
@@ -10,7 +11,7 @@ public class DataGenerator
     public const int Iterations = 10000;
     public const int MaxGames = 20;
     public const int MaxTurnCount = 500;
-    public static readonly BoardState InitialBoard = BoardStateExtensions.CreateBoardFromArray(Constants.InitialState);
+    public static BoardStateData InitialBoard = default;
     private static readonly object OutputLock = new();
     public int Draws;
     public int Looses;
@@ -30,10 +31,14 @@ public class DataGenerator
 
         var searchers = new List<ParallelSearcher>();
         var threads = Environment.ProcessorCount;
+        var transpositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
+
         for (var i = 0; i < threads; i++)
         {
-            searchers.Add(new ParallelSearcher());
+            searchers.Add(new ParallelSearcher(transpositionSize));
         }
+
+        InitialBoard.ResetToFen(Constants.InitialState);
 
         var stopwatch = Stopwatch.StartNew();
 
@@ -98,18 +103,21 @@ public class DataGenerator
 
     static bool IsAdjudicatedDraw(GameState gameState, int drawScoreCount)
     {
-        return gameState.Board.Data.TurnCount >= 60 && gameState.Board.Data.HalfMoveClock >= 20 && drawScoreCount >= 4;
+        return gameState.Board.TurnCount >= 60 && gameState.Board.HalfMoveClock >= 20 && drawScoreCount >= 4;
     }
 
     private void RunIteration(BinaryWriter writer, ParallelSearcher searcher)
     {
         try
         {
-            var boardState = InitialBoard.Clone();
+
+            BoardStateData boardState = default;
+            InitialBoard.CloneTo(ref boardState);
+
             Span<bool> turns = stackalloc bool[MaxTurnCount];
             Span<BulletFormat> dataGenPositions = stackalloc BulletFormat[MaxTurnCount];
             var gameState = new GameState(boardState);
-            var initialLegalMoves = gameState.Moves.ToArray();
+            var initialLegalMoves = gameState.LegalMoves.ToArray();
 
             for (var i = 0; i < MaxGames; i++)
             {
@@ -118,17 +126,17 @@ public class DataGenerator
                 var adjudicationCounter = 0;
                 var score = 0;
                 var drawScoreCount = 0;
-                while (!gameState.GameOver() && gameState.Board.Data.TurnCount < MaxTurnCount && !IsAdjudicatedDraw(gameState, drawScoreCount))
+                while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount && !IsAdjudicatedDraw(gameState, drawScoreCount))
                 {
                     uint move = default;
                     if (randomMoveCount <= 9)
                     {
-                        move = gameState.Moves[Random.Shared.Next(0, gameState.Moves.Count)];
+                        move = gameState.LegalMoves[Random.Shared.Next(0, gameState.LegalMoves.Count)];
                         randomMoveCount++;
                     }
                     else
                     {
-                        var (pv, _, s, _, _) = searcher.NodeBoundSearch(gameState.Board, 6500, 60);
+                        var (pv, _, s, _, _) = searcher.NodeBoundSearch(gameState, 6500, 60);
                         move = pv[0];
                         score = s;
 
@@ -141,10 +149,10 @@ public class DataGenerator
                             drawScoreCount = 0;
                         }
 
-                        if (move.IsQuiet() && !gameState.Board.Data.InCheck)
+                        if (move.IsQuiet() && !gameState.Board.InCheck)
                         {
-                            turns[positions] = gameState.Board.Data.WhiteToMove;
-                            dataGenPositions[positions] = BulletFormat.Pack(ref gameState.Board.Data, (short)score, 0);
+                            turns[positions] = gameState.Board.WhiteToMove;
+                            dataGenPositions[positions] = BulletFormat.Pack(ref gameState.Board, (short)score, 0);
                             positions++;
                         }
                     }
@@ -170,7 +178,7 @@ public class DataGenerator
                 byte result;
                 if (adjudicationCounter > 4)
                 {
-                    result = boardState.Data.WhiteToMove ? (byte)1 : (byte)2;
+                    result = boardState.WhiteToMove ? (byte)1 : (byte)2;
                 }
                 else if (IsAdjudicatedDraw(gameState, drawScoreCount))
                 {
@@ -188,7 +196,7 @@ public class DataGenerator
 
                 Output(writer, dataGenPositions, positions, result);
 
-                gameState.ResetTo(InitialBoard, initialLegalMoves);
+                gameState.ResetTo(ref InitialBoard, initialLegalMoves);
             }
         }
         catch (Exception ex)

@@ -9,7 +9,7 @@ public static class OutputHelpers
 {
     public static string ToMoveString(this uint move)
     {
-        var (movedPiece, fromSquare, toSquare, capturedPiece, moveType) = move.Deconstruct();
+        move.Deconstruct(out var movedPiece, out var fromSquare, out var toSquare, out var capturedPiece, out var moveType);
         return
             $"{movedPiece.PieceToChar()} from: {fromSquare} to: {toSquare} cap: {capturedPiece.PieceToChar()} mov: {moveType}";
     }
@@ -224,7 +224,7 @@ public static class OutputHelpers
                 var fileIndex = blackAtTop ? x : 7 - x;
                 var squareIndex = rankIndex * 8 + fileIndex;
                 var highlight = squareIndex == lastMoveSquare;
-                var piece = gameState.Board.Data.GetPiece(squareIndex);
+                var piece = gameState.Board.GetPiece(squareIndex);
                 if (piece != 0)
                 {
                     if (highlight)
@@ -261,19 +261,19 @@ public static class OutputHelpers
 
             if (includeFen)
             {
-                output.AppendLine($"Fen         : {gameState.Board.Data.ToFen()}");
+                output.AppendLine($"Fen         : {gameState.Board.ToFen()}");
             }
 
             if (includeZobristKey)
             {
-                output.AppendLine($"Zobrist Key : {gameState.Board.Data.Hash.ToString("X")}");
+                output.AppendLine($"Zobrist Key : {gameState.Board.Hash.ToString("X")}");
             }
         }
 
         return output.ToString();
     }
 
-    public static unsafe string CreateDiagram(this BoardStateData board, bool blackAtTop = true, bool includeFen = true,
+    public static unsafe string CreateDiagram(this ref BoardStateData board, bool blackAtTop = true, bool includeFen = true,
         bool includeZobristKey = true)
     {
         StringBuilder output = new();

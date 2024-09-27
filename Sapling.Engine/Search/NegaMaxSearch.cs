@@ -1,5 +1,4 @@
-﻿using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
+﻿using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
@@ -9,7 +8,7 @@ namespace Sapling.Engine.Search;
 public partial class Searcher
 {
     public unsafe int
-        NegaMaxSearch(ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, ulong* hashHistory, uint* killers, uint* counters, int* history, int depthFromRoot, int depth,
+        NegaMaxSearch(int depthFromRoot, int depth,
             int alpha, int beta, bool wasReducedMove, uint prevMove = default)
     {
         NodesVisited++;
@@ -23,18 +22,21 @@ public partial class Searcher
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Max depth reached, return evaluation
-            return board.Evaluate(whiteAcc, blackAcc);
+            return NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
         }
+
+        ref var pboard = ref SearchStack[depthFromRoot].Data;
+        var pHash = pboard.Hash;
+
+        ref var boardState = ref SearchStack[depthFromRoot + 1];
+        ref var board = ref boardState.Data;
 
         var pvIndex = PVTable.Indexes[depthFromRoot];
         var nextPvIndex = PVTable.Indexes[depthFromRoot + 1];
         _pVTable[pvIndex] = 0;
 
         var pvNode = beta - alpha > 1;
-        var inCheck = board.InCheck;
-        var originalHash = board.Hash;
-        var oldEnpassant = board.EnPassantFile;
-        var prevHalfMoveClock = board.HalfMoveClock;
+        var parentInCheck = pboard.InCheck;
 
         var canPrune = false;
         uint transpositionBestMove = default;
@@ -51,13 +53,13 @@ public partial class Searcher
                 return alpha;
             }
 
-            if (board.HalfMoveClock >= 100 || board.InsufficientMatingMaterial())
+            if (pboard.HalfMoveClock >= 100 || pboard.InsufficientMatingMaterial())
             {
                 // Detect draw by Fifty move counter or repetition
                 return 0;
             }
 
-            if (alpha < 0 && board.HasRepetition(hashHistory, depthFromRoot))
+            if (alpha < 0 && pboard.HasRepetition(MoveStack, depthFromRoot))
             {
                 alpha = 0;
                 if (alpha >= beta)
@@ -65,7 +67,7 @@ public partial class Searcher
             } 
 
             (var transpositionEvaluation, transpositionBestMove, transpositionType) =
-                TranspositionTableExtensions.Get(_transpositionTable, TtMask, board.Hash, depth, depthFromRoot, alpha,
+                TranspositionTableExtensions.Get(Transpositions, TtMask, pHash, depth, depthFromRoot, alpha,
                     beta);
 
             if (!pvNode && transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
@@ -74,14 +76,14 @@ public partial class Searcher
                 return transpositionEvaluation;
             }
 
-            if (inCheck)
+            if (parentInCheck)
             {
                 // Extend searches when in check
                 depth++;
             }
             else if (!pvNode)
             {
-                var staticEval = board.Evaluate(whiteAcc, blackAcc);
+                var staticEval = NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
 
                 // Reverse futility pruning
                 var margin = depth * 75;
@@ -94,22 +96,25 @@ public partial class Searcher
                 if (staticEval >= beta &&
                     !wasReducedMove &&
                     (transpositionType != TranspositionTableFlag.Alpha || transpositionEvaluation >= beta) &&
-                    depth > 2 && board.HasMajorPieces(board.WhiteToMove))
+                    depth > 2 && pboard.HasMajorPieces())
                 {
                     var reduction = Math.Max(0, (depth - 3) / 4 + 3);
 
+                    pboard.CloneTo(ref board);
                     board.ApplyNullMove();
-                    var nullMoveScore = -NegaMaxSearch(ref board, whiteAcc, blackAcc, hashHistory, killers,  counters, history, depthFromRoot + 1,
+
+                    boardState.AccumulatorState.UpdateToParent(ref SearchStack[depthFromRoot].AccumulatorState, ref board);
+
+                    var nullMoveScore = -NegaMaxSearch(depthFromRoot + 1,
                         Math.Max(depth - reduction - 1, 0), -beta,
                         -beta + 1, true, prevMove);
-                    board.UnApplyNullMove(originalHash, oldEnpassant, inCheck, prevHalfMoveClock);
 
                     if (nullMoveScore >= beta)
                     {
                         // Beta cutoff
 
                         // Cache in Transposition table
-                        TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, (byte)depth,
+                        TranspositionTableExtensions.Set(Transpositions, TtMask, pHash, (byte)depth,
                             depthFromRoot,
                             beta, TranspositionTableFlag.Beta);
                         return beta;
@@ -123,7 +128,7 @@ public partial class Searcher
                     if (depth == 1 && score < beta)
                     {
                         NodesVisited--;
-                        var qScore = QuiescenceSearch(ref board, whiteAcc, blackAcc, hashHistory, depthFromRoot, alpha, beta);
+                        var qScore = QuiescenceSearch(depthFromRoot, alpha, beta);
 
                         return int.Max(qScore, score);
                     }
@@ -132,7 +137,7 @@ public partial class Searcher
                     if (score < beta)
                     {
                         NodesVisited--;
-                        var qScore = QuiescenceSearch(ref board, whiteAcc, blackAcc, hashHistory, depthFromRoot, alpha, beta);
+                        var qScore = QuiescenceSearch(depthFromRoot, alpha, beta);
                         if (qScore < beta)
                         {
                             return int.Max(qScore, score);
@@ -148,7 +153,7 @@ public partial class Searcher
         {
             // Max depth reached, return evaluation of quiet position
             NodesVisited--;
-            return QuiescenceSearch(ref board, whiteAcc, blackAcc, hashHistory, depthFromRoot, alpha, beta);
+            return QuiescenceSearch(depthFromRoot, alpha, beta);
         }
 
         if (transpositionType == default && depth > 2)
@@ -157,21 +162,20 @@ public partial class Searcher
             depth--;
         }
 
-        var prevCastleRights = board.CastleRights;
         // Best move seen so far used in move ordering.
         var moveOrderingBestMove = depthFromRoot == 0
             ? BestSoFar
             : transpositionBestMove;
         // Generate pseudo legal moves from this position
         var moves = stackalloc uint[218];
-        var psuedoMoveCount = board.GeneratePseudoLegalMoves(moves, false);
+        var psuedoMoveCount = pboard.GeneratePseudoLegalMoves(moves, false);
 
         if (psuedoMoveCount == 0)
         {
             // No available moves, either stalemate or checkmate
-            var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
+            var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, parentInCheck);
 
-            TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, (byte)depth, depthFromRoot, eval,
+            TranspositionTableExtensions.Set(Transpositions, TtMask, pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
@@ -190,22 +194,22 @@ public partial class Searcher
         var scores = stackalloc int[psuedoMoveCount];
         var occupancyBitBoards = stackalloc ulong[8]
         {
-            board.Occupancy[Constants.WhitePieces],
-            board.Occupancy[Constants.BlackPieces],
-            board.Occupancy[Constants.BlackPawn] | board.Occupancy[Constants.WhitePawn],
-            board.Occupancy[Constants.BlackKnight] | board.Occupancy[Constants.WhiteKnight],
-            board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.WhiteBishop],
-            board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.WhiteRook],
-            board.Occupancy[Constants.BlackQueen] | board.Occupancy[Constants.WhiteQueen],
-            board.Occupancy[Constants.BlackKing] | board.Occupancy[Constants.WhiteKing]
+            pboard.Occupancy[Constants.WhitePieces],
+            pboard.Occupancy[Constants.BlackPieces],
+            pboard.Occupancy[Constants.BlackPawn] | pboard.Occupancy[Constants.WhitePawn],
+            pboard.Occupancy[Constants.BlackKnight] | pboard.Occupancy[Constants.WhiteKnight],
+            pboard.Occupancy[Constants.BlackBishop] | pboard.Occupancy[Constants.WhiteBishop],
+            pboard.Occupancy[Constants.BlackRook] | pboard.Occupancy[Constants.WhiteRook],
+            pboard.Occupancy[Constants.BlackQueen] | pboard.Occupancy[Constants.WhiteQueen],
+            pboard.Occupancy[Constants.BlackKing] | pboard.Occupancy[Constants.WhiteKing]
         };
 
-        var captures = stackalloc short[board.PieceCount];
+        var captures = stackalloc short[pboard.PieceCount];
 
-        for (var i = 0; i < psuedoMoveCount; ++i)
+        for (var i = 0; i < psuedoMoveCount; i++)
         {
             // Estimate each moves score for move ordering
-            scores[i] = board.ScoreMove(history, occupancyBitBoards, captures, moves[i], killerA, killerB,
+            scores[i] = pboard.ScoreMove(history, occupancyBitBoards, captures, moves[i], killerA, killerB,
                 moveOrderingBestMove,
                 counterMove);
         }
@@ -215,10 +219,7 @@ public partial class Searcher
 
         uint bestMove = default;
         var evaluationBound = TranspositionTableFlag.Alpha;
-
-        var whiteAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
-        var blackAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
-        BoardStateData copy = default;
+        ref var parentBoardAccumulator = ref SearchStack[depthFromRoot].AccumulatorState;
 
         // Evaluate each move
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
@@ -233,20 +234,20 @@ public partial class Searcher
                 }
             }
 
-            board.CloneTo(ref copy);
+            pboard.CloneTo(ref board);
 
             var m = moves[moveIndex];
 
-            if (!copy.PartialApply(m))
+            if (!board.PartialApply(m))
             {
                 // Illegal move, undo
                 continue;
             }
 
-            copy.UpdateCheckStatus();
+            boardState.Data.UpdateCheckStatus();
 
             var isPromotionThreat = m.IsPromotionThreat();
-            var isInteresting = inCheck || copy.InCheck || isPromotionThreat ||
+            var isInteresting = parentInCheck || boardState.Data.InCheck || isPromotionThreat ||
                                 scores[moveIndex] > Constants.LosingCaptureBias;
 
             if (canPrune &&
@@ -257,12 +258,13 @@ public partial class Searcher
                 continue;
             }
 
-            NnueEvaluator.SimdCopy(whiteAccPtr, whiteAcc);
-            NnueEvaluator.SimdCopy(blackAccPtr, blackAcc);
-            // Finish making the move 
-            copy.FinishApply(whiteAccPtr, blackAccPtr, hashHistory, m, oldEnpassant, prevCastleRights);
+            boardState.AccumulatorState.UpdateToParent(ref parentBoardAccumulator, ref board);
 
-            Sse.Prefetch0(_transpositionTable + (copy.Hash & TtMask));
+            // Finish making the move 
+            boardState.Data.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
+            MoveStack[board.TurnCount - 1] = board.Hash;
+
+            Sse.Prefetch0(Transpositions + (board.Hash & TtMask));
 
             var needsFullSearch = true;
             var score = 0;
@@ -279,7 +281,7 @@ public partial class Searcher
 
                     if (reduction > 0)
                     {
-                        score = -NegaMaxSearch(ref copy, whiteAccPtr, blackAccPtr, hashHistory, killers, counters, history, depthFromRoot + 1, depth - reduction - 1,
+                        score = -NegaMaxSearch(depthFromRoot + 1, depth - reduction - 1,
                             -alpha - 1, -alpha, false, m);
                         needsFullSearch = score > alpha;
                     }
@@ -288,7 +290,7 @@ public partial class Searcher
                 if (needsFullSearch)
                 {
                     // PVS
-                    score = -NegaMaxSearch(ref copy, whiteAccPtr, blackAccPtr, hashHistory, killers, counters, history, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha,
+                    score = -NegaMaxSearch(depthFromRoot + 1, depth - 1, -alpha - 1, -alpha,
                         false, m);
                     needsFullSearch = score > alpha && score < beta;
                 }
@@ -297,7 +299,7 @@ public partial class Searcher
             if (needsFullSearch)
             {
                 // Full search
-                score = -NegaMaxSearch(ref copy, whiteAccPtr, blackAccPtr, hashHistory, killers, counters, history, depthFromRoot + 1, depth - 1, -beta, -alpha, false,
+                score = -NegaMaxSearch(depthFromRoot + 1, depth - 1, -beta, -alpha, false,
                     m);
             }
 
@@ -325,7 +327,7 @@ public partial class Searcher
             if (score >= beta)
             {
                 // Cache in transposition table
-                TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, (byte)depth, depthFromRoot,
+                TranspositionTableExtensions.Set(Transpositions, TtMask, pHash, (byte)depth, depthFromRoot,
                     score,
                     TranspositionTableFlag.Beta,
                     bestMove);
@@ -371,16 +373,16 @@ public partial class Searcher
         if (searchedMoves == 0)
         {
             // No available moves, either stalemate or checkmate
-            var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
+            var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, parentInCheck);
 
-            TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, (byte)depth, depthFromRoot, eval,
+            TranspositionTableExtensions.Set(Transpositions, TtMask, pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
         }
 
         // Cache in transposition table
-        TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, (byte)depth, depthFromRoot, alpha,
+        TranspositionTableExtensions.Set(Transpositions, TtMask, pHash, (byte)depth, depthFromRoot, alpha,
             evaluationBound, bestMove);
 
         return alpha;

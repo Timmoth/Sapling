@@ -80,21 +80,8 @@ public static class Constants
     public const int MaxScore = 99999999;
     public const int MinScore = -99999999;
 
-    public static readonly Piece[] InitialState =
-    {
-        Piece.WhiteRook, Piece.WhiteKnight, Piece.WhiteBishop, Piece.WhiteQueen, Piece.WhiteKing, Piece.WhiteBishop,
-        Piece.WhiteKnight, Piece.WhiteRook,
-        Piece.WhitePawn, Piece.WhitePawn, Piece.WhitePawn, Piece.WhitePawn, Piece.WhitePawn, Piece.WhitePawn,
-        Piece.WhitePawn, Piece.WhitePawn,
-        Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None,
-        Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None,
-        Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None,
-        Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None, Piece.None,
-        Piece.BlackPawn, Piece.BlackPawn, Piece.BlackPawn, Piece.BlackPawn, Piece.BlackPawn, Piece.BlackPawn,
-        Piece.BlackPawn, Piece.BlackPawn,
-        Piece.BlackRook, Piece.BlackKnight, Piece.BlackBishop, Piece.BlackQueen, Piece.BlackKing, Piece.BlackBishop,
-        Piece.BlackKnight, Piece.BlackRook
-    };
+    public static readonly string InitialState = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    public static readonly BoardStateData InitialBoard = BoardStateExtensions.CreateBoardFromFen(InitialState);
 
     #endregion
 }

@@ -9,7 +9,7 @@ namespace Sapling.Engine.Search;
 
 public partial class Searcher
 {
-    public unsafe int QuiescenceSearch(ref BoardStateData board, VectorShort* whiteAcc, VectorShort* blackAcc, ulong* hashHistory, int depthFromRoot, int alpha, int beta)
+    public unsafe int QuiescenceSearch(int depthFromRoot, int alpha, int beta)
     {
         NodesVisited++;
 
@@ -18,24 +18,24 @@ public partial class Searcher
             // Search was cancelled
             return 0;
         }
-
+ 
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Reached max depth
-            return board.Evaluate(whiteAcc, blackAcc);
+            return NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
         }
 
-        var pvIndex = PVTable.Indexes[depthFromRoot];
-        var nextPvIndex = PVTable.Indexes[depthFromRoot + 1];
-        _pVTable[pvIndex] = 0;
+        ref var boardState = ref SearchStack[depthFromRoot + 1];
+        ref var pAccumulator = ref SearchStack[depthFromRoot].AccumulatorState;
+        ref var pboard = ref SearchStack[depthFromRoot].Data;
 
-        if (board.InsufficientMatingMaterial())
+        if (pboard.InsufficientMatingMaterial())
         {
             // Detect draw by Fifty move counter or repetition
             return 0;
         }
 
-        if (alpha < 0 && board.HasRepetition(hashHistory, depthFromRoot))
+        if (alpha < 0 && pboard.HasRepetition(MoveStack, depthFromRoot))
         {
             alpha = 0;
             if (alpha >= beta)
@@ -43,18 +43,18 @@ public partial class Searcher
         }
 
         var ttProbeResult =
-            TranspositionTableExtensions.Get(_transpositionTable, TtMask, board.Hash, 0, depthFromRoot, alpha, beta);
+            TranspositionTableExtensions.Get(Transpositions, TtMask, pboard.Hash, 0, depthFromRoot, alpha, beta);
         if (ttProbeResult.Evaluation != TranspositionTableExtensions.NoHashEntry)
         {
             // Transposition table hit
             return ttProbeResult.Evaluation;
         }
 
-        var inCheck = board.InCheck;
+        var inCheck = pboard.InCheck;
         if (!inCheck)
         {
             // Evaluate current position
-            var val = board.Evaluate(whiteAcc, blackAcc);
+            var val = NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
             if (val >= beta)
             {
                 // Beta cut off
@@ -66,7 +66,7 @@ public partial class Searcher
 
         // Get all capturing moves
         var moves = stackalloc uint[218];
-        var psuedoMoveCount = board.GeneratePseudoLegalMoves(moves, !inCheck);
+        var psuedoMoveCount = pboard.GeneratePseudoLegalMoves(moves, !inCheck);
 
         if (psuedoMoveCount == 0)
         {
@@ -76,12 +76,12 @@ public partial class Searcher
                 var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
 
                 // Cache in transposition table
-                TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, 0, depthFromRoot, finalEval,
+                TranspositionTableExtensions.Set(Transpositions, TtMask, pboard.Hash, 0, depthFromRoot, finalEval,
                     TranspositionTableFlag.Exact);
                 return finalEval;
             }
 
-            TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, 0, depthFromRoot, alpha,
+            TranspositionTableExtensions.Set(Transpositions, TtMask, pboard.Hash, 0, depthFromRoot, alpha,
                 TranspositionTableFlag.Alpha,
                 default);
             return alpha;
@@ -91,36 +91,28 @@ public partial class Searcher
 
         var occupancyBitBoards = stackalloc ulong[8]
         {
-            board.Occupancy[Constants.WhitePieces],
-            board.Occupancy[Constants.BlackPieces],
-            board.Occupancy[Constants.BlackPawn] | board.Occupancy[Constants.WhitePawn],
-            board.Occupancy[Constants.BlackKnight] | board.Occupancy[Constants.WhiteKnight],
-            board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.WhiteBishop],
-            board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.WhiteRook],
-            board.Occupancy[Constants.BlackQueen] | board.Occupancy[Constants.WhiteQueen],
-            board.Occupancy[Constants.BlackKing] | board.Occupancy[Constants.WhiteKing]
+            pboard.Occupancy[Constants.WhitePieces],
+            pboard.Occupancy[Constants.BlackPieces],
+            pboard.Occupancy[Constants.BlackPawn] | pboard.Occupancy[Constants.WhitePawn],
+            pboard.Occupancy[Constants.BlackKnight] | pboard.Occupancy[Constants.WhiteKnight],
+            pboard.Occupancy[Constants.BlackBishop] | pboard.Occupancy[Constants.WhiteBishop],
+            pboard.Occupancy[Constants.BlackRook] | pboard.Occupancy[Constants.WhiteRook],
+            pboard.Occupancy[Constants.BlackQueen] | pboard.Occupancy[Constants.WhiteQueen],
+            pboard.Occupancy[Constants.BlackKing] | pboard.Occupancy[Constants.WhiteKing]
         };
 
-        var captures = stackalloc short[board.PieceCount];
+        var captures = stackalloc short[pboard.PieceCount];
 
         for (var i = 0; i < psuedoMoveCount; ++i)
         {
-            scores[i] = board.ScoreMoveQuiescence(occupancyBitBoards, captures, moves[i], ttProbeResult.BestMove);
+            scores[i] = pboard.ScoreMoveQuiescence(occupancyBitBoards, captures, moves[i], ttProbeResult.BestMove);
         }
 
-        var oldEnpassant = board.EnPassantFile;
-        var prevInCheck = board.InCheck;
-
-        var prevCastleRights = board.CastleRights;
         var evaluationBound = TranspositionTableFlag.Alpha;
 
         uint bestMove = default;
         var hasValidMove = false;
-
-        var whiteAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
-        var blackAccPtr = stackalloc VectorShort[NnueEvaluator.AccumulatorSize];
-
-        BoardStateData copy = default;
+        ref var board = ref boardState.Data;
 
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
@@ -133,35 +125,35 @@ public partial class Searcher
                         (scores[j], scores[moveIndex], moves[j], moves[moveIndex]);
                 }
             }
-            
-            board.CloneTo(ref copy);
+
+            pboard.CloneTo(ref board);
 
             var m = moves[moveIndex];
 
-            if (!copy.PartialApply(m))
+            if (!board.PartialApply(m))
             {
                 // illegal move
                 continue;
             }
 
-            copy.UpdateCheckStatus();
+            board.UpdateCheckStatus();
 
             hasValidMove = true;
 
-            if (!prevInCheck && !copy.InCheck && scores[moveIndex] < Constants.LosingCaptureBias)
+            if (!pboard.InCheck && !board.InCheck && scores[moveIndex] < Constants.LosingCaptureBias)
             {
                 //skip playing bad captures when not in check
                 continue;
             }
 
-            NnueEvaluator.SimdCopy(whiteAccPtr, whiteAcc);
-            NnueEvaluator.SimdCopy(blackAccPtr, blackAcc);
+            boardState.AccumulatorState.UpdateToParent(ref pAccumulator, ref board);
 
-            copy.FinishApply(whiteAccPtr, blackAccPtr, hashHistory, m, oldEnpassant, prevCastleRights);
+            boardState.Data.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
+            MoveStack[board.TurnCount - 1] = board.Hash;
 
-            Sse.Prefetch0(_transpositionTable + (copy.Hash & TtMask));
+            Sse.Prefetch0(Transpositions + (board.Hash & TtMask));
 
-            var val = -QuiescenceSearch(ref copy, whiteAccPtr, blackAccPtr, hashHistory, depthFromRoot + 1, -beta, -alpha);
+            var val = -QuiescenceSearch(depthFromRoot + 1, -beta, -alpha);
 
             if (_searchCancelled)
             {
@@ -182,17 +174,10 @@ public partial class Searcher
             if (val >= beta)
             {
                 // Cache in transposition table
-                TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, 0, depthFromRoot, val,
+                TranspositionTableExtensions.Set(Transpositions, TtMask, pboard.Hash, 0, depthFromRoot, val,
                     TranspositionTableFlag.Beta, bestMove);
                 // Beta cut off
                 return val;
-            }
-
-            if (!_searchCancelled)
-            {
-                // update pv table
-                _pVTable[pvIndex] = m;
-                ShiftPvMoves(pvIndex + 1, nextPvIndex, Constants.MaxSearchDepth - depthFromRoot - 1);
             }
         }
 
@@ -208,28 +193,43 @@ public partial class Searcher
             var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
 
             // Cache in transposition table
-            TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, 0, depthFromRoot, finalEval,
+            TranspositionTableExtensions.Set(Transpositions, TtMask, pboard.Hash, 0, depthFromRoot, finalEval,
                 TranspositionTableFlag.Exact);
             return finalEval;
         }
 
         // Cache in transposition table
-        TranspositionTableExtensions.Set(_transpositionTable, TtMask, board.Hash, 0, depthFromRoot, alpha,
+        TranspositionTableExtensions.Set(Transpositions, TtMask, pboard.Hash, 0, depthFromRoot, alpha,
             evaluationBound,
             bestMove);
 
         return alpha;
     }
 
+    //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    //private unsafe void ShiftPvMoves(int target, int source, int moveCountToCopy)
+    //{
+    //    if (_pVTable[source] == 0)
+    //    {
+    //        NativeMemory.Clear(_pVTable + target, _pvTableBytes - (nuint)target * sizeof(uint));
+    //        return;
+    //    }
+
+    //    NativeMemory.Copy(_pVTable + source, _pVTable + target, (nuint)moveCountToCopy * sizeof(uint));
+    //}
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe void ShiftPvMoves(int target, int source, int moveCountToCopy)
     {
+        // Check if the source position is zero
         if (_pVTable[source] == 0)
         {
-            NativeMemory.Clear(_pVTable + target, _pvTableBytes - (nuint)target * sizeof(uint));
+            // Calculate the number of bytes to clear
+            var bytesToClear = _pvTableBytes - (nuint)target * sizeof(uint);
+            NativeMemory.Clear(_pVTable + target, bytesToClear);
             return;
         }
-
-        NativeMemory.Copy(_pVTable + source, _pVTable + target, (nuint)moveCountToCopy * sizeof(uint));
+        
+        Unsafe.CopyBlock(_pVTable + target, _pVTable + source, (uint)(moveCountToCopy * sizeof(uint)));
     }
 }

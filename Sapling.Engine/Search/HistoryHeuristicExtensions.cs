@@ -31,7 +31,7 @@ public static unsafe class HistoryHeuristicExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void UpdateMovesHistory(int* history, uint* moves, int quietCount, uint m, int depth)
+    public static void UpdateMovesHistory(int* history, uint* moves, int quietCount, uint m, int depth)
     {
         var bonus = BonusTable[depth];
         var absBonus = Math.Abs(bonus);

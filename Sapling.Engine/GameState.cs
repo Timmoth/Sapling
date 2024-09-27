@@ -1,82 +1,113 @@
-﻿using Sapling.Engine.Evaluation;
-using Sapling.Engine.MoveGen;
+﻿using Sapling.Engine.MoveGen;
+using System.Runtime.InteropServices;
 
 namespace Sapling.Engine;
 
-public sealed class GameState
+public sealed unsafe class GameState
 {
-    public readonly BoardState Board;
     public readonly List<uint> History;
-    public readonly List<uint> Moves;
-    public readonly List<Piece> TakenPieces;
+    public readonly List<uint> LegalMoves;
+    public readonly ulong* Moves;
+    public BoardStateData Board = default;
 
-    public GameState(BoardState board)
+    public static ulong* AllocateMoves()
     {
+        const nuint alignment = 64;
+
+        var block = NativeMemory.AlignedAlloc((nuint)sizeof(ulong) * 800, alignment);
+        NativeMemory.Clear(block, (nuint)sizeof(ulong) * 800);
+
+        return (ulong*)block;
+    }
+
+    ~GameState()
+    {
+        NativeMemory.AlignedFree(Moves);
+    }
+
+    public GameState(BoardStateData board)
+    {
+        Moves = AllocateMoves();
         Board = board;
         History = new List<uint>();
-        TakenPieces = new List<Piece>();
-        Moves = new List<uint>();
-        board.Data.GenerateLegalMoves(Moves, false);
+        LegalMoves = new List<uint>();
+        Board.GenerateLegalMoves(LegalMoves, false);
     }
 
     public static GameState InitialState()
     {
-        return new GameState(BoardStateExtensions.CreateBoardFromArray(Constants.InitialState));
+        return new GameState(BoardStateExtensions.CreateBoardFromFen(Constants.InitialState));
     }
 
-    public void ResetTo(BoardState board)
+    public void ResetTo(ref BoardStateData newBoard)
     {
         History.Clear();
-        TakenPieces.Clear();
-
-        Board.ResetTo(board);
-        Board.Data.GenerateLegalMoves(Moves, false);
+        newBoard.CloneTo(ref Board);
+        Board.GenerateLegalMoves(LegalMoves, false); 
+        Moves[Board.TurnCount] = Board.Hash;
     }
-
-    public void ResetTo(BoardState board, uint[] legalMoves)
+    public void ResetToFen(string fen)
     {
         History.Clear();
-        TakenPieces.Clear();
-
-        Board.ResetTo(board);
-        Moves.Clear();
-        Moves.AddRange(legalMoves);
+        var state = BoardStateExtensions.CreateBoardFromFen(fen);
+        state.CloneTo(ref Board);
+        Board.GenerateLegalMoves(LegalMoves, false);
+        Moves[Board.TurnCount] = Board.Hash;
     }
 
-    public unsafe bool Apply(uint move)
+    public void Reset()
     {
-        if (!Moves.Contains(move))
+        History.Clear();
+        var state = Constants.InitialBoard;
+        state.CloneTo(ref Board);
+        Board.GenerateLegalMoves(LegalMoves, false);
+        Moves[Board.TurnCount] = Board.Hash;
+    }
+
+    public void ResetTo(ref BoardStateData newBoard, uint[] legalMoves)
+    {
+        History.Clear();
+        newBoard.CloneTo(ref Board);
+        LegalMoves.Clear();
+        LegalMoves.AddRange(legalMoves);
+        Moves[Board.TurnCount] = Board.Hash;
+    }
+    public bool Apply(uint move)
+    {
+        if (!LegalMoves.Contains(move))
         {
             return false;
         }
 
-        Board.Data.Apply( Board.WhiteAccumulator, Board.BlackAccumulator, Board.Moves, move);
+        var oldEnpassant = Board.EnPassantFile;
+        var oldCastle = Board.CastleRights;
 
-        Board.Data.GenerateLegalMoves(Moves, false);
+        AccumulatorState emptyAccumulator = default;
+        Board.PartialApply(move);
+        Board.UpdateCheckStatus();
+        Board.UpdateCastleStatus(Board.CastleRights);
+        Board.FinishApply(ref emptyAccumulator, move, oldEnpassant, oldCastle);
+        Board.GenerateLegalMoves(LegalMoves, false);
         History.Add(move);
-
-        if (move.IsCapture())
-        {
-            TakenPieces.Add((Piece)move.GetCapturedPiece());
-        }
+        Moves[Board.TurnCount] = Board.Hash;
 
         return true;
     }
-
+ 
     public bool GameOver()
     {
-        return Moves.Count == 0 || Board.Data.HalfMoveClock >= 100 || Board.Data.InsufficientMatingMaterial();
+        return LegalMoves.Count == 0 || Board.HalfMoveClock >= 100 || Board.InsufficientMatingMaterial();
     }
 
     public byte WinDrawLoose()
     {
-        if (Moves.Count != 0)
+        if (LegalMoves.Count != 0)
         {
             // Draw
             return 0;
         }
 
-        if (Board.Data.WhiteToMove)
+        if (Board.WhiteToMove)
         {
             // Black wins
             return 1;

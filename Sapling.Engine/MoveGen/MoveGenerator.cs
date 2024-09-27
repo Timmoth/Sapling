@@ -136,7 +136,7 @@ public static class MoveGenerator
         var rankIndex = index.GetRankIndex();
         var posEncoded = 1UL << index;
 
-        if (board.CanEnPassant() && !board.WhiteToMove && rankIndex.IsBlackEnPassantRankIndex() &&
+        if (board.EnPassantFile.CanEnPassant() && !board.WhiteToMove && rankIndex.IsBlackEnPassantRankIndex() &&
             Math.Abs(index.GetFileIndex() - board.EnPassantFile) == 1)
         {
             moves[moveIndex++] = MoveExtensions.EncodeBlackEnpassantMove(index, board.EnPassantFile);
@@ -265,7 +265,7 @@ public static class MoveGenerator
         var rankIndex = index.GetRankIndex();
         var posEncoded = 1UL << index;
 
-        if (board.CanEnPassant() && board.WhiteToMove && rankIndex.IsWhiteEnPassantRankIndex() &&
+        if (board.EnPassantFile.CanEnPassant() && board.WhiteToMove && rankIndex.IsWhiteEnPassantRankIndex() &&
             Math.Abs(index.GetFileIndex() - board.EnPassantFile) == 1)
         {
             moves[moveIndex++] = MoveExtensions.EncodeWhiteEnpassantMove(index, board.EnPassantFile);

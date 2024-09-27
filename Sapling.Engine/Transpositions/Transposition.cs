@@ -2,7 +2,7 @@
 
 namespace Sapling.Engine.Transpositions;
 
-[StructLayout(LayoutKind.Explicit, Pack = 2, Size = 18)]
+[StructLayout(LayoutKind.Explicit, Size = 18)]
 public struct Transposition
 {
     [FieldOffset(0)] public ulong FullHash;

@@ -1,32 +1,42 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Drawing;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.Search;
 
-public class ParallelSearcher
+public unsafe class ParallelSearcher
 {
     public readonly List<Searcher> Searchers = new();
-    public readonly Transposition[] Transpositions;
+    public readonly Transposition* Transpositions;
+    public readonly int TTSize;
 
     // Used to prevent a previous searches timeout cancelling a new search
     private Guid _prevSearchId = Guid.NewGuid();
 
-    public ParallelSearcher(Transposition[] transpositions)
+    public ParallelSearcher(int ttSize)
     {
-        Transpositions = transpositions;
+        TTSize = ttSize;
+        Transpositions = AllocateTranspositions((nuint)ttSize);
 
         // Default to one thread
-        Searchers.Add(new Searcher(Transpositions));
+        Searchers.Add(new Searcher(Transpositions, ttSize));
     }
 
-    public ParallelSearcher()
+    ~ParallelSearcher()
     {
-        const int transpositionSize = 0b1111_1111_1111_1111_1111_1111;
-        Transpositions = GC.AllocateArray<Transposition>(transpositionSize, true);
+        NativeMemory.AlignedFree(Transpositions);
+    }
+    public static unsafe Transposition* AllocateTranspositions(nuint items)
+    {
+        const nuint alignment = 64;
 
-        // Default to one thread
-        Searchers.Add(new Searcher(Transpositions));
+        nuint bytes = ((nuint)sizeof(Transposition) * (nuint)items);
+        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
+        NativeMemory.Clear(block, bytes);
+
+        return (Transposition*)block;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -50,7 +60,7 @@ public class ParallelSearcher
     }
 
     public (List<uint> pv, int depthSearched, int score, int nodes, TimeSpan duration) NodeBoundSearch(
-        BoardState state, int nodeLimit = 0, int maxDepth = 0)
+        GameState state, int nodeLimit = 0, int maxDepth = 0)
     {
         var start = DateTime.Now;
         var searchResult = Searchers[0].Search(state, nodeLimit, maxDepth);
@@ -59,12 +69,12 @@ public class ParallelSearcher
     }
 
     public (List<uint> pv, int depthSearched, int score, int nodes, TimeSpan duration) TimeBoundSearch(
-        BoardState state, int thinkTime)
+        GameState state, int thinkTime)
     {
         var newSearchId = Guid.NewGuid();
         _prevSearchId = newSearchId;
 
-        Task.Delay(thinkTime).ContinueWith(t =>
+        _ = Task.Delay(thinkTime).ContinueWith(t =>
         {
             if (_prevSearchId != newSearchId)
             {
@@ -141,7 +151,7 @@ public class ParallelSearcher
     }
 
     public (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) DepthBoundSearch(
-        BoardState state, int depth)
+        GameState state, int depth)
     {
         var searchId = Guid.NewGuid();
         _prevSearchId = searchId;
@@ -224,7 +234,7 @@ public class ParallelSearcher
             // If there are fewer searchers than needed, add the required number
             for (var i = currentSearcherCount; i < searchThreads; i++)
             {
-                Searchers.Add(new Searcher(Transpositions));
+                Searchers.Add(new Searcher(Transpositions, TTSize));
             }
         }
     }

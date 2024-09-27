@@ -8,6 +8,7 @@
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	  <TieredPGO>true</TieredPGO>
 	  <TieredCompilation>true</TieredCompilation>
+	  <LangVersion>preview</LangVersion>
 
 	  <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 	  <PackageId>SaplingEngine</PackageId>
@@ -20,7 +21,6 @@
 	  <RepositoryType>git</RepositoryType>
 	  <PackageTags>Chess Engine</PackageTags>
 	  <Title>Sapling</Title>
-	  <GenerateDocumentationFile>True</GenerateDocumentationFile>
 	  <IncludeSymbols>true</IncludeSymbols>
 	  <ApplicationIcon>logo.ico</ApplicationIcon>
 	  <PackageIcon>logo.png</PackageIcon>
@@ -32,7 +32,7 @@
   </ItemGroup>
 	<ItemGroup>
     <PackageReference Include="FluentResults" Version="3.16.0" />
-  </ItemGroup>
+	</ItemGroup>
 
 	<ItemGroup>
 		<EmbeddedResource Include="Resources\sapling.nnue" />
@@ -48,5 +48,4 @@
 	    <PackagePath>\</PackagePath>
 	  </None>
 	</ItemGroup>
-
 </Project>

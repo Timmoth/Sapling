@@ -8,12 +8,36 @@ public static class NnueWeights
     public const int InputSize = 768;
     public const int Layer1Size = 1024;
 
-    public const short InputBuckets = 4;
-    public const short OutputBuckets = 8;
+    public const byte InputBuckets = 8;
+    public const byte OutputBuckets = 8;
     public static readonly unsafe VectorShort* FeatureWeights;
     public static readonly unsafe VectorShort* FeatureBiases;
     public static readonly unsafe VectorShort* OutputWeights;
     public static readonly short[] OutputBiases = new short[OutputBuckets];
+
+    //public static readonly byte[] BucketLayout = new byte[64]
+    //{
+    //    0, 0, 1, 1, 1, 1, 0, 0,
+    //    2, 2, 2, 2, 2, 2, 2, 2,
+    //    3, 3, 3, 3, 3, 3, 3, 3,
+    //    3, 3, 3, 3, 3, 3, 3, 3,
+    //    3, 3, 3, 3, 3, 3, 3, 3,
+    //    3, 3, 3, 3, 3, 3, 3, 3,
+    //    3, 3, 3, 3, 3, 3, 3, 3,
+    //    3, 3, 3, 3, 3, 3, 3, 3,
+    //};
+
+    public static byte[] BucketLayout = new byte[64]
+    {
+        0, 1, 2, 3, 3, 2, 1, 0,
+        4, 4, 5, 5, 5, 5, 4, 4,
+        6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6,
+        7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7,
+    };
 
     static unsafe NnueWeights()
     {
@@ -108,20 +132,6 @@ public static class NnueWeights
 
         NativeMemory.Clear(block, bytes);
         return (VectorShort*)block;
-    }
-
-    public static unsafe short* AlignedAllocZeroed(nuint items)
-    {
-        const nuint alignment = 64;
-        var bytes = sizeof(short) * items;
-        var block = NativeMemory.AlignedAlloc(bytes, alignment);
-        if (block == null)
-        {
-            throw new OutOfMemoryException("Failed to allocate aligned memory.");
-        }
-
-        NativeMemory.Clear(block, bytes);
-        return (short*)block;
     }
 
     public static unsafe void Dispose()
