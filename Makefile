@@ -1,9 +1,12 @@
 .DEFAULT_GOAL := publish
 
-EXE=
+ifndef EXE
+	EXE = Sapling
+endif
 
-RUNTIME=
-OUTPUT_DIR=artifacts/Sapling/
+ifndef CC
+	CC = dotnet
+endif
 
 ifeq ($(OS),Windows_NT)
 	ifeq ($(PROCESSOR_ARCHITEW6432),AMD64)
@@ -40,9 +43,6 @@ endif
 
 build:
 	dotnet build -c Release
-
-test:
-	dotnet test -c Release
 
 publish:
 	dotnet publish Sapling/Sapling.csproj -c Release --runtime ${RUNTIME} --self-contained /p:Optimized=true /p:DeterministicBuild=true /p:ExecutableName=$(EXE) -o ${OUTPUT_DIR}
