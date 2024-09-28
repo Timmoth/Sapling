@@ -34,23 +34,14 @@ public static unsafe class AccumulatorStateExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateWhiteTo(this ref AccumulatorState state, ref BoardStateData board)
+    public static void CloneTo(this ref AccumulatorState board, ref AccumulatorState copy)
     {
-        state.Evaluation = null;
-        state.WhiteNeedsRefresh = false;
-        state.WhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
-        state.WhiteInputBucket = NnueWeights.BucketLayout[board.WhiteKingSquare];
-        state.WhiteAccumulatorUpToDate = true;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateBlackTo(this ref AccumulatorState state, ref BoardStateData board)
-    {
-        state.Evaluation = null;
-        state.BlackNeedsRefresh = false;
-        state.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
-        state.BlackInputBucket = NnueWeights.BucketLayout[board.BlackKingSquare ^ 0x38];
-        state.BlackAccumulatorUpToDate = true;
+        fixed (AccumulatorState* sourcePtr = &board)
+        fixed (AccumulatorState* destPtr = &copy)
+        {
+            // Copy the memory block from source to destination
+            Buffer.MemoryCopy(sourcePtr, destPtr, sizeof(AccumulatorState), sizeof(AccumulatorState));
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -62,7 +53,9 @@ public static unsafe class AccumulatorStateExtensions
         state.WhiteInputBucket = NnueWeights.BucketLayout[board.WhiteKingSquare];
         state.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
         state.BlackInputBucket = NnueWeights.BucketLayout[board.BlackKingSquare ^ 0x38];
-        state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = true;
+
+        state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = false;
+        state.ChangeType = AccumulatorChangeType.None;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -73,17 +66,12 @@ public static unsafe class AccumulatorStateExtensions
         state.WhiteInputBucket = NnueWeights.BucketLayout[board.WhiteKingSquare];
         state.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
         state.BlackInputBucket = NnueWeights.BucketLayout[board.BlackKingSquare ^ 0x38];
-        state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = false;
 
+        state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = false;
         state.ChangeType = AccumulatorChangeType.None;
 
         state.WhiteNeedsRefresh = other.WhiteMirrored != state.WhiteMirrored || other.WhiteInputBucket != state.WhiteInputBucket;
         state.BlackNeedsRefresh = other.BlackMirrored != state.BlackMirrored || other.BlackInputBucket != state.BlackInputBucket;
-
-        state.WhiteMirrored = other.WhiteMirrored;
-        state.BlackMirrored = other.BlackMirrored;
-        state.WhiteInputBucket = other.WhiteInputBucket;
-        state.BlackInputBucket = other.BlackInputBucket;
     }
 }
 

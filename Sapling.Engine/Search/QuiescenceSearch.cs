@@ -22,7 +22,7 @@ public partial class Searcher
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Reached max depth
-            return NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
+            return NnueEvaluator.Evaluate(SearchStack, BucketCache, depthFromRoot);
         }
 
         ref var boardState = ref SearchStack[depthFromRoot + 1];
@@ -54,7 +54,7 @@ public partial class Searcher
         if (!inCheck)
         {
             // Evaluate current position
-            var val = NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
+            var val = NnueEvaluator.Evaluate(SearchStack, BucketCache, depthFromRoot);
             if (val >= beta)
             {
                 // Beta cut off
@@ -147,8 +147,7 @@ public partial class Searcher
             }
 
             boardState.AccumulatorState.UpdateToParent(ref pAccumulator, ref board);
-
-            boardState.Data.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
+            board.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
             MoveStack[board.TurnCount - 1] = board.Hash;
 
             Sse.Prefetch0(Transpositions + (board.Hash & TtMask));

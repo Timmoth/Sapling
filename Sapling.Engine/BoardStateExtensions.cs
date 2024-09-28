@@ -480,7 +480,7 @@ public static class BoardStateExtensions
             // [1, 7] => 9
             // [2, 7] => 10
             // a + 2b - 6
-            var promotionPiece = movedPiece + moveType + moveType - 6;
+            var promotionPiece = (byte)(movedPiece + moveType + moveType - 6);
             board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
                                Zobrist.PiecesArray[promotionPiece * 64 + toSquare];
 
@@ -497,7 +497,7 @@ public static class BoardStateExtensions
         else
         {
             // Enpassant
-            var enpassantSquare = fromSquare.GetRankIndex() * 8 + oldEnpassant;
+            var enpassantSquare = (byte)(fromSquare.GetRankIndex() * 8 + oldEnpassant);
             accumulatorState.ApplyCapture( movedPiece, fromSquare, movedPiece, toSquare, capturedPiece, enpassantSquare);
 
             board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
@@ -605,89 +605,89 @@ public static class BoardStateExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe byte GetWhitePiece(this ref BoardStateData board, byte square)
     {
-        //var squareBB = 1UL << square;
+        var squareBB = 1UL << square;
 
-        //if ((board.Occupancy[Constants.WhitePawn] & squareBB) != 0)
-        //{
-        //    return Constants.WhitePawn;
-        //}
+        if ((board.Occupancy[Constants.WhitePawn] & squareBB) != 0)
+        {
+            return Constants.WhitePawn;
+        }
 
-        //if ((board.Occupancy[Constants.WhiteKnight] & squareBB) != 0)
-        //{
-        //    return Constants.WhiteKnight;
-        //}
+        if ((board.Occupancy[Constants.WhiteKnight] & squareBB) != 0)
+        {
+            return Constants.WhiteKnight;
+        }
 
-        //if ((board.Occupancy[Constants.WhiteBishop] & squareBB) != 0)
-        //{
-        //    return Constants.WhiteBishop;
-        //}
+        if ((board.Occupancy[Constants.WhiteBishop] & squareBB) != 0)
+        {
+            return Constants.WhiteBishop;
+        }
 
-        //if ((board.Occupancy[Constants.WhiteRook] & squareBB) != 0)
-        //{
-        //    return Constants.WhiteRook;
-        //}
+        if ((board.Occupancy[Constants.WhiteRook] & squareBB) != 0)
+        {
+            return Constants.WhiteRook;
+        }
 
-        //if ((board.Occupancy[Constants.WhiteQueen] & squareBB) != 0)
-        //{
-        //    return Constants.WhiteQueen;
-        //}
+        if ((board.Occupancy[Constants.WhiteQueen] & squareBB) != 0)
+        {
+            return Constants.WhiteQueen;
+        }
 
-        //if ((board.Occupancy[Constants.WhiteKing] & squareBB) != 0)
-        //{
-        //    return Constants.WhiteKing;
-        //}
+        if ((board.Occupancy[Constants.WhiteKing] & squareBB) != 0)
+        {
+            return Constants.WhiteKing;
+        }
 
-        //return 0;
-        return (byte)Bmi1.X64.TrailingZeroCount((board.Occupancy[Constants.WhitePawn] >> square & 1UL) << 2 |
-                                                  (board.Occupancy[Constants.WhiteKnight] >> square & 1UL) << 4 |
-                                                  (board.Occupancy[Constants.WhiteBishop] >> square & 1UL) << 6 |
-                                                  (board.Occupancy[Constants.WhiteRook] >> square & 1UL) << 8 |
-                                                  (board.Occupancy[Constants.WhiteQueen] >> square & 1UL) << 10 |
-                                                  (board.Occupancy[Constants.WhiteKing] >> square & 1UL) << 12);
+        return 0;
+        //return (byte)Bmi1.X64.TrailingZeroCount((board.Occupancy[Constants.WhitePawn] >> square & 1UL) << 2 |
+        //                                          (board.Occupancy[Constants.WhiteKnight] >> square & 1UL) << 4 |
+        //                                          (board.Occupancy[Constants.WhiteBishop] >> square & 1UL) << 6 |
+        //                                          (board.Occupancy[Constants.WhiteRook] >> square & 1UL) << 8 |
+        //                                          (board.Occupancy[Constants.WhiteQueen] >> square & 1UL) << 10 |
+        //                                          (board.Occupancy[Constants.WhiteKing] >> square & 1UL) << 12);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe byte GetBlackPiece(this ref BoardStateData board, byte square)
     {
-        //var squareBB = 1UL << square;
+        var squareBB = 1UL << square;
 
-        //if ((board.Occupancy[Constants.BlackPawn] & squareBB) != 0)
-        //{
-        //    return Constants.BlackPawn;
-        //}
+        if ((board.Occupancy[Constants.BlackPawn] & squareBB) != 0)
+        {
+            return Constants.BlackPawn;
+        }
 
-        //if ((board.Occupancy[Constants.BlackKnight] & squareBB) != 0)
-        //{
-        //    return Constants.BlackKnight;
-        //}
+        if ((board.Occupancy[Constants.BlackKnight] & squareBB) != 0)
+        {
+            return Constants.BlackKnight;
+        }
 
-        //if ((board.Occupancy[Constants.BlackBishop] & squareBB) != 0)
-        //{
-        //    return Constants.BlackBishop;
-        //}
+        if ((board.Occupancy[Constants.BlackBishop] & squareBB) != 0)
+        {
+            return Constants.BlackBishop;
+        }
 
-        //if ((board.Occupancy[Constants.BlackRook] & squareBB) != 0)
-        //{
-        //    return Constants.BlackRook;
-        //}
+        if ((board.Occupancy[Constants.BlackRook] & squareBB) != 0)
+        {
+            return Constants.BlackRook;
+        }
 
-        //if ((board.Occupancy[Constants.BlackQueen] & squareBB) != 0)
-        //{
-        //    return Constants.BlackQueen;
-        //}
+        if ((board.Occupancy[Constants.BlackQueen] & squareBB) != 0)
+        {
+            return Constants.BlackQueen;
+        }
 
-        //if ((board.Occupancy[Constants.BlackKing] & squareBB) != 0)
-        //{
-        //    return Constants.BlackKing;
-        //}
+        if ((board.Occupancy[Constants.BlackKing] & squareBB) != 0)
+        {
+            return Constants.BlackKing;
+        }
 
-        //return 0;
+        return 0;
 
-        return (byte)Bmi1.X64.TrailingZeroCount((board.Occupancy[Constants.BlackPawn] >> square & 1UL) << 1 |
-                                                  (board.Occupancy[Constants.BlackKnight] >> square & 1UL) << 3 |
-                                                  (board.Occupancy[Constants.BlackBishop] >> square & 1UL) << 5 |
-                                                  (board.Occupancy[Constants.BlackRook] >> square & 1UL) << 7 |
-                                                  (board.Occupancy[Constants.BlackQueen] >> square & 1UL) << 9 |
-                                                  (board.Occupancy[Constants.BlackKing] >> square & 1UL) << 11);
+        //return (byte)Bmi1.X64.TrailingZeroCount((board.Occupancy[Constants.BlackPawn] >> square & 1UL) << 1 |
+        //                                          (board.Occupancy[Constants.BlackKnight] >> square & 1UL) << 3 |
+        //                                          (board.Occupancy[Constants.BlackBishop] >> square & 1UL) << 5 |
+        //                                          (board.Occupancy[Constants.BlackRook] >> square & 1UL) << 7 |
+        //                                          (board.Occupancy[Constants.BlackQueen] >> square & 1UL) << 9 |
+        //                                          (board.Occupancy[Constants.BlackKing] >> square & 1UL) << 11);
     }
 }

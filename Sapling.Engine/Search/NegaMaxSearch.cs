@@ -22,7 +22,7 @@ public partial class Searcher
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Max depth reached, return evaluation
-            return NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
+            return NnueEvaluator.Evaluate(SearchStack, BucketCache, depthFromRoot);
         }
 
         ref var pboard = ref SearchStack[depthFromRoot].Data;
@@ -83,7 +83,7 @@ public partial class Searcher
             }
             else if (!pvNode)
             {
-                var staticEval = NnueEvaluator.Evaluate(SearchStack, depthFromRoot);
+                var staticEval = NnueEvaluator.Evaluate(SearchStack, BucketCache, depthFromRoot);
 
                 // Reverse futility pruning
                 var margin = depth * 75;
@@ -103,7 +103,7 @@ public partial class Searcher
                     pboard.CloneTo(ref board);
                     board.ApplyNullMove();
 
-                    boardState.AccumulatorState.UpdateToParent(ref SearchStack[depthFromRoot].AccumulatorState, ref board);
+                    boardState.AccumulatorState.UpdateTo(ref board);
 
                     var nullMoveScore = -NegaMaxSearch(depthFromRoot + 1,
                         Math.Max(depth - reduction - 1, 0), -beta,
@@ -259,9 +259,7 @@ public partial class Searcher
             }
 
             boardState.AccumulatorState.UpdateToParent(ref parentBoardAccumulator, ref board);
-
-            // Finish making the move 
-            boardState.Data.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
+            board.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
             MoveStack[board.TurnCount - 1] = board.Hash;
 
             Sse.Prefetch0(Transpositions + (board.Hash & TtMask));

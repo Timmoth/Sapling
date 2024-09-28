@@ -1,4 +1,5 @@
 ﻿
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 namespace Sapling.Engine.Evaluation;
 
@@ -447,6 +448,233 @@ public static unsafe partial class NnueEvaluator
 
         return VectorType.Sum(sum);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Sub256(
+    VectorShort* source,
+    VectorShort* dest,
+    VectorShort* sub1)
+    {
+        dest[0] = source[0] - sub1[0];
+        dest[1] = source[1] - sub1[1];
+        dest[2] = source[2] - sub1[2];
+        dest[3] = source[3] - sub1[3];
+        dest[4] = source[4] - sub1[4];
+        dest[5] = source[5] - sub1[5];
+        dest[6] = source[6] - sub1[6];
+        dest[7] = source[7] - sub1[7];
+        dest[8] = source[8] - sub1[8];
+        dest[9] = source[9] - sub1[9];
+        dest[10] = source[10] - sub1[10];
+        dest[11] = source[11] - sub1[11];
+        dest[12] = source[12] - sub1[12];
+        dest[13] = source[13] - sub1[13];
+        dest[14] = source[14] - sub1[14];
+        dest[15] = source[15] - sub1[15];
+        dest[16] = source[16] - sub1[16];
+        dest[17] = source[17] - sub1[17];
+        dest[18] = source[18] - sub1[18];
+        dest[19] = source[19] - sub1[19];
+        dest[20] = source[20] - sub1[20];
+        dest[21] = source[21] - sub1[21];
+        dest[22] = source[22] - sub1[22];
+        dest[23] = source[23] - sub1[23];
+        dest[24] = source[24] - sub1[24];
+        dest[25] = source[25] - sub1[25];
+        dest[26] = source[26] - sub1[26];
+        dest[27] = source[27] - sub1[27];
+        dest[28] = source[28] - sub1[28];
+        dest[29] = source[29] - sub1[29];
+        dest[30] = source[30] - sub1[30];
+        dest[31] = source[31] - sub1[31];
+        dest[32] = source[32] - sub1[32];
+        dest[33] = source[33] - sub1[33];
+        dest[34] = source[34] - sub1[34];
+        dest[35] = source[35] - sub1[35];
+        dest[36] = source[36] - sub1[36];
+        dest[37] = source[37] - sub1[37];
+        dest[38] = source[38] - sub1[38];
+        dest[39] = source[39] - sub1[39];
+        dest[40] = source[40] - sub1[40];
+        dest[41] = source[41] - sub1[41];
+        dest[42] = source[42] - sub1[42];
+        dest[43] = source[43] - sub1[43];
+        dest[44] = source[44] - sub1[44];
+        dest[45] = source[45] - sub1[45];
+        dest[46] = source[46] - sub1[46];
+        dest[47] = source[47] - sub1[47];
+        dest[48] = source[48] - sub1[48];
+        dest[49] = source[49] - sub1[49];
+        dest[50] = source[50] - sub1[50];
+        dest[51] = source[51] - sub1[51];
+        dest[52] = source[52] - sub1[52];
+        dest[53] = source[53] - sub1[53];
+        dest[54] = source[54] - sub1[54];
+        dest[55] = source[55] - sub1[55];
+        dest[56] = source[56] - sub1[56];
+        dest[57] = source[57] - sub1[57];
+        dest[58] = source[58] - sub1[58];
+        dest[59] = source[59] - sub1[59];
+        dest[60] = source[60] - sub1[60];
+        dest[61] = source[61] - sub1[61];
+        dest[62] = source[62] - sub1[62];
+        dest[63] = source[63] - sub1[63];
+
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Sub512(
+        VectorShort* source,
+        VectorShort* dest,
+        VectorShort* sub1)
+    {
+        dest[0] = source[0] - sub1[0];
+        dest[1] = source[1] - sub1[1];
+        dest[2] = source[2] - sub1[2];
+        dest[3] = source[3] - sub1[3];
+        dest[4] = source[4] - sub1[4];
+        dest[5] = source[5] - sub1[5];
+        dest[6] = source[6] - sub1[6];
+        dest[7] = source[7] - sub1[7];
+        dest[8] = source[8] - sub1[8];
+        dest[9] = source[9] - sub1[9];
+        dest[10] = source[10] - sub1[10];
+        dest[11] = source[11] - sub1[11];
+        dest[12] = source[12] - sub1[12];
+        dest[13] = source[13] - sub1[13];
+        dest[14] = source[14] - sub1[14];
+        dest[15] = source[15] - sub1[15];
+        dest[16] = source[16] - sub1[16];
+        dest[17] = source[17] - sub1[17];
+        dest[18] = source[18] - sub1[18];
+        dest[19] = source[19] - sub1[19];
+        dest[20] = source[20] - sub1[20];
+        dest[21] = source[21] - sub1[21];
+        dest[22] = source[22] - sub1[22];
+        dest[23] = source[23] - sub1[23];
+        dest[24] = source[24] - sub1[24];
+        dest[25] = source[25] - sub1[25];
+        dest[26] = source[26] - sub1[26];
+        dest[27] = source[27] - sub1[27];
+        dest[28] = source[28] - sub1[28];
+        dest[29] = source[29] - sub1[29];
+        dest[30] = source[30] - sub1[30];
+        dest[31] = source[31] - sub1[31];
+
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Add256(
+    VectorShort* source,
+    VectorShort* dest, VectorShort* add1)
+    {
+        dest[0] = source[0] + add1[0];
+        dest[1] = source[1] + add1[1];
+        dest[2] = source[2] + add1[2];
+        dest[3] = source[3] + add1[3];
+        dest[4] = source[4] + add1[4];
+        dest[5] = source[5] + add1[5];
+        dest[6] = source[6] + add1[6];
+        dest[7] = source[7] + add1[7];
+        dest[8] = source[8] + add1[8];
+        dest[9] = source[9] + add1[9];
+        dest[10] = source[10] + add1[10];
+        dest[11] = source[11] + add1[11];
+        dest[12] = source[12] + add1[12];
+        dest[13] = source[13] + add1[13];
+        dest[14] = source[14] + add1[14];
+        dest[15] = source[15] + add1[15];
+        dest[16] = source[16] + add1[16];
+        dest[17] = source[17] + add1[17];
+        dest[18] = source[18] + add1[18];
+        dest[19] = source[19] + add1[19];
+        dest[20] = source[20] + add1[20];
+        dest[21] = source[21] + add1[21];
+        dest[22] = source[22] + add1[22];
+        dest[23] = source[23] + add1[23];
+        dest[24] = source[24] + add1[24];
+        dest[25] = source[25] + add1[25];
+        dest[26] = source[26] + add1[26];
+        dest[27] = source[27] + add1[27];
+        dest[28] = source[28] + add1[28];
+        dest[29] = source[29] + add1[29];
+        dest[30] = source[30] + add1[30];
+        dest[31] = source[31] + add1[31];
+        dest[32] = source[32] + add1[32];
+        dest[33] = source[33] + add1[33];
+        dest[34] = source[34] + add1[34];
+        dest[35] = source[35] + add1[35];
+        dest[36] = source[36] + add1[36];
+        dest[37] = source[37] + add1[37];
+        dest[38] = source[38] + add1[38];
+        dest[39] = source[39] + add1[39];
+        dest[40] = source[40] + add1[40];
+        dest[41] = source[41] + add1[41];
+        dest[42] = source[42] + add1[42];
+        dest[43] = source[43] + add1[43];
+        dest[44] = source[44] + add1[44];
+        dest[45] = source[45] + add1[45];
+        dest[46] = source[46] + add1[46];
+        dest[47] = source[47] + add1[47];
+        dest[48] = source[48] + add1[48];
+        dest[49] = source[49] + add1[49];
+        dest[50] = source[50] + add1[50];
+        dest[51] = source[51] + add1[51];
+        dest[52] = source[52] + add1[52];
+        dest[53] = source[53] + add1[53];
+        dest[54] = source[54] + add1[54];
+        dest[55] = source[55] + add1[55];
+        dest[56] = source[56] + add1[56];
+        dest[57] = source[57] + add1[57];
+        dest[58] = source[58] + add1[58];
+        dest[59] = source[59] + add1[59];
+        dest[60] = source[60] + add1[60];
+        dest[61] = source[61] + add1[61];
+        dest[62] = source[62] + add1[62];
+        dest[63] = source[63] + add1[63];
+
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Add512(
+        VectorShort* source,
+        VectorShort* dest, VectorShort* add1)
+    {
+        dest[0] = source[0] + add1[0];
+        dest[1] = source[1] + add1[1];
+        dest[2] = source[2] + add1[2];
+        dest[3] = source[3] + add1[3];
+        dest[4] = source[4] + add1[4];
+        dest[5] = source[5] + add1[5];
+        dest[6] = source[6] + add1[6];
+        dest[7] = source[7] + add1[7];
+        dest[8] = source[8] + add1[8];
+        dest[9] = source[9] + add1[9];
+        dest[10] = source[10] + add1[10];
+        dest[11] = source[11] + add1[11];
+        dest[12] = source[12] + add1[12];
+        dest[13] = source[13] + add1[13];
+        dest[14] = source[14] + add1[14];
+        dest[15] = source[15] + add1[15];
+        dest[16] = source[16] + add1[16];
+        dest[17] = source[17] + add1[17];
+        dest[18] = source[18] + add1[18];
+        dest[19] = source[19] + add1[19];
+        dest[20] = source[20] + add1[20];
+        dest[21] = source[21] + add1[21];
+        dest[22] = source[22] + add1[22];
+        dest[23] = source[23] + add1[23];
+        dest[24] = source[24] + add1[24];
+        dest[25] = source[25] + add1[25];
+        dest[26] = source[26] + add1[26];
+        dest[27] = source[27] + add1[27];
+        dest[28] = source[28] + add1[28];
+        dest[29] = source[29] + add1[29];
+        dest[30] = source[30] + add1[30];
+        dest[31] = source[31] + add1[31];
+
+    }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SubAdd256(
