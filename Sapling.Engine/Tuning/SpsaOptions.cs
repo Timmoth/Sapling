@@ -130,6 +130,11 @@ namespace Sapling.Engine.Tuning
     {
         public static Dictionary<string, SpsaParameter> TuningParameters = new();
 
+        static SpsaTuner()
+        {
+            ProcessUCIOptions();
+        }
+
         public static string FormatParameter(SpsaParameter parameter)
         {
             const double minStepSize = 0.01;
@@ -173,7 +178,7 @@ namespace Sapling.Engine.Tuning
                 var minValue = minValueAttribute?.MinValue ?? defaultValue;
                 var maxValue = maxValueAttribute?.MaxValue ?? defaultValue;
 
-                TuningParameters.Add(field.Name.ToLower(), new SpsaParameter()
+                TuningParameters[field.Name.ToLower()] = new SpsaParameter()
                 {
                     Name = field.Name,
                     DefaultValue = defaultValue,
@@ -181,7 +186,7 @@ namespace Sapling.Engine.Tuning
                     MinValue = minValue,
                     MaxValue = maxValue,
                     FieldHandle = field
-                });
+                };
             }
         }
 
