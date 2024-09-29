@@ -39,4 +39,4 @@ ifdef EXE
 endif
 
 publish:
-	dotnet publish Sapling/Sapling.csproj -c Release --runtime ${RUNTIME} --self-contained -p:Optimized=true -p:DeterministicBuild=true -p:ExecutableName=$(EXE) -o ${OUTPUT_DIR}
+	dotnet publish Sapling/Sapling.csproj -c Release --runtime ${RUNTIME} --self-contained -p:Optimized=true -p:DeterministicBuild=true -p:AssemblyName=$(EXE) -p:DebugType=embedded -o ${OUTPUT_DIR}
