@@ -98,6 +98,7 @@ public class UciEngine
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)
                 {
                     Respond($"option name {spsaParameters.Name} type spin default {spsaParameters.DefaultValue} min {spsaParameters.MinValue} max {spsaParameters.MaxValue}");
+
                 }
                 Respond("uciok");
                 break;
