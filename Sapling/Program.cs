@@ -7,6 +7,10 @@ namespace Sapling;
 
 internal class Program
 {
+    private static readonly ConcurrentQueue<string> commandQueue = new();
+    private static readonly ManualResetEventSlim commandAvailable = new(false);
+    private static bool hasQuit = false;
+
     private static void Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "--version")
@@ -83,42 +87,14 @@ internal class Program
         {
             UciEngine engine = new(logWriter);
 
-            var commandQueue = new ConcurrentQueue<string>();
-
-            var hasQuit = false;
+            // Start the command reading task
             _ = Task.Run(() =>
             {
-                while (true)
-                {
-                    var command = Console.ReadLine();
-                    if (string.IsNullOrEmpty(command))
-                    {
-                        continue;
-                    }
-
-                    if (command.Contains("quit"))
-                    {
-                        hasQuit = true;
-                        break;
-                    }
-
-                    if (command.Contains("stop"))
-                    {
-                        engine.ReceiveCommand(command);
-                        continue;
-                    }
-
-                    commandQueue.Enqueue(command);
-                }
+                ReadCommands(engine);
             });
 
-            while (!hasQuit)
-            {
-                if (commandQueue.TryDequeue(out var command))
-                {
-                    engine.ReceiveCommand(command);
-                }
-            }
+            // Process commands in the main loop
+            ProcessCommands(engine);
         }
         catch (Exception ex)
         {
@@ -130,6 +106,50 @@ internal class Program
         finally
         {
             logWriter.Flush();
+        }
+    }
+
+    private static void ReadCommands(UciEngine engine)
+    {
+        while (true)
+        {
+            var command = Console.ReadLine();
+            if (string.IsNullOrEmpty(command))
+            {
+                continue; // Skip empty commands
+            }
+
+            if (command.Contains("quit", StringComparison.OrdinalIgnoreCase))
+            {
+                hasQuit = true;
+                commandQueue.Enqueue(command);
+                commandAvailable.Set(); // Signal that a command is available
+                break;
+            }
+
+            if (command.Contains("stop", StringComparison.OrdinalIgnoreCase))
+            {
+                // Process the stop command immediately
+                engine.ReceiveCommand(command);
+                continue;
+            }
+
+            commandQueue.Enqueue(command);
+            commandAvailable.Set(); // Signal that a command is available
+        }
+    }
+
+    private static void ProcessCommands(UciEngine engine)
+    {
+        while (!hasQuit)
+        {
+            commandAvailable.Wait(); // Wait until a command is available
+            commandAvailable.Reset(); // Reset the event for the next wait
+
+            while (commandQueue.TryDequeue(out var command))
+            {
+                engine.ReceiveCommand(command);
+            }
         }
     }
 }
