@@ -33,19 +33,10 @@ else
 	endif
 endif
 
-ifndef RUNTIME
-	$(error RUNTIME is not set for $(OS) $(UNAME_S) $(UNAME_P), please fill an issue in https://github.com/timmoth/Sapling/issues/new/choose)
-endif
 
 ifdef EXE
 	OUTPUT_DIR=./
 endif
 
-build:
-	dotnet build -c Release
-
 publish:
-	dotnet publish Sapling/Sapling.csproj -c Release --runtime ${RUNTIME} --self-contained /p:Optimized=true /p:DeterministicBuild=true /p:ExecutableName=$(EXE) -o ${OUTPUT_DIR}
-
-run:
-	dotnet run --project Sapling/Sapling.csproj -c Release --runtime ${RUNTIME}
+	dotnet publish Sapling/Sapling.csproj -c Release --runtime ${RUNTIME} --self-contained -p:Optimized=true -p:DeterministicBuild=true -p:ExecutableName=$(EXE) -o ${OUTPUT_DIR}
