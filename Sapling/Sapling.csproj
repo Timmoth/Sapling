@@ -21,4 +21,11 @@
     <ProjectReference Include="..\Sapling.Engine\Sapling.Engine.csproj" />
   </ItemGroup>
 
+  <Target Name="Rename" AfterTargets="Publish" Condition="'$(ExecutableName)'!='' and '$(ExecutableName)'!='$(AssemblyName)'">
+    <Message Text="Attempting to rename executable file from $(PublishDir)/$(AssemblyName) to $(PublishDir)/$(ExecutableName)" Importance="high" />
+    <Move SourceFiles="$(PublishDir)/$(AssemblyName)" DestinationFiles="$(PublishDir)/$(ExecutableName)" ContinueOnError="true" />
+    <Message Text="Attempting to rename executable file from $(PublishDir)\$(AssemblyName).exe to $(PublishDir)/$(ExecutableName).exe" Importance="high" />
+    <Move SourceFiles="$(PublishDir)/$(AssemblyName).exe" DestinationFiles="$(PublishDir)/$(ExecutableName).exe" ContinueOnError="true" />
+  </Target>
+
 </Project>
