@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Intrinsics.X86;
+using Sapling.Engine.DataGen;
 
 namespace Sapling;
 
@@ -59,6 +60,12 @@ internal class Program
             // Log the exception or take appropriate action
             Console.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
         };
+
+        if (args.Contains("bench"))
+        {
+            Bench.Run();
+            return;
+        }
 
         var logDirectory = Path.Combine(Environment.CurrentDirectory, "logs");
         if (!Directory.Exists(logDirectory))
