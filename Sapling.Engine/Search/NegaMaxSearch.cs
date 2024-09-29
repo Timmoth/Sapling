@@ -2,6 +2,7 @@
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
+using Sapling.Engine.Tuning;
 
 namespace Sapling.Engine.Search;
 
@@ -26,10 +27,8 @@ public partial class Searcher
         }
 
         ref var pboard = ref SearchStack[depthFromRoot].Data;
-        var pHash = pboard.Hash;
-
-        ref var boardState = ref SearchStack[depthFromRoot + 1];
-        ref var board = ref boardState.Data;
+        ref var accumulator = ref SearchStack[depthFromRoot + 1].AccumulatorState;
+        ref var board = ref SearchStack[depthFromRoot + 1].Data;
 
         var pvIndex = PVTable.Indexes[depthFromRoot];
         var nextPvIndex = PVTable.Indexes[depthFromRoot + 1];
@@ -37,6 +36,7 @@ public partial class Searcher
 
         var pvNode = beta - alpha > 1;
         var parentInCheck = pboard.InCheck;
+        var pHash = pboard.Hash;
 
         var canPrune = false;
         uint transpositionBestMove = default;
@@ -86,8 +86,8 @@ public partial class Searcher
                 var staticEval = NnueEvaluator.Evaluate(SearchStack, BucketCache, depthFromRoot);
 
                 // Reverse futility pruning
-                var margin = depth * 75;
-                if (depth <= 7 && staticEval >= beta + margin)
+                var margin = depth * SpsaOptions.ReverseFutilityPruningMargin;
+                if (depth <= SpsaOptions.ReverseFutilityPruningDepth && staticEval >= beta + margin)
                 {
                     return staticEval - margin;
                 }
@@ -96,14 +96,14 @@ public partial class Searcher
                 if (staticEval >= beta &&
                     !wasReducedMove &&
                     (transpositionType != TranspositionTableFlag.Alpha || transpositionEvaluation >= beta) &&
-                    depth > 2 && pboard.HasMajorPieces())
+                    depth > SpsaOptions.NullMovePruningDepth && pboard.HasMajorPieces())
                 {
-                    var reduction = Math.Max(0, (depth - 3) / 4 + 3);
+                    var reduction = Math.Max(0, (depth - SpsaOptions.NullMovePruningReductionA) / SpsaOptions.NullMovePruningReductionB + SpsaOptions.NullMovePruningReductionC);
 
                     pboard.CloneTo(ref board);
                     board.ApplyNullMove();
 
-                    boardState.AccumulatorState.UpdateTo(ref board);
+                    accumulator.UpdateTo(ref board);
 
                     var nullMoveScore = -NegaMaxSearch(depthFromRoot + 1,
                         Math.Max(depth - reduction - 1, 0), -beta,
@@ -124,7 +124,7 @@ public partial class Searcher
                 // Razoring
                 if (depth is > 0 and <= 3)
                 {
-                    var score = staticEval + 125;
+                    var score = staticEval + SpsaOptions.RazorMarginA;
                     if (depth == 1 && score < beta)
                     {
                         NodesVisited--;
@@ -133,7 +133,7 @@ public partial class Searcher
                         return int.Max(qScore, score);
                     }
 
-                    score += 175;
+                    score = staticEval + SpsaOptions.RazorMarginB;
                     if (score < beta)
                     {
                         NodesVisited--;
@@ -156,7 +156,7 @@ public partial class Searcher
             return QuiescenceSearch(depthFromRoot, alpha, beta);
         }
 
-        if (transpositionType == default && depth > 2)
+        if (transpositionType == default && depth > SpsaOptions.InternalIterativeDeepeningDepth)
         {
             // Internal iterative deepening
             depth--;
@@ -244,22 +244,22 @@ public partial class Searcher
                 continue;
             }
 
-            boardState.Data.UpdateCheckStatus();
+            board.UpdateCheckStatus();
 
             var isPromotionThreat = m.IsPromotionThreat();
-            var isInteresting = parentInCheck || boardState.Data.InCheck || isPromotionThreat ||
-                                scores[moveIndex] > Constants.LosingCaptureBias;
+            var isInteresting = parentInCheck || board.InCheck || isPromotionThreat ||
+                                scores[moveIndex] > SpsaOptions.InterestingNegaMaxMoveScore;
 
             if (canPrune &&
                 !isInteresting &&
-                searchedMoves > depth * depth + 8)
+                searchedMoves > depth * depth + SpsaOptions.LateMovePruningConstant)
             {
                 // Late move pruning
                 continue;
             }
 
-            boardState.AccumulatorState.UpdateToParent(ref parentBoardAccumulator, ref board);
-            board.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
+            accumulator.UpdateToParent(ref parentBoardAccumulator, ref board);
+            board.FinishApply(ref accumulator, m, pboard.EnPassantFile, pboard.CastleRights);
             MoveStack[board.TurnCount - 1] = board.Hash;
 
             Sse.Prefetch0(Transpositions + (board.Hash & TtMask));
@@ -269,13 +269,12 @@ public partial class Searcher
 
             if (searchedMoves > 0)
             {
-                if (depth >= 3 && searchedMoves >= 2)
+                if (depth >= SpsaOptions.LateMoveReductionMinDepth && searchedMoves >= SpsaOptions.LateMoveReductionMinMoves)
                 {
                     // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
                     var reduction = (int)(isInteresting
-                        ? 0.2 + logDepth * Math.Log(searchedMoves) / 3.3
-                        : 1.35 + logDepth * Math.Log(searchedMoves) / 2.75);
-
+                        ? SpsaOptions.LateMoveReductionInterestingA + logDepth * Math.Log(searchedMoves) / SpsaOptions.LateMoveReductionInterestingB
+                        : SpsaOptions.LateMoveReductionA + logDepth * Math.Log(searchedMoves) / SpsaOptions.LateMoveReductionB);
 
                     if (reduction > 0)
                     {

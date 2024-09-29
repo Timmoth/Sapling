@@ -5,6 +5,7 @@ using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
 using Sapling.Engine.Transpositions;
+using Sapling.Engine.Tuning;
 
 namespace Sapling;
 
@@ -37,6 +38,11 @@ public class UciEngine
         if (tokens[1] != "name")
         {
             return;
+        }
+
+        if (SpsaTuner.HasParameter(tokens[2].ToLower()))
+        {
+            SpsaTuner.SetParameterValue(tokens);
         }
 
         switch (tokens[2].ToLower())
@@ -123,6 +129,13 @@ public class UciEngine
                 break;
             case "version":
                 Console.WriteLine(_version);
+                break;
+            case "tune":
+                SpsaTuner.ProcessUCIOptions();
+                foreach (var formattedParameter in SpsaTuner.PrintSPSAParams())
+                {
+                    Console.WriteLine(formattedParameter);
+                }
                 break;
             default:
                 LogToFile($"Unrecognized command: {messageType}");

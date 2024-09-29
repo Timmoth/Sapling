@@ -1,22 +1,19 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Sapling.Engine.MoveGen;
+using Sapling.Engine.Tuning;
 
 namespace Sapling.Engine.Search;
 
 public static unsafe class HistoryHeuristicExtensions
 {
-    private const int MaxHistory = 8192;
-    private const short BonusMax = 640;
-    private const short BonusCoeff = 80;
-
     public static short* BonusTable;
     static HistoryHeuristicExtensions()
     {
         BonusTable = Allocate();
         for (var i = 0; i < Constants.MaxSearchDepth; i++)
         {
-            BonusTable[i] = Math.Min(BonusMax, (short)(BonusCoeff * (i - 1)));
+            BonusTable[i] = Math.Min((short)SpsaOptions.HistoryHeuristicBonusMax, (short)(SpsaOptions.HistoryHeuristicBonusCoeff * (i - 1)));
         }
     }
 
@@ -38,7 +35,7 @@ public static unsafe class HistoryHeuristicExtensions
 
         // Directly update the history array
         var index = m.GetMovedPiece() * 64 + m.GetToSquare();
-        history[index] += bonus - (history[index] * absBonus) / MaxHistory;
+        history[index] += bonus - (history[index] * absBonus) / SpsaOptions.HistoryHeuristicMaxHistory;
 
         var malus = (short)-bonus;
 
@@ -52,7 +49,7 @@ public static unsafe class HistoryHeuristicExtensions
             }
 
             var quietIndex = quiet.GetMovedPiece() * 64 + quiet.GetToSquare();
-            history[quietIndex] += malus - (history[quietIndex] * absBonus) / MaxHistory;
+            history[quietIndex] += malus - (history[quietIndex] * absBonus) / SpsaOptions.HistoryHeuristicMaxHistory;
         }
     }
 }

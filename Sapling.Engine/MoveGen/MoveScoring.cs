@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using Sapling.Engine.Evaluation;
+using Sapling.Engine.Tuning;
 
 namespace Sapling.Engine.MoveGen;
 
@@ -65,33 +66,33 @@ public static class MoveScoring
         {
             if (move.IsEnPassant())
             {
-                return Constants.WinningCaptureBias;
+                return SpsaOptions.MoveOrderingWinningCaptureBias;
             }
 
             var captureDelta = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
 
-            return (captureDelta >= 0 ? Constants.WinningCaptureBias : Constants.LosingCaptureBias) +
-                   captureDelta + (move.IsPromotion() ? Constants.PromoteBias : 0);
+            return (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
+                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingPromoteBias : 0);
         }
 
         if (move.IsPromotion())
         {
-            return Constants.PromoteBias;
+            return SpsaOptions.MoveOrderingPromoteBias;
         }
 
         if (killerA == move)
         {
-            return Constants.KillerABias;
+            return SpsaOptions.MoveOrderingKillerABias;
         }
 
         if (killerB == move)
         {
-            return Constants.KillerBBias;
+            return SpsaOptions.MoveOrderingKillerBBias;
         }
 
         if (counterMove == move)
         {
-            return Constants.CounterMoveBias;
+            return SpsaOptions.MoveOrderingCounterMoveBias;
         }
 
         return history[move.GetMovedPiece() * 64 + move.GetToSquare()];
@@ -119,18 +120,18 @@ public static class MoveScoring
         {
             if (move.IsEnPassant())
             {
-                return Constants.WinningCaptureBias;
+                return SpsaOptions.MoveOrderingWinningCaptureBias;
             }
 
             var captureDelta = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
 
-            return (captureDelta >= 0 ? Constants.WinningCaptureBias : Constants.LosingCaptureBias) +
-                   captureDelta + (move.IsPromotion() ? Constants.PromoteBias : 0);
+            return (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
+                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingPromoteBias : 0);
         }
 
         if (move.IsPromotion())
         {
-            return Constants.PromoteBias;
+            return SpsaOptions.MoveOrderingPromoteBias;
         }
 
         return 0;

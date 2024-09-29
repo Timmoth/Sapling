@@ -56,17 +56,6 @@ public static class Constants
 
     #endregion
 
-    #region Move Ordering
-
-    public const int WinningCaptureBias = 10_000_000;
-    public const int LosingCaptureBias = 16_000;
-    public const int PromoteBias = 600_000;
-    public const int KillerABias = 500_000;
-    public const int KillerBBias = 250_000;
-    public const int CounterMoveBias = 65_000;
-
-    #endregion
-
     #region PieceValue
 
     public const int PawnValue = 100;

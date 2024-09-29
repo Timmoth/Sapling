@@ -4,6 +4,7 @@ using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
+using Sapling.Engine.Tuning;
 
 namespace Sapling.Engine.Search;
 
@@ -25,7 +26,6 @@ public partial class Searcher
             return NnueEvaluator.Evaluate(SearchStack, BucketCache, depthFromRoot);
         }
 
-        ref var boardState = ref SearchStack[depthFromRoot + 1];
         ref var pAccumulator = ref SearchStack[depthFromRoot].AccumulatorState;
         ref var pboard = ref SearchStack[depthFromRoot].Data;
 
@@ -112,7 +112,9 @@ public partial class Searcher
 
         uint bestMove = default;
         var hasValidMove = false;
-        ref var board = ref boardState.Data;
+
+        ref var accumulator = ref SearchStack[depthFromRoot + 1].AccumulatorState;
+        ref var board = ref SearchStack[depthFromRoot + 1].Data;
 
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
@@ -140,14 +142,14 @@ public partial class Searcher
 
             hasValidMove = true;
 
-            if (!pboard.InCheck && !board.InCheck && scores[moveIndex] < Constants.LosingCaptureBias)
+            if (!pboard.InCheck && !board.InCheck && scores[moveIndex] < SpsaOptions.InterestingQuiescenceMoveScore)
             {
                 //skip playing bad captures when not in check
                 continue;
             }
 
-            boardState.AccumulatorState.UpdateToParent(ref pAccumulator, ref board);
-            board.FinishApply(ref boardState.AccumulatorState, m, pboard.EnPassantFile, pboard.CastleRights);
+            accumulator.UpdateToParent(ref pAccumulator, ref board);
+            board.FinishApply(ref accumulator, m, pboard.EnPassantFile, pboard.CastleRights);
             MoveStack[board.TurnCount - 1] = board.Hash;
 
             Sse.Prefetch0(Transpositions + (board.Hash & TtMask));
@@ -169,7 +171,6 @@ public partial class Searcher
             evaluationBound = TranspositionTableFlag.Exact;
             bestMove = m;
             alpha = val;
-
             if (val >= beta)
             {
                 // Cache in transposition table
@@ -204,18 +205,6 @@ public partial class Searcher
 
         return alpha;
     }
-
-    //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    //private unsafe void ShiftPvMoves(int target, int source, int moveCountToCopy)
-    //{
-    //    if (_pVTable[source] == 0)
-    //    {
-    //        NativeMemory.Clear(_pVTable + target, _pvTableBytes - (nuint)target * sizeof(uint));
-    //        return;
-    //    }
-
-    //    NativeMemory.Copy(_pVTable + source, _pVTable + target, (nuint)moveCountToCopy * sizeof(uint));
-    //}
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe void ShiftPvMoves(int target, int source, int moveCountToCopy)
