@@ -31,6 +31,11 @@ namespace Sapling.Engine.Tuning
     }
 
     [AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
+    public sealed class SpsaIgnoreAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
     public sealed class SpsaMaxValueAttribute : Attribute
     {
         public string MaxValue { get; }
@@ -80,16 +85,16 @@ namespace Sapling.Engine.Tuning
         [SpsaMinValueAttribute("1"), SpsaMaxValue("10")]
         public static int LateMoveReductionMinMoves = 2;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionInterestingA = 0.2f;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionInterestingB = 3.3f;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionA = 1.35f;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionB = 2.75f;
 
         [SpsaMinValueAttribute("7000"), SpsaMaxValue("10000")]
@@ -173,6 +178,11 @@ namespace Sapling.Engine.Tuning
                 // Retrieve the custom attributes, if present
                 var minValueAttribute = field.GetCustomAttribute<SpsaMinValueAttribute>();
                 var maxValueAttribute = field.GetCustomAttribute<SpsaMaxValueAttribute>();
+                var ignoreAttribute = field.GetCustomAttribute<SpsaIgnoreAttribute>();
+                if (ignoreAttribute != null)
+                {
+                    continue;
+                }
 
                 // Set MinValue and MaxValue using the attributes, or default to the default value
                 var minValue = minValueAttribute?.MinValue ?? defaultValue;
