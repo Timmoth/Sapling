@@ -5,9 +5,7 @@ ifndef EXE
 endif
 
 ifeq ($(OS),Windows_NT)
-	ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
-		RUNTIME=win-x64
-	else ifeq ($(PROCESSOR_ARCHITEW6432),AMD64)
+	ifeq ($(PROCESSOR_ARCHITEW6432),AMD64)
 		RUNTIME=win-x64
 	else
 		RUNTIME=win-x86
@@ -37,11 +35,16 @@ endif
 OUTPUT_DIR := $(dir $(EXE))
 
 # Extract the filename from the EXE path (everything after the last slash, without extension)
-ASSEMBLY_NAME := $(notdir $(basename $(EXE)))
+OUTPUT_EXE := $(notdir $(EXE))
 
-# Create the output directory if it doesn't exist
 publish:
 	@if [ ! -d "$(OUTPUT_DIR)" ]; then mkdir -p $(OUTPUT_DIR); fi
 	dotnet publish Sapling/Sapling.csproj -c Release --runtime $(RUNTIME) --self-contained \
-		-p:PublishSingleFile=true -p:DeterministicBuild=true \
-		-p:AssemblyName=$(ASSEMBLY_NAME) -p:DebugType=embedded -o $(OUTPUT_DIR)
+		-p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR)
+
+	# Renaming the generated .exe file
+	@if [ "$(OS)" = "Windows_NT" ]; then \
+		mv $(OUTPUT_DIR)Sapling.exe $(OUTPUT_DIR)$(OUTPUT_EXE).exe; \
+	else \
+		mv $(OUTPUT_DIR)Sapling $(OUTPUT_DIR)$(OUTPUT_EXE); \
+	fi
