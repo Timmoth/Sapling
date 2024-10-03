@@ -1,7 +1,12 @@
 ﻿using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Intrinsics.X86;
+using System.Text;
+using Sapling.Engine;
 using Sapling.Engine.DataGen;
+using Sapling.Engine.Evaluation;
+using Sapling.Engine.MoveGen;
+using Sapling.Engine.Search;
 
 namespace Sapling;
 
@@ -13,6 +18,8 @@ internal class Program
 
     private static void Main(string[] args)
     {
+        Console.SetIn(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8, false, 2048 * 4));
+
         if (args.Length > 0 && args[0] == "--version")
         {
             // Get the version from the assembly information
@@ -64,6 +71,25 @@ internal class Program
             // Log the exception or take appropriate action
             Console.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
         };
+
+        // Force the static constructors to be called
+        Task[] tasks = new Task[]
+        {
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NnueWeights).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NnueExtensions).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(AttackTables).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(PieceValues).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(RepetitionDetector).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(HistoryHeuristicExtensions).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(PVTable).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Zobrist).TypeHandle))
+        };
+
+        // Wait for all tasks to complete
+        Task.WaitAll(tasks);
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
+        GC.WaitForPendingFinalizers();
 
         if (args.Contains("bench"))
         {

@@ -30,26 +30,26 @@ public static unsafe class HistoryHeuristicExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UpdateMovesHistory(int* history, uint* moves, int quietCount, uint m, int depth)
     {
-        var bonus = BonusTable[depth];
-        var absBonus = Math.Abs(bonus);
+        var bonus = *(BonusTable + depth);
 
         // Directly update the history array
-        var index = m.GetMovedPiece() * 64 + m.GetToSquare();
-        history[index] += bonus - (history[index] * absBonus) / SpsaOptions.HistoryHeuristicMaxHistory;
+        var index = m.GetCounterMoveIndex();
+
+        *(history + index) += bonus - (*(history + index) * bonus) / SpsaOptions.HistoryHeuristicMaxHistory;
 
         var malus = (short)-bonus;
 
         // Process quiet moves
         for (var n = 0; n < quietCount; n++)
         {
-            var quiet = moves[n];
-            if (!quiet.IsQuiet())
+            var quiet = *(moves + n);
+            if (!quiet.IsQuiet() || quiet == default)
             {
                 continue;
             }
 
-            var quietIndex = quiet.GetMovedPiece() * 64 + quiet.GetToSquare();
-            history[quietIndex] += malus - (history[quietIndex] * absBonus) / SpsaOptions.HistoryHeuristicMaxHistory;
+            var quietIndex = quiet.GetCounterMoveIndex();
+            *(history + quietIndex) += malus - (*(history + quietIndex) * bonus) / SpsaOptions.HistoryHeuristicMaxHistory;
         }
     }
 }

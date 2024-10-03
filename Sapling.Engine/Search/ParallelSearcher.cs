@@ -1,7 +1,5 @@
-﻿using System.Drawing;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.Search;
@@ -42,8 +40,7 @@ public unsafe class ParallelSearcher
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int MoveFromToIndex(uint move)
     {
-        return MoveExtensions.BitFieldExtract(move, 4, 6) * 64 +
-               MoveExtensions.BitFieldExtract(move, 10, 6);
+        return (int)(((move >> 4) & 0x3F) * 64 + (move >> 10) & 0x3F);
     }
 
     public static int ThreadValue(int score, int worstScore, int depth)

@@ -1,679 +1,576 @@
 ﻿using System.Runtime.CompilerServices;
+using Sapling.Engine.Evaluation;
+using Sapling.Engine.Transpositions;
 
-namespace Sapling.Engine.Evaluation;
+namespace Sapling.Engine.Search;
 
-public static unsafe partial class NnueEvaluator
+public unsafe partial class Searcher
 {
-#if AVX512
-            const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
-#else
-    private const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
-#endif
-
     private const int Scale = 400;
     private const int Q = 255 * 64;
 
-    private const int ColorStride = 64 * 6;
-    private const int PieceStride = 64;
-
-    private static readonly VectorShort Ceil = VectorType.Create<short>(255);
-    private static readonly VectorShort Floor = VectorType.Create<short>(0);
+#if AVX512
+            const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#else
+    public const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
+#endif
 
     public const int AccumulatorSize = NnueWeights.Layer1Size / VectorSize;
 
     public const int L1ByteSize = sizeof(short) * NnueWeights.Layer1Size;
     public const int InputBucketWeightCount = NnueWeights.InputSize * AccumulatorSize;
 
-    private const int BucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
+    public const int BucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
 
-    public static int Evaluate(BoardStateEntry* searchStack, BucketCache* bucketCache, int depthFromRoot)
+    public int Evaluate(BoardStateData* boardState, AccumulatorState* accumulatorState, int depthFromRoot)
     {
-        ref var board = ref searchStack[depthFromRoot];
-        ref var accumulatorState = ref board.AccumulatorState;
-
-        if (accumulatorState.Evaluation.HasValue)
+        ref var eval = ref accumulatorState->Evaluation;
+        if (eval < TranspositionTableExtensions.NoHashEntry)
         {
-            return accumulatorState.Evaluation.Value;
+            return eval;
         }
 
-        UpdateWhiteAccumulator(searchStack, bucketCache, depthFromRoot);
-        UpdateBlackAccumulator(searchStack, bucketCache, depthFromRoot);
+        UpdateWhiteAccumulator(boardState, accumulatorState, depthFromRoot);
+        UpdateBlackAccumulator(boardState, accumulatorState, depthFromRoot);
 
-        var bucket = (board.Data.PieceCount - 2) / BucketDivisor;
+        var bucket = (boardState->PieceCount - 2) / BucketDivisor;
 
 #if AVX512
         var output = board.Data.WhiteToMove
             ? ForwardCReLU512(board.WhiteAccumulator, board.BlackAccumulator, bucket)
             : ForwardCReLU512(board.BlackAccumulator, board.WhiteAccumulator, bucket);
 #else
-        var output = board.Data.WhiteToMove
-            ? ForwardCReLU256(board.WhiteAccumulator, board.BlackAccumulator, bucket)
-            : ForwardCReLU256(board.BlackAccumulator, board.WhiteAccumulator, bucket);
+        var output = boardState->WhiteToMove
+            ? ForwardCReLU256(WhiteAccumulators[depthFromRoot], BlackAccumulators[depthFromRoot], bucket)
+            : ForwardCReLU256(BlackAccumulators[depthFromRoot], WhiteAccumulators[depthFromRoot], bucket);
 
 #endif
 
-        var finalEval = (output + NnueWeights.OutputBiases[bucket]) * Scale / Q;
-        accumulatorState.Evaluation = finalEval;
-
-        return finalEval;
+        return (eval = (output + NnueWeights.OutputBiases[bucket]) * Scale / Q);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void FeatureIndices(bool whiteMirrored, bool blackMirrored, int piece, int square, out int wIndex, out int bIndex)
+    public void FillInitialAccumulators(BoardStateData* board, AccumulatorState* accumulatorState)
     {
-        var whitePieceSquare = whiteMirrored ? square ^ 7 : square;
-        var blackPieceSquare = blackMirrored ? square ^ 0x38 ^ 7 : square ^ 0x38;
+        VectorShort* whiteAcc = WhiteAccumulators[0];
+        VectorShort* blackAcc = BlackAccumulators[0];
 
-        var white = piece & 1 ^ 1;
-        var typeStride = ((piece >> 1) - white)* PieceStride;
-
-        bIndex = white * ColorStride + typeStride + blackPieceSquare;
-        wIndex = (white ^ 1) * ColorStride + typeStride + whitePieceSquare;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int WhiteFeatureIndices(bool mirrored, int piece, byte square)
-    {
-        if (mirrored)
-        {
-            square ^= 7;
-        }
-
-        var white = piece & 1 ^ 1;
-        var type = (piece >> 1) - white;
-
-        return (white ^ 1) * ColorStride + type * PieceStride + square;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int BlackFeatureIndices(bool mirrored, int piece, byte square)
-    {
-        square ^= 0x38;
-
-        if (mirrored)
-        {
-            square ^= 7;
-        }
-
-        var white = piece & 1 ^ 1;
-
-        var type = (piece >> 1) - white;
-        return white * ColorStride + type * PieceStride + square;
-    }
-
-    public static void FillAccumulators(this ref BoardStateEntry entry)
-    {
-        ref BoardStateData board = ref entry.Data;
-        ref AccumulatorState accumulatorState = ref entry.AccumulatorState;
-        VectorShort* whiteAcc = entry.WhiteAccumulator;
-        VectorShort* blackAcc = entry.BlackAccumulator;
-
-        accumulatorState.UpdateTo(ref board);
-        accumulatorState.WhiteAccumulatorUpToDate = accumulatorState.BlackAccumulatorUpToDate = true;
+        accumulatorState->UpdateTo(board);
+        accumulatorState->WhiteAccumulatorUpToDate = accumulatorState->BlackAccumulatorUpToDate = true;
 
 #if AVX512
         SimdResetAccumulators512(whiteAcc, blackAcc);
 #else
         SimdResetAccumulators256(whiteAcc, blackAcc);
 #endif
-        var whiteMirrored = accumulatorState.WhiteMirrored;
-        var blackMirrored = accumulatorState.BlackMirrored;
+        var whiteMirrored = accumulatorState->WhiteMirrored ? 1 : 0;
+        var blackMirrored = accumulatorState->BlackMirrored ? 1 : 0;
 
-        var wFeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteInputBucket * InputBucketWeightCount;
-        var bFeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackInputBucket * InputBucketWeightCount;
+        var wFeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteInputBucket * InputBucketWeightCount;
+        var bFeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackInputBucket * InputBucketWeightCount;
+        var i = Constants.WhiteKing * 128 + board->WhiteKingSquare * 2;
+        var wIdx = NnueExtensions.WhiteFeatureIndexes[i+ whiteMirrored];
+        var bIdx = NnueExtensions.BlackFeatureIndexes[i+ blackMirrored];
 
-        FeatureIndices(whiteMirrored, blackMirrored, Constants.WhiteKing, board.WhiteKingSquare, out var wIdx, out var bIdx);
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-        AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
 
-        var bitboard = board.Occupancy[Constants.WhitePawn];
+        var bitboard = board->Occupancy[Constants.WhitePawn];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.WhitePawn, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.WhitePawn * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        bitboard = board.Occupancy[Constants.WhiteKnight];
+        bitboard = board->Occupancy[Constants.WhiteKnight];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.WhiteKnight, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.WhiteKnight * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        bitboard = board.Occupancy[Constants.WhiteBishop];
+        bitboard = board->Occupancy[Constants.WhiteBishop];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.WhiteBishop, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.WhiteBishop * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        bitboard = board.Occupancy[Constants.WhiteRook];
+        bitboard = board->Occupancy[Constants.WhiteRook];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.WhiteRook, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.WhiteRook * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        bitboard = board.Occupancy[Constants.WhiteQueen];
+        bitboard = board->Occupancy[Constants.WhiteQueen];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.WhiteQueen, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.WhiteQueen * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        FeatureIndices(whiteMirrored, blackMirrored, Constants.BlackKing, board.BlackKingSquare, out wIdx, out bIdx);
+        i = Constants.BlackKing * 128 + board->BlackKingSquare * 2;
+        wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+        bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-        AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
 
-        bitboard = board.Occupancy[Constants.BlackPawn];
+        bitboard = board->Occupancy[Constants.BlackPawn];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.BlackPawn, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.BlackPawn * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
-#endif
-        }
-
-        bitboard = board.Occupancy[Constants.BlackKnight];
-        while (bitboard != 0)
-        {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.BlackKnight, bitboard.PopLSB(), out wIdx, out bIdx);
-#if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
-#else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        bitboard = board.Occupancy[Constants.BlackBishop];
+        bitboard = board->Occupancy[Constants.BlackKnight];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.BlackBishop, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.BlackKnight * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        bitboard = board.Occupancy[Constants.BlackRook];
+        bitboard = board->Occupancy[Constants.BlackBishop];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.BlackRook, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.BlackBishop * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-        bitboard = board.Occupancy[Constants.BlackQueen];
+        bitboard = board->Occupancy[Constants.BlackRook];
         while (bitboard != 0)
         {
-            FeatureIndices(whiteMirrored, blackMirrored, Constants.BlackQueen, bitboard.PopLSB(), out wIdx, out bIdx);
+            i = Constants.BlackRook * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
+#endif
+        }
+
+        bitboard = board->Occupancy[Constants.BlackQueen];
+        while (bitboard != 0)
+        {
+            i = Constants.BlackQueen * 128 + bitboard.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + whiteMirrored];
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + blackMirrored];
+#if AVX512
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
+#else
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
     }
 
     
-    private static void FullRefreshWhite(this ref BoardStateData board, bool mirrored, int bucket, VectorShort* whiteAcc)
+    private static void FullRefreshWhite(BoardStateData* board, int mirrored, int bucket, VectorShort* whiteAcc)
     {
 #if AVX512
         SimdCopy512(whiteAcc, NnueWeights.FeatureBiases);
 #else
-        SimdCopy256(whiteAcc, NnueWeights.FeatureBiases);
+        Unsafe.CopyBlock(whiteAcc, NnueWeights.FeatureBiases, L1ByteSize);
 #endif
 
 
         var wFeaturePtr = NnueWeights.FeatureWeights + bucket * InputBucketWeightCount;
-        var wIdx = WhiteFeatureIndices(mirrored, Constants.WhiteKing, board.WhiteKingSquare);
+        var i = Constants.WhiteKing * 128 + board->WhiteKingSquare * 2;
+        var wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-        AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
 
-        var bitboards = board.Occupancy[Constants.WhitePawn];
+        var bitboards = board->Occupancy[Constants.WhitePawn];
 
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.WhitePawn, bitboards.PopLSB());
+            i = Constants.WhitePawn * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
+
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        bitboards = board.Occupancy[Constants.WhiteKnight];
+        bitboards = board->Occupancy[Constants.WhiteKnight];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.WhiteKnight, bitboards.PopLSB());
+            i = Constants.WhiteKnight * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        bitboards = board.Occupancy[Constants.WhiteBishop];
+        bitboards = board->Occupancy[Constants.WhiteBishop];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.WhiteBishop, bitboards.PopLSB());
+            i = Constants.WhiteBishop * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        bitboards = board.Occupancy[Constants.WhiteRook];
+        bitboards = board->Occupancy[Constants.WhiteRook];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.WhiteRook, bitboards.PopLSB());
+            i = Constants.WhiteRook * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        bitboards = board.Occupancy[Constants.WhiteQueen];
+        bitboards = board->Occupancy[Constants.WhiteQueen];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.WhiteQueen, bitboards.PopLSB());
+            i = Constants.WhiteQueen * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+#endif
+        }
+        
+        i = Constants.BlackKing * 128 + board->BlackKingSquare * 2;
+        wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
+#if AVX512
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+#else
+        AddWeights256(whiteAcc, wFeaturePtr + wIdx);
+#endif
+
+        bitboards = board->Occupancy[Constants.BlackPawn];
+        while (bitboards != 0)
+        {
+            i = Constants.BlackPawn * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
+#if AVX512
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
+#else
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        wIdx = WhiteFeatureIndices(mirrored, Constants.BlackKing, board.BlackKingSquare);
-#if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-#else
-        AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-#endif
-
-        bitboards = board.Occupancy[Constants.BlackPawn];
+        bitboards = board->Occupancy[Constants.BlackKnight];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.BlackPawn, bitboards.PopLSB());
+            i = Constants.BlackKnight * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        bitboards = board.Occupancy[Constants.BlackKnight];
+        bitboards = board->Occupancy[Constants.BlackBishop];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.BlackKnight, bitboards.PopLSB());
+            i = Constants.BlackBishop * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        bitboards = board.Occupancy[Constants.BlackBishop];
+        bitboards = board->Occupancy[Constants.BlackRook];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.BlackBishop, bitboards.PopLSB());
+            i = Constants.BlackRook * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
 
-        bitboards = board.Occupancy[Constants.BlackRook];
+        bitboards = board->Occupancy[Constants.BlackQueen];
         while (bitboards != 0)
         {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.BlackRook, bitboards.PopLSB());
+            i = Constants.BlackQueen * 128 + bitboards.PopLSB() * 2;
+            wIdx = NnueExtensions.WhiteFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+        AddWeights512(whiteAcc, wFeaturePtr + wIdx);
 #else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-#endif
-        }
-
-        bitboards = board.Occupancy[Constants.BlackQueen];
-        while (bitboards != 0)
-        {
-            wIdx = WhiteFeatureIndices(mirrored, Constants.BlackQueen, bitboards.PopLSB());
-#if AVX512
-        AddWeights512(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
-#else
-            AddWeights256(whiteAcc, wFeaturePtr + wIdx * AccumulatorSize);
+            AddWeights256(whiteAcc, wFeaturePtr + wIdx);
 #endif
         }
     }
 
-    private static void FullRefreshBlack(this ref BoardStateData board, bool mirrored, int bucket, VectorShort* blackAcc)
+    private static void FullRefreshBlack(BoardStateData* board, int mirrored, int bucket, VectorShort* blackAcc)
     {
 
 #if AVX512
         SimdCopy512(blackAcc, NnueWeights.FeatureBiases);
 #else
-        SimdCopy256(blackAcc, NnueWeights.FeatureBiases);
+        Unsafe.CopyBlock(blackAcc, NnueWeights.FeatureBiases, L1ByteSize);
+
 #endif
 
         var bFeaturePtr = NnueWeights.FeatureWeights + bucket * InputBucketWeightCount;
-        var bIdx = BlackFeatureIndices(mirrored, Constants.WhiteKing, board.WhiteKingSquare);
+        var i = Constants.WhiteKing * 128 + board->WhiteKingSquare * 2;
+        var bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-        AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
-        var bitboards = board.Occupancy[Constants.WhitePawn];
+        var bitboards = board->Occupancy[Constants.WhitePawn];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.WhitePawn, bitboards.PopLSB());
+            i = Constants.WhitePawn * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.WhiteKnight];
+            bitboards = board->Occupancy[Constants.WhiteKnight];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.WhiteKnight, bitboards.PopLSB());
+            i = Constants.WhiteKnight * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.WhiteBishop];
+            bitboards = board->Occupancy[Constants.WhiteBishop];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.WhiteBishop, bitboards.PopLSB());
+            i = Constants.WhiteBishop * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.WhiteRook];
+            bitboards = board->Occupancy[Constants.WhiteRook];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.WhiteRook, bitboards.PopLSB());
+            i = Constants.WhiteRook * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.WhiteQueen];
+            bitboards = board->Occupancy[Constants.WhiteQueen];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.WhiteQueen, bitboards.PopLSB());
+            i = Constants.WhiteQueen * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
-
-            bIdx = BlackFeatureIndices(mirrored, Constants.BlackKing, board.BlackKingSquare);
+        i = Constants.BlackKing * 128 + board->BlackKingSquare * 2;
+        bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
 
-        bitboards = board.Occupancy[Constants.BlackPawn];
+        bitboards = board->Occupancy[Constants.BlackPawn];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.BlackPawn, bitboards.PopLSB());
+            i = Constants.BlackPawn * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.BlackKnight];
+            bitboards = board->Occupancy[Constants.BlackKnight];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.BlackKnight, bitboards.PopLSB());
+            i = Constants.BlackKnight * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.BlackBishop];
+            bitboards = board->Occupancy[Constants.BlackBishop];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.BlackBishop, bitboards.PopLSB());
+            i = Constants.BlackBishop * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.BlackRook];
+            bitboards = board->Occupancy[Constants.BlackRook];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.BlackRook, bitboards.PopLSB());
+            i = Constants.BlackRook * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
 
-            bitboards = board.Occupancy[Constants.BlackQueen];
+            bitboards = board->Occupancy[Constants.BlackQueen];
         while (bitboards != 0)
         {
-            bIdx = BlackFeatureIndices(mirrored, Constants.BlackQueen, bitboards.PopLSB());
+            i = Constants.BlackQueen * 128 + bitboards.PopLSB() * 2;
+            bIdx = NnueExtensions.BlackFeatureIndexes[i + mirrored];
 #if AVX512
-        AddWeights512(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+        AddWeights512(blackAcc, bFeaturePtr + bIdx);
 #else
-            AddWeights256(blackAcc, bFeaturePtr + bIdx * AccumulatorSize);
+            AddWeights256(blackAcc, bFeaturePtr + bIdx);
 #endif
         }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ApplyQuiet(this ref AccumulatorState accumulatorState, byte fromPiece, byte fromSquare,
-        byte toPiece, byte toSquare)
-    {
-        var whiteMirrored = accumulatorState.WhiteMirrored;
-        var blackMirrored = accumulatorState.BlackMirrored;
-
-        FeatureIndices(whiteMirrored, blackMirrored, fromPiece, fromSquare, out var fromWIndex, out var fromBIndex);
-        FeatureIndices(whiteMirrored, blackMirrored, toPiece, toSquare, out var toWIndex, out var toBIndex);
-
-        var wBucketOffset = accumulatorState.WhiteInputBucket * InputBucketWeightCount;
-        var bBucketOffset = accumulatorState.BlackInputBucket * InputBucketWeightCount;
-
-        var fromWFeatureUpdate = wBucketOffset + fromWIndex * AccumulatorSize;
-        var fromBFeatureUpdate = bBucketOffset + fromBIndex * AccumulatorSize;
-        var toWFeatureUpdate = wBucketOffset + toWIndex * AccumulatorSize;
-        var toBFeatureUpdate = bBucketOffset + toBIndex * AccumulatorSize;
-
-        accumulatorState.WhiteSubFeatureUpdates[0] = fromWFeatureUpdate;
-        accumulatorState.BlackSubFeatureUpdates[0] = fromBFeatureUpdate;
-        accumulatorState.WhiteAddFeatureUpdates[0] = toWFeatureUpdate;
-        accumulatorState.BlackAddFeatureUpdates[0] = toBFeatureUpdate;
-
-        accumulatorState.ChangeType = AccumulatorChangeType.SubAdd;
-    }
-
-
+    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ApplyCapture(this ref AccumulatorState accumulatorState,
-     byte fromPiece, byte fromSquare,
-     byte toPiece, byte toSquare,
-     byte capturedPiece, byte capturedSquare)
+    public void UpdateWhiteAccumulator(BoardStateData* board, AccumulatorState* accumulator, int depthFromRoot)
     {
-        var whiteMirrored = accumulatorState.WhiteMirrored;
-        var blackMirrored = accumulatorState.BlackMirrored;
-        
-        FeatureIndices(whiteMirrored, blackMirrored, fromPiece, fromSquare, out var fromWIndex, out var fromBIndex);
-        FeatureIndices(whiteMirrored, blackMirrored, toPiece, toSquare, out var toWIndex, out var toBIndex);
-        FeatureIndices(whiteMirrored, blackMirrored, capturedPiece, capturedSquare, out var capWIndex, out var capBIndex);
-
-        var wBucketOffset = accumulatorState.WhiteInputBucket * InputBucketWeightCount;
-        var bBucketOffset = accumulatorState.BlackInputBucket * InputBucketWeightCount;
-
-        var fromWFeatureUpdate = wBucketOffset + fromWIndex * AccumulatorSize;
-        var fromBFeatureUpdate = bBucketOffset + fromBIndex * AccumulatorSize;
-        var capWFeatureUpdate = wBucketOffset + capWIndex * AccumulatorSize;
-        var capBFeatureUpdate = bBucketOffset + capBIndex * AccumulatorSize;
-        var toWFeatureUpdate = wBucketOffset + toWIndex * AccumulatorSize;
-        var toBFeatureUpdate = bBucketOffset + toBIndex * AccumulatorSize;
-        accumulatorState.WhiteSubFeatureUpdates[0] = fromWFeatureUpdate;
-        accumulatorState.BlackSubFeatureUpdates[0] = fromBFeatureUpdate;
-        accumulatorState.WhiteSubFeatureUpdates[1] = capWFeatureUpdate;
-        accumulatorState.BlackSubFeatureUpdates[1] = capBFeatureUpdate;
-        accumulatorState.WhiteAddFeatureUpdates[0] = toWFeatureUpdate;
-        accumulatorState.BlackAddFeatureUpdates[0] = toBFeatureUpdate;
-        accumulatorState.ChangeType = AccumulatorChangeType.SubSubAdd;
-    }
-
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ApplyCastle(this ref AccumulatorState accumulatorState,
-        byte kingPiece, byte fromKingSquare, byte toKingSquare,
-      byte rookPiece, byte fromRookSquare, byte toRookSquare)
-    {
-        var whiteMirrored = accumulatorState.WhiteMirrored;
-        var blackMirrored = accumulatorState.BlackMirrored;
-
-        FeatureIndices(whiteMirrored, blackMirrored, kingPiece, fromKingSquare, out var fromKingWIndex, out var fromKingBIndex);
-        FeatureIndices(whiteMirrored, blackMirrored, kingPiece, toKingSquare, out var toKingWIndex, out var toKingBIndex);
-        FeatureIndices(whiteMirrored, blackMirrored, rookPiece, fromRookSquare, out var fromRookWIndex, out var fromRookBIndex);
-        FeatureIndices(whiteMirrored, blackMirrored, rookPiece, toRookSquare, out var toRookWIndex, out var toRookBIndex);
-
-        var wBucketOffset = accumulatorState.WhiteInputBucket * InputBucketWeightCount;
-        var bBucketOffset = accumulatorState.BlackInputBucket * InputBucketWeightCount;
-
-        var fromKingWFeatureUpdate = wBucketOffset + fromKingWIndex * AccumulatorSize;
-        var fromKingBFeatureUpdate = bBucketOffset + fromKingBIndex * AccumulatorSize;
-        var toKingWFeatureUpdate = wBucketOffset + toKingWIndex * AccumulatorSize;
-        var toKingBFeatureUpdate = bBucketOffset + toKingBIndex * AccumulatorSize;
-        var fromRookWFeatureUpdate = wBucketOffset + fromRookWIndex * AccumulatorSize;
-        var fromRookBFeatureUpdate = bBucketOffset + fromRookBIndex * AccumulatorSize;
-        var toRookWFeatureUpdate = wBucketOffset + toRookWIndex * AccumulatorSize;
-        var toRookBFeatureUpdate = bBucketOffset + toRookBIndex * AccumulatorSize;
-
-        // Apply the pre-calculated values to the feature update arrays
-        accumulatorState.WhiteSubFeatureUpdates[0] = fromKingWFeatureUpdate;
-        accumulatorState.BlackSubFeatureUpdates[0] = fromKingBFeatureUpdate;
-        accumulatorState.WhiteSubFeatureUpdates[1] = fromRookWFeatureUpdate;
-        accumulatorState.BlackSubFeatureUpdates[1] = fromRookBFeatureUpdate;
-
-        accumulatorState.WhiteAddFeatureUpdates[0] = toKingWFeatureUpdate;
-        accumulatorState.BlackAddFeatureUpdates[0] = toKingBFeatureUpdate;
-        accumulatorState.WhiteAddFeatureUpdates[1] = toRookWFeatureUpdate;
-        accumulatorState.BlackAddFeatureUpdates[1] = toRookBFeatureUpdate;
-
-        // Set the change type
-        accumulatorState.ChangeType = AccumulatorChangeType.SubSubAddAdd;
-    }
-
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateWhiteAccumulator(BoardStateEntry* searchStack, BucketCache* bucketCache, int depthFromRoot)
-    {
-        // Check if current depth is already up-to-date or needs refresh.
-        ref var currentState = ref searchStack[depthFromRoot].AccumulatorState;
-
-        if (currentState.WhiteAccumulatorUpToDate)
+        // Directly dereference the pointers for the initial checks since they are at the correct index.
+        if (accumulator->WhiteAccumulatorUpToDate)
         {
             return;
         }
 
-        if (currentState.WhiteNeedsRefresh)
+        if (accumulator->WhiteNeedsRefresh)
         {
-            searchStack[depthFromRoot].RefreshAccumulatorWhite(bucketCache);
+            // No need to adjust the pointers since they are at the correct index
+            RefreshAccumulatorWhite(board, accumulator, depthFromRoot);
             return;
         }
 
-        // Find the nearest up-to-date or needs-refresh state moving upwards.
-        var refreshDepth = depthFromRoot - 1;
+        // Start searching for the nearest valid state moving backwards.
+        int refreshDepth = depthFromRoot - 1;
         while (refreshDepth >= 0)
         {
-            ref var parentState = ref searchStack[refreshDepth].AccumulatorState;
+            AccumulatorState* parentAccumulator = (accumulator - (depthFromRoot - refreshDepth));
 
-            if (parentState.WhiteAccumulatorUpToDate)
+            // If an up-to-date accumulator is found, stop at the next level.
+            if (parentAccumulator->WhiteAccumulatorUpToDate)
             {
                 refreshDepth++;
                 break;
             }
 
-            if (parentState.WhiteNeedsRefresh)
+            // If a refresh is needed at this depth, perform the refresh and stop.
+            if (parentAccumulator->WhiteNeedsRefresh)
             {
-                searchStack[refreshDepth].RefreshAccumulatorWhite(bucketCache);
+                RefreshAccumulatorWhite(board - (depthFromRoot - refreshDepth), parentAccumulator, refreshDepth);
                 refreshDepth++;
                 break;
             }
@@ -681,49 +578,50 @@ public static unsafe partial class NnueEvaluator
             refreshDepth--;
         }
 
-        // Apply updates downwards to the current depth.
-        for (var i = refreshDepth; i <= depthFromRoot; i++)
+        // Now, move forward and apply updates up to the current depth.
+        for (int i = refreshDepth; i <= depthFromRoot; i++)
         {
             ApplyWhiteUpdate(
-                searchStack[i - 1].WhiteAccumulator,
-                searchStack[i].WhiteAccumulator,
-                ref searchStack[i].AccumulatorState
+               i,
+                accumulator - (depthFromRoot - i)
             );
         }
     }
 
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateBlackAccumulator(BoardStateEntry* searchStack, BucketCache* bucketCache, int depthFromRoot)
+    public void UpdateBlackAccumulator(BoardStateData* board, AccumulatorState* accumulator, int depthFromRoot)
     {
-        // Check if current depth is already up-to-date or needs refresh.
-        ref var currentState = ref searchStack[depthFromRoot].AccumulatorState;
-
-        if (currentState.BlackAccumulatorUpToDate)
+        // Directly dereference the pointers for the initial checks since they are at the correct index.
+        if (accumulator->BlackAccumulatorUpToDate)
         {
             return;
         }
 
-        if (currentState.BlackNeedsRefresh)
+        if (accumulator->BlackNeedsRefresh)
         {
-            searchStack[depthFromRoot].RefreshAccumulatorBlack(bucketCache);
+            // No need to adjust the pointers since they are at the correct index
+            RefreshAccumulatorBlack(board, accumulator, depthFromRoot);
             return;
         }
 
-        // Find the nearest up-to-date or needs-refresh state moving upwards.
-        var refreshDepth = depthFromRoot - 1;
+        // Start searching for the nearest valid state moving backwards.
+        int refreshDepth = depthFromRoot - 1;
         while (refreshDepth >= 0)
         {
-            ref var parentState = ref searchStack[refreshDepth].AccumulatorState;
+            AccumulatorState* parentAccumulator = (accumulator - (depthFromRoot - refreshDepth));
 
-            if (parentState.BlackAccumulatorUpToDate)
+            // If an up-to-date accumulator is found, stop at the next level.
+            if (parentAccumulator->BlackAccumulatorUpToDate)
             {
                 refreshDepth++;
                 break;
             }
 
-            if (parentState.BlackNeedsRefresh)
+            // If a refresh is needed at this depth, perform the refresh and stop.
+            if (parentAccumulator->BlackNeedsRefresh)
             {
-                searchStack[refreshDepth].RefreshAccumulatorBlack(bucketCache);
+                RefreshAccumulatorBlack(board - (depthFromRoot - refreshDepth), parentAccumulator, refreshDepth);
                 refreshDepth++;
                 break;
             }
@@ -731,25 +629,27 @@ public static unsafe partial class NnueEvaluator
             refreshDepth--;
         }
 
-        // Apply updates downwards to the current depth.
-        for (var i = refreshDepth; i <= depthFromRoot; i++)
+        // Now, move forward and apply updates up to the current depth.
+        for (int i = refreshDepth; i <= depthFromRoot; i++)
         {
-            ApplyBlackUpdate(
-                searchStack[i - 1].BlackAccumulator,
-                searchStack[i].BlackAccumulator,
-                ref searchStack[i].AccumulatorState
+            ApplyBlackUpdate(i,
+                accumulator - (depthFromRoot - i)
             );
         }
     }
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ApplyWhiteUpdate(VectorShort* prevAccumulator, VectorShort* accumulator, ref AccumulatorState accumulatorState)
+    public void ApplyWhiteUpdate(int depthFromRoot, AccumulatorState* accumulatorState)
     {
-        if (accumulatorState.ChangeType == AccumulatorChangeType.SubAdd)
+        var prevAccumulator = WhiteAccumulators[depthFromRoot - 1];
+        var accumulator = WhiteAccumulators[depthFromRoot];
+
+        var changeType = accumulatorState->ChangeType;
+        if (changeType == AccumulatorChangeType.SubAdd)
         {
-            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteSubFeatureUpdates[0];
-            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteAddFeatureUpdates[0];
+            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteSubFeatureUpdatesA;
+            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteAddFeatureUpdatesA;
 
 #if AVX512
             SubAdd512(prevAccumulator, accumulator,
@@ -762,11 +662,11 @@ public static unsafe partial class NnueEvaluator
 #endif
 
         }
-        else if (accumulatorState.ChangeType == AccumulatorChangeType.SubSubAdd)
+        else if (changeType == AccumulatorChangeType.SubSubAdd)
         {
-            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteSubFeatureUpdates[0];
-            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteSubFeatureUpdates[1];
-            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteAddFeatureUpdates[0];
+            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteSubFeatureUpdatesA;
+            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteSubFeatureUpdatesB;
+            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteAddFeatureUpdatesA;
 
 #if AVX512
             SubSubAdd512(prevAccumulator, accumulator, sub1FeaturePtr, sub2FeaturePtr, add1FeaturePtr);
@@ -775,12 +675,12 @@ public static unsafe partial class NnueEvaluator
 #endif
 
         }
-        else if (accumulatorState.ChangeType == AccumulatorChangeType.SubSubAddAdd)
+        else if (changeType == AccumulatorChangeType.SubSubAddAdd)
         {
-            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteSubFeatureUpdates[0];
-            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteSubFeatureUpdates[1];
-            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteAddFeatureUpdates[0];
-            var add2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.WhiteAddFeatureUpdates[1];
+            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteSubFeatureUpdatesA;
+            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteSubFeatureUpdatesB;
+            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteAddFeatureUpdatesA;
+            var add2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->WhiteAddFeatureUpdatesB;
 
 #if AVX512
            SubSubAddAdd512(prevAccumulator, accumulator, sub1FeaturePtr,
@@ -794,27 +694,32 @@ public static unsafe partial class NnueEvaluator
                 add2FeaturePtr);
 #endif
         }
-        else if (accumulatorState.ChangeType == AccumulatorChangeType.None)
+        else if (changeType == AccumulatorChangeType.None)
         {
 
 #if AVX512
             SimdCopy512(accumulator, prevAccumulator);
 #else
-            SimdCopy256(accumulator, prevAccumulator);
+            Unsafe.CopyBlock(accumulator, prevAccumulator, L1ByteSize);
+
 #endif
 
         }
 
-        accumulatorState.WhiteAccumulatorUpToDate = true;
+        accumulatorState->WhiteAccumulatorUpToDate = true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ApplyBlackUpdate(VectorShort* prevAccumulator, VectorShort* accumulator, ref AccumulatorState accumulatorState)
+    public void ApplyBlackUpdate(int depthFromRoot, AccumulatorState* accumulatorState)
     {
-        if (accumulatorState.ChangeType == AccumulatorChangeType.SubAdd)
+        var prevAccumulator = BlackAccumulators[depthFromRoot - 1];
+        var accumulator = BlackAccumulators[depthFromRoot];
+
+        var changeType = accumulatorState->ChangeType;
+        if (changeType == AccumulatorChangeType.SubAdd)
         {
-            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackSubFeatureUpdates[0];
-            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackAddFeatureUpdates[0];
+            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackSubFeatureUpdatesA;
+            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackAddFeatureUpdatesA;
 
 #if AVX512
             SubAdd512(prevAccumulator, accumulator,
@@ -827,11 +732,11 @@ public static unsafe partial class NnueEvaluator
 #endif
 
         }
-        else if (accumulatorState.ChangeType == AccumulatorChangeType.SubSubAdd)
+        else if (changeType == AccumulatorChangeType.SubSubAdd)
         {
-            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackSubFeatureUpdates[0];
-            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackSubFeatureUpdates[1];
-            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackAddFeatureUpdates[0];
+            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackSubFeatureUpdatesA;
+            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackSubFeatureUpdatesB;
+            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackAddFeatureUpdatesA;
 
 #if AVX512
             SubSubAdd512(prevAccumulator, accumulator, sub1FeaturePtr, sub2FeaturePtr, add1FeaturePtr);
@@ -841,12 +746,12 @@ public static unsafe partial class NnueEvaluator
 #endif
 
         }
-        else if (accumulatorState.ChangeType == AccumulatorChangeType.SubSubAddAdd)
+        else if (changeType == AccumulatorChangeType.SubSubAddAdd)
         {
-            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackSubFeatureUpdates[0];
-            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackSubFeatureUpdates[1];
-            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackAddFeatureUpdates[0];
-            var add2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState.BlackAddFeatureUpdates[1];
+            var sub1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackSubFeatureUpdatesA;
+            var sub2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackSubFeatureUpdatesB;
+            var add1FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackAddFeatureUpdatesA;
+            var add2FeaturePtr = NnueWeights.FeatureWeights + accumulatorState->BlackAddFeatureUpdatesB;
 
 #if AVX512
             SubSubAddAdd512(prevAccumulator, accumulator, sub1FeaturePtr,
@@ -863,53 +768,50 @@ public static unsafe partial class NnueEvaluator
 
 
         }
-        else if (accumulatorState.ChangeType == AccumulatorChangeType.None)
+        else if (changeType == AccumulatorChangeType.None)
         {
 #if AVX512
             SimdCopy512(accumulator, prevAccumulator);
 #else
-            SimdCopy256(accumulator, prevAccumulator);
+            Unsafe.CopyBlock(accumulator, prevAccumulator, L1ByteSize);
 #endif
         }
 
-        accumulatorState.BlackAccumulatorUpToDate = true;
+        accumulatorState->BlackAccumulatorUpToDate = true;
     }
 
-    public static void RefreshAccumulatorWhite(this ref BoardStateEntry entry, BucketCache* bucketCache)
+    public void RefreshAccumulatorWhite(BoardStateData* boards, AccumulatorState* accumulators, int depthFromRoot)
     {
-        ref BoardStateData board = ref entry.Data;
-        ref AccumulatorState accumulatorState = ref entry.AccumulatorState;
-        VectorShort* accumulator = entry.WhiteAccumulator;
+        VectorShort* accumulator = WhiteAccumulators[depthFromRoot];
 
-        accumulatorState.Evaluation = null;
-        accumulatorState.WhiteNeedsRefresh = false;
-        accumulatorState.WhiteMirrored = board.WhiteKingSquare.IsMirroredSide();
-        accumulatorState.WhiteInputBucket = NnueWeights.BucketLayout[board.WhiteKingSquare];
-        accumulatorState.WhiteAccumulatorUpToDate = true;
+        accumulators->Evaluation = TranspositionTableExtensions.NoHashEntry;
+        accumulators->WhiteNeedsRefresh = false;
+        accumulators->WhiteMirrored = boards->WhiteKingSquare.IsMirroredSide();
+        accumulators->WhiteInputBucket = *(NnueWeights.BucketLayout + boards->WhiteKingSquare);
+        accumulators->WhiteAccumulatorUpToDate = true;
 
-        var bucketCacheIndex = accumulatorState.WhiteInputBucket * 2 + (accumulatorState.WhiteMirrored ? 0 : 1);
-        ref var cachedBoard = ref bucketCache[bucketCacheIndex].WhiteBoard;
-        var cachedAccumulator = bucketCache[bucketCacheIndex].WhiteAccumulator;
+        var mirrored = accumulators->WhiteMirrored ? 1 : 0;
+        var bucketCacheIndex = accumulators->WhiteInputBucket * 2 + mirrored;
+        var cachedBoard = BucketCacheWhiteBoards + bucketCacheIndex;
+        var cachedAccumulator = BucketCacheWhiteAccumulators[bucketCacheIndex];
 
-        var mirrored = accumulatorState.WhiteMirrored;
-        if (cachedBoard.PieceCount == 0)
+        if (cachedBoard->PieceCount == 0)
         {
-            FullRefreshWhite(ref board, mirrored, accumulatorState.WhiteInputBucket, cachedAccumulator);
+            FullRefreshWhite(boards, mirrored, accumulators->WhiteInputBucket, accumulator);
 #if AVX512
             SimdCopy512(accumulator, cachedAccumulator);
 #else
-            SimdCopy256(accumulator, cachedAccumulator);
+            Unsafe.CopyBlock(cachedAccumulator, accumulator, L1ByteSize);
 #endif
-
-            board.CloneTo(ref cachedBoard);
+            Unsafe.CopyBlock(cachedBoard, boards, BoardStateExtensions.BoardStateSize);
             return;
         }
 
-        var bucketOffset = NnueWeights.FeatureWeights + accumulatorState.WhiteInputBucket * InputBucketWeightCount;
-        if (board.BlackKingSquare != cachedBoard.BlackKingSquare)
+        var bucketOffset = NnueWeights.FeatureWeights + accumulators->WhiteInputBucket * InputBucketWeightCount;
+        if (boards->BlackKingSquare != cachedBoard->BlackKingSquare)
         {
-            var subKing = bucketOffset + WhiteFeatureIndices(mirrored, Constants.BlackKing, cachedBoard.BlackKingSquare) * AccumulatorSize;
-            var addKing = bucketOffset + WhiteFeatureIndices(mirrored, Constants.BlackKing, board.BlackKingSquare) * AccumulatorSize;
+            var subKing = bucketOffset + NnueExtensions.WhiteFeatureIndexes[Constants.BlackKing * 128 + cachedBoard->BlackKingSquare * 2 + mirrored];
+            var addKing = bucketOffset + NnueExtensions.WhiteFeatureIndexes[Constants.BlackKing * 128 + boards->BlackKingSquare * 2 + mirrored];
 
 #if AVX512
             SubAdd512(cachedAccumulator, cachedAccumulator, subKing, addKing);
@@ -919,10 +821,10 @@ public static unsafe partial class NnueEvaluator
 
         }
 
-        if (board.WhiteKingSquare != cachedBoard.WhiteKingSquare)
+        if (boards->WhiteKingSquare != cachedBoard->WhiteKingSquare)
         {
-            var subKing = bucketOffset + WhiteFeatureIndices(mirrored,Constants.WhiteKing, cachedBoard.WhiteKingSquare) * AccumulatorSize;
-            var addKing = bucketOffset + WhiteFeatureIndices(mirrored, Constants.WhiteKing, board.WhiteKingSquare) * AccumulatorSize;
+            var subKing = bucketOffset + NnueExtensions.WhiteFeatureIndexes[Constants.WhiteKing * 128 + cachedBoard->WhiteKingSquare * 2 + mirrored];
+            var addKing = bucketOffset + NnueExtensions.WhiteFeatureIndexes[Constants.WhiteKing * 128 + boards->WhiteKingSquare * 2 + mirrored];
 
 #if AVX512
             SubAdd512(cachedAccumulator, cachedAccumulator, subKing, addKing);
@@ -933,29 +835,30 @@ public static unsafe partial class NnueEvaluator
 
             for (int i = Constants.BlackPawn; i < Constants.BlackKing; i++)
         {
-            var prev = cachedBoard.Occupancy[i];
-            var curr = board.Occupancy[i];
+            var prev = cachedBoard->Occupancy[i];
+            var curr = boards->Occupancy[i];
 
             var added = curr & ~prev;
             var removed = prev & ~curr;
 
             while (added != 0)
             {
-                var idx = WhiteFeatureIndices(mirrored, i, added.PopLSB());
+                var idx = NnueExtensions.WhiteFeatureIndexes[i * 128 + added.PopLSB() * 2 + mirrored];
+
 #if AVX512
-                AddWeights512(cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                AddWeights512(cachedAccumulator, bucketOffset + idx);
 #else
-                AddWeights256(cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                AddWeights256(cachedAccumulator, bucketOffset + idx);
 #endif
             }
 
             while (removed != 0)
             {
-                var idx = WhiteFeatureIndices(mirrored, i, removed.PopLSB());
+                var idx = NnueExtensions.WhiteFeatureIndexes[i * 128 + removed.PopLSB() * 2 + mirrored];
 #if AVX512
-                Sub512(cachedAccumulator, cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                Sub512(cachedAccumulator, cachedAccumulator, bucketOffset + idx);
 #else
-                Sub256(cachedAccumulator, cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                Sub256(cachedAccumulator, cachedAccumulator, bucketOffset + idx);
 #endif
             }
 
@@ -964,59 +867,60 @@ public static unsafe partial class NnueEvaluator
 #if AVX512
         SimdCopy512(accumulator, cachedAccumulator);
 #else
-        SimdCopy256(accumulator, cachedAccumulator);
+        Unsafe.CopyBlock(accumulator, cachedAccumulator, L1ByteSize);
 #endif
-        board.CloneTo(ref cachedBoard);
+
+        Unsafe.CopyBlock(cachedBoard, boards, BoardStateExtensions.BoardStateSize);
     }
 
 
-    public static void RefreshAccumulatorBlack(this ref BoardStateEntry entry, BucketCache* bucketCache)
+    public void RefreshAccumulatorBlack(BoardStateData* board, AccumulatorState* accumulatorState, int depthFromRoot)
     {
-        ref BoardStateData board = ref entry.Data;
-        ref AccumulatorState accumulatorState = ref entry.AccumulatorState;
-        VectorShort* accumulator = entry.BlackAccumulator;
+        VectorShort* accumulator = BlackAccumulators[depthFromRoot];
 
-        accumulatorState.Evaluation = null;
-        accumulatorState.BlackNeedsRefresh = false;
-        accumulatorState.BlackMirrored = board.BlackKingSquare.IsMirroredSide();
-        accumulatorState.BlackInputBucket = NnueWeights.BucketLayout[board.BlackKingSquare ^ 0x38];
-        accumulatorState.BlackAccumulatorUpToDate = true;
+        accumulatorState->Evaluation = TranspositionTableExtensions.NoHashEntry;
+        accumulatorState->BlackNeedsRefresh = false;
+        accumulatorState->BlackMirrored = board->BlackKingSquare.IsMirroredSide();
+        accumulatorState->BlackInputBucket = *(NnueWeights.BucketLayout + (board->BlackKingSquare ^ 0x38));
+        accumulatorState->BlackAccumulatorUpToDate = true;
 
-        var bucketCacheIndex = accumulatorState.BlackInputBucket * 2 + (accumulatorState.BlackMirrored ? 0 : 1);
-        ref var cachedBoard = ref bucketCache[bucketCacheIndex].BlackBoard;
-        var cachedAccumulator = bucketCache[bucketCacheIndex].BlackAccumulator;
-        var mirrored = accumulatorState.BlackMirrored;
+        var mirrored = accumulatorState->BlackMirrored ? 1 : 0;
+        var bucketCacheIndex = accumulatorState->BlackInputBucket * 2 + mirrored;
 
-        if (cachedBoard.PieceCount == 0)
+        var cachedBoard = BucketCacheBlackBoards + bucketCacheIndex;
+        var cachedAccumulator = BucketCacheBlackAccumulators[bucketCacheIndex];
+
+        if (cachedBoard->PieceCount == 0)
         {
-            FullRefreshBlack(ref board, mirrored, accumulatorState.BlackInputBucket, cachedAccumulator);
+            FullRefreshBlack(board, mirrored, accumulatorState->BlackInputBucket, accumulator);
 #if AVX512
             SimdCopy512(accumulator, cachedAccumulator);
 #else
-            SimdCopy256(accumulator, cachedAccumulator);
+            Unsafe.CopyBlock(cachedAccumulator, accumulator, L1ByteSize);
 #endif
-            board.CloneTo(ref cachedBoard);
+            Unsafe.CopyBlock(cachedBoard, board, BoardStateExtensions.BoardStateSize);
             return;
         }
 
-        var bucketOffset = NnueWeights.FeatureWeights + accumulatorState.BlackInputBucket * InputBucketWeightCount;
-
-        if (board.BlackKingSquare != cachedBoard.BlackKingSquare)
+        var bucketOffset = NnueWeights.FeatureWeights + accumulatorState->BlackInputBucket * InputBucketWeightCount;
+        if (board->BlackKingSquare != cachedBoard->BlackKingSquare)
         {
-            var subKing = bucketOffset + BlackFeatureIndices(mirrored, Constants.BlackKing, cachedBoard.BlackKingSquare) * AccumulatorSize;
-            var addKing = bucketOffset + BlackFeatureIndices(mirrored, Constants.BlackKing, board.BlackKingSquare) * AccumulatorSize;
+            var subKing = bucketOffset + NnueExtensions.BlackFeatureIndexes[Constants.BlackKing * 128 + cachedBoard->BlackKingSquare * 2 + mirrored];
+            var addKing = bucketOffset + NnueExtensions.BlackFeatureIndexes[Constants.BlackKing * 128 + board->BlackKingSquare * 2 + mirrored];
 
 #if AVX512
             SubAdd512(cachedAccumulator, cachedAccumulator, subKing, addKing);
 #else
             SubAdd256(cachedAccumulator, cachedAccumulator, subKing, addKing);
 #endif
+
         }
 
-        if (board.WhiteKingSquare != cachedBoard.WhiteKingSquare)
+        if (board->WhiteKingSquare != cachedBoard->WhiteKingSquare)
         {
-            var subKing = bucketOffset + BlackFeatureIndices(mirrored, Constants.WhiteKing, cachedBoard.WhiteKingSquare) * AccumulatorSize;
-            var addKing = bucketOffset + BlackFeatureIndices(mirrored, Constants.WhiteKing, board.WhiteKingSquare) * AccumulatorSize;
+            var subKing = bucketOffset + NnueExtensions.BlackFeatureIndexes[Constants.WhiteKing * 128 + cachedBoard->WhiteKingSquare * 2 + mirrored];
+            var addKing = bucketOffset + NnueExtensions.BlackFeatureIndexes[Constants.WhiteKing * 128 + board->WhiteKingSquare * 2 + mirrored];
+
 #if AVX512
             SubAdd512(cachedAccumulator, cachedAccumulator, subKing, addKing);
 #else
@@ -1026,29 +930,29 @@ public static unsafe partial class NnueEvaluator
 
         for (int i = Constants.BlackPawn; i < Constants.BlackKing; i++)
         {
-            var prev = cachedBoard.Occupancy[i];
-            var curr = board.Occupancy[i];
+            var prev = cachedBoard->Occupancy[i];
+            var curr = board->Occupancy[i];
 
             var added = curr & ~prev;
             var removed = prev & ~curr;
 
             while (added != 0)
             {
-                var idx = BlackFeatureIndices(mirrored, i, added.PopLSB());
+                var idx = NnueExtensions.BlackFeatureIndexes[i * 128 + added.PopLSB() * 2 + mirrored];
 #if AVX512
-                AddWeights512(cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                AddWeights512(cachedAccumulator, bucketOffset + idx);
 #else
-                AddWeights256(cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                AddWeights256(cachedAccumulator, bucketOffset + idx);
 #endif
             }
 
             while (removed != 0)
             {
-                var idx = BlackFeatureIndices(mirrored, i, removed.PopLSB());
+                var idx = NnueExtensions.BlackFeatureIndexes[i * 128 + removed.PopLSB() * 2 + mirrored];
 #if AVX512
-                Sub512(cachedAccumulator, cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                Sub512(cachedAccumulator, cachedAccumulator, bucketOffset + idx);
 #else
-                Sub256(cachedAccumulator, cachedAccumulator, bucketOffset + idx * AccumulatorSize);
+                Sub256(cachedAccumulator, cachedAccumulator, bucketOffset + idx);
 #endif
             }
         }
@@ -1056,8 +960,9 @@ public static unsafe partial class NnueEvaluator
 #if AVX512
         SimdCopy512(accumulator, cachedAccumulator);
 #else
-        SimdCopy256(accumulator, cachedAccumulator);
+        Unsafe.CopyBlock(accumulator, cachedAccumulator, L1ByteSize);
 #endif
-        board.CloneTo(ref cachedBoard);
+
+        Unsafe.CopyBlock(cachedBoard, board, BoardStateExtensions.BoardStateSize);
     }
 }

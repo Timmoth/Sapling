@@ -112,21 +112,21 @@ public static unsafe class RepetitionDetector
             return false;
 
         var lastMoveIndex = pos.TurnCount - 1;
-
+        var occupancy = pos.Occupancy[Constants.Occupancy];
         int slot;
         for (var i = 3; i <= pos.HalfMoveClock && i < lastMoveIndex; i += 2)
         {
-            var diff = pos.Hash ^ hashHistory[lastMoveIndex - i];
+            var diff = pos.Hash ^ *(hashHistory + lastMoveIndex - i);
 
             if (diff != Keys[(slot = Hash1(diff))] &&
                 diff != Keys[(slot = Hash2(diff))])
                 continue;
 
             var m = Moves[slot];
-            int moveFrom = m.GetFromSquare();
-            int moveTo = m.GetToSquare();
+            int moveFrom = (int)m.GetFromSquare();
+            int moveTo = (int)m.GetToSquare();
 
-            if ((pos.Occupancy[Constants.Occupancy] & AttackTables.LineBitBoards[moveFrom * 64 + moveTo]) != 0)
+            if ((occupancy & *(AttackTables.LineBitBoards+(moveFrom * 64 + moveTo))) != 0)
             {
                 continue;
             }
@@ -135,7 +135,7 @@ public static unsafe class RepetitionDetector
                 return true;
 
             var isWhite = false;
-            if ((pos.Occupancy[Constants.Occupancy] & (1ul << moveFrom)) != 0)
+            if ((occupancy & (1ul << moveFrom)) != 0)
             {
                 isWhite = (pos.Occupancy[Constants.WhitePieces] & (1ul << moveFrom)) != 0;
             }

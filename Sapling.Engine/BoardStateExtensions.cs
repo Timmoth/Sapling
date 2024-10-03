@@ -1,13 +1,15 @@
 ﻿using System.Runtime.CompilerServices;
-using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Pgn;
 using System.Runtime.Intrinsics.X86;
+using Sapling.Engine.Search;
 
 namespace Sapling.Engine;
 
 public static class BoardStateExtensions
 {
+    public const uint BoardStateSize = 140;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool CanEnPassant(this byte enpassantFile)
     {
@@ -205,30 +207,30 @@ public static class BoardStateExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void Move(ulong* Occupancy, byte piece, byte fromSquare, byte toSquare)
+    public static unsafe void Move(ulong* occupancy, byte piece, byte fromSquare, byte toSquare)
     {
         var fromMask = 1UL << fromSquare;
         var toMask = 1UL << toSquare;
-        var occupancyIndex = Constants.WhitePieces + piece % 2;
+        var occupancyIndex = Constants.WhitePieces + (piece & 1);
 
-        Occupancy[piece] = (Occupancy[piece] & ~fromMask) | toMask;
-        Occupancy[occupancyIndex] = (Occupancy[occupancyIndex] & ~fromMask) | toMask;
+        occupancy[piece] = (occupancy[piece] & ~fromMask) | toMask;
+        occupancy[occupancyIndex] = (occupancy[occupancyIndex] & ~fromMask) | toMask;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void Add(ulong* Occupancy, byte piece, byte square)
+    public static unsafe void Add(ulong* occupancy, byte piece, byte square)
     {
         var pos = 1UL << square;
-        Occupancy[piece] |= pos;
-        Occupancy[Constants.WhitePieces + piece % 2] |= pos;
+        occupancy[piece] |= pos;
+        occupancy[Constants.WhitePieces + (piece & 1)] |= pos;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void Remove(ulong* Occupancy, byte piece, byte square)
+    public static unsafe void Remove(ulong* occupancy, byte piece, byte square)
     {
         var pos = ~(1UL << square);
-        Occupancy[piece] &= pos;
-        Occupancy[Constants.WhitePieces + piece % 2] &= pos;
+        occupancy[piece] &= pos;
+        occupancy[Constants.WhitePieces + (piece & 1)] &= pos;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -240,13 +242,45 @@ public static class BoardStateExtensions
             if (moveType == 0)
             {
                 // Normal move
-            
-                    Move(oc, movedPiece, fromSquare, toSquare);
-                    board.EnPassantFile = 8;
+                Move(oc, movedPiece, fromSquare, toSquare);
+                board.EnPassantFile = 8;
                 if (capturedPiece != Constants.None)
                 {
                     --board.PieceCount;
                     Remove(oc, capturedPiece, toSquare);
+                }
+
+                if (movedPiece == Constants.WhiteKing)
+                {
+                    board.WhiteKingSquare = toSquare;
+                    board.CastleRights &= ~Constants.WhiteCastleRights;
+                }
+                else if (movedPiece == Constants.BlackKing)
+                {
+                    board.BlackKingSquare = toSquare;
+                    board.CastleRights &= ~Constants.BlackCastleRights;
+                }
+                else if (movedPiece == Constants.WhiteRook)
+                {
+                    if (fromSquare == 4)
+                    {
+                        board.CastleRights &= ~CastleRights.WhiteQueenSide;
+                    }
+                    else if (fromSquare == 7)
+                    {
+                        board.CastleRights &= ~CastleRights.WhiteKingSide;
+                    }
+                }
+                else if (movedPiece == Constants.BlackRook)
+                {
+                    if (fromSquare == 56)
+                    {
+                        board.CastleRights &= ~CastleRights.BlackQueenSide;
+                    }
+                    else if (fromSquare == 63)
+                    {
+                        board.CastleRights &= ~CastleRights.BlackKingSide;
+                    }
                 }
             }
             else if (moveType == Constants.DoublePush)
@@ -261,22 +295,30 @@ public static class BoardStateExtensions
                 if (toSquare == 62)
                 {
                     Move(oc, Constants.BlackRook, 63, 61);
-                    Move(oc, Constants.BlackKing, fromSquare, toSquare);
+                    Move(oc, Constants.BlackKing, fromSquare, toSquare); 
+                    board.BlackKingSquare = toSquare;
+                    board.CastleRights &= ~Constants.BlackCastleRights;
                 }
                 else if (toSquare == 58)
                 {
                     Move(oc, Constants.BlackRook, 56, 59);
                     Move(oc, Constants.BlackKing, fromSquare, toSquare);
+                    board.BlackKingSquare = toSquare;
+                    board.CastleRights &= ~Constants.BlackCastleRights;
                 }
                 else if (toSquare == 6)
                 {
                     Move(oc, Constants.WhiteRook, 7, 5);
                     Move(oc, Constants.WhiteKing, fromSquare, toSquare);
+                    board.WhiteKingSquare = toSquare;
+                    board.CastleRights &= ~Constants.WhiteCastleRights;
                 }
                 else if (toSquare == 2)
                 {
                     Move(oc, Constants.WhiteRook, 0, 3);
                     Move(oc, Constants.WhiteKing, fromSquare, toSquare);
+                    board.WhiteKingSquare = toSquare;
+                    board.CastleRights &= ~Constants.WhiteCastleRights;
                 }
                 board.EnPassantFile = 8; // Reset
             }
@@ -328,38 +370,6 @@ public static class BoardStateExtensions
             board.HalfMoveClock++;
         }
 
-        if (movedPiece == Constants.WhiteKing)
-        {
-            board.WhiteKingSquare = toSquare;
-            board.CastleRights &= ~Constants.WhiteCastleRights;
-        }
-        else if (movedPiece == Constants.BlackKing)
-        {
-            board.BlackKingSquare = toSquare;
-            board.CastleRights &= ~Constants.BlackCastleRights;
-        }else if (movedPiece == Constants.WhiteRook)
-        {
-            if (fromSquare == 4)
-            {
-                board.CastleRights &= ~CastleRights.WhiteQueenSide;
-            }
-            else if (fromSquare == 7)
-            {
-                board.CastleRights &= ~CastleRights.WhiteKingSide;
-            }
-        }
-        else if (movedPiece == Constants.BlackRook)
-        {
-            if (fromSquare == 56)
-            {
-                board.CastleRights &= ~CastleRights.BlackQueenSide;
-            }
-            else if (fromSquare == 63)
-            {
-                board.CastleRights &= ~CastleRights.BlackKingSide;
-            }
-        }
-
         board.TurnCount++;
         board.WhiteToMove = !board.WhiteToMove;
         oc[Constants.Occupancy] = oc[Constants.WhitePieces] | oc[Constants.BlackPieces];
@@ -376,95 +386,72 @@ public static class BoardStateExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateCastleStatus(this ref BoardStateData board, CastleRights prevCastle)
-    {
-        var castleDiff = prevCastle ^ board.CastleRights;
-
-        if ((castleDiff & CastleRights.WhiteKingSide) != 0)
-        {
-            board.Hash ^= Zobrist.WhiteKingSideCastlingRights;
-        }
-
-        if ((castleDiff & CastleRights.WhiteQueenSide) != 0)
-        {
-            board.Hash ^= Zobrist.WhiteQueenSideCastlingRights;
-        }
-
-        if ((castleDiff & CastleRights.BlackKingSide) != 0)
-        {
-            board.Hash ^= Zobrist.BlackKingSideCastlingRights;
-        }
-
-        if ((castleDiff & CastleRights.BlackQueenSide) != 0)
-        {
-            board.Hash ^= Zobrist.BlackQueenSideCastlingRights;
-        }
-    }
-
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void FinishApply(this ref BoardStateData board, ref AccumulatorState accumulatorState, uint m,
+    public static unsafe void FinishApply(this ref BoardStateData board, AccumulatorState* accumulatorState, uint m,
         int oldEnpassant,
         CastleRights prevCastle)
     {
-        board.Hash ^= Zobrist.SideToMove;
+        accumulatorState->Move = m;
+        ref var hash = ref board.Hash;
+        hash ^= Zobrist.SideToMove ^ 
+                Zobrist.DeltaEnpassant[oldEnpassant * 9 + board.EnPassantFile] ^
+                Zobrist.DeltaCastleRights[(int)(prevCastle ^ board.CastleRights)];
 
         m.Deconstruct(out var movedPiece, out var fromSquare, out var toSquare, out var capturedPiece, out var moveType);
         if (moveType == 0)
         {
-            board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
-                               Zobrist.PiecesArray[movedPiece * 64 + toSquare];
+            hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
+                    Zobrist.PiecesArray[movedPiece * 64 + toSquare];
 
             if (capturedPiece != Constants.None)
             {
-                accumulatorState.ApplyCapture(movedPiece, fromSquare, movedPiece, toSquare, capturedPiece, toSquare);
-                board.Hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
+                accumulatorState->ApplyCapture( movedPiece, fromSquare, movedPiece, toSquare, capturedPiece, toSquare);
+                hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
             }
             else
             {
-                accumulatorState.ApplyQuiet(movedPiece, fromSquare, movedPiece, toSquare);
+                accumulatorState->ApplyQuiet( movedPiece, fromSquare, movedPiece, toSquare);
             }
         }
         else if (moveType == Constants.DoublePush)
         {
-            accumulatorState.ApplyQuiet( movedPiece, fromSquare, movedPiece, toSquare);
-            board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
-                               Zobrist.PiecesArray[movedPiece * 64 + toSquare];
+            accumulatorState->ApplyQuiet( movedPiece, fromSquare, movedPiece, toSquare);
+            hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
+                    Zobrist.PiecesArray[movedPiece * 64 + toSquare];
         }
         else if (moveType == Constants.Castle)
         {
             // Castle move
             if (toSquare == 62)
             {
-                accumulatorState.ApplyCastle( Constants.BlackKing, fromSquare, toSquare, Constants.BlackRook, 63, 61);
-                board.Hash ^= Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
-                                   Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare] ^
-                                   Zobrist.PiecesArray[Constants.BlackRook * 64 + 63] ^
-                                   Zobrist.PiecesArray[Constants.BlackRook * 64 + 61];
+                accumulatorState->ApplyCastle( Constants.BlackKing, fromSquare, toSquare, Constants.BlackRook, 63, 61);
+                hash ^= Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
+                        Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare] ^
+                        Zobrist.PiecesArray[Constants.BlackRook * 64 + 63] ^
+                        Zobrist.PiecesArray[Constants.BlackRook * 64 + 61];
             }
             else if (toSquare == 58)
             {
-                accumulatorState.ApplyCastle( Constants.BlackKing, fromSquare, toSquare, Constants.BlackRook, 56, 59);
-                board.Hash ^= Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
-                                   Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare]
-                                   ^ Zobrist.PiecesArray[Constants.BlackRook * 64 + 56] ^
-                                   Zobrist.PiecesArray[Constants.BlackRook * 64 + 59];
+                accumulatorState->ApplyCastle( Constants.BlackKing, fromSquare, toSquare, Constants.BlackRook, 56, 59);
+                hash ^= Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
+                        Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare]
+                        ^ Zobrist.PiecesArray[Constants.BlackRook * 64 + 56] ^
+                        Zobrist.PiecesArray[Constants.BlackRook * 64 + 59];
             }
             else if (toSquare == 6)
             {
-                accumulatorState.ApplyCastle( Constants.WhiteKing, fromSquare, toSquare, Constants.WhiteRook, 7, 5);
-                board.Hash ^= Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
-                                   Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
-                                   Zobrist.PiecesArray[Constants.WhiteRook * 64 + 7] ^
-                                   Zobrist.PiecesArray[Constants.WhiteRook * 64 + 5];
+                accumulatorState->ApplyCastle( Constants.WhiteKing, fromSquare, toSquare, Constants.WhiteRook, 7, 5);
+                hash ^= Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
+                        Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
+                        Zobrist.PiecesArray[Constants.WhiteRook * 64 + 7] ^
+                        Zobrist.PiecesArray[Constants.WhiteRook * 64 + 5];
             }
             else if (toSquare == 2)
-            { 
-                accumulatorState.ApplyCastle( Constants.WhiteKing, fromSquare, toSquare, Constants.WhiteRook, 0, 3);
-                board.Hash ^= Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
-                                   Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
-                                   Zobrist.PiecesArray[Constants.WhiteRook * 64 + 0] ^
-                                   Zobrist.PiecesArray[Constants.WhiteRook * 64 + 3];
+            {
+                accumulatorState->ApplyCastle( Constants.WhiteKing, fromSquare, toSquare, Constants.WhiteRook, 0, 3);
+                hash ^= Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
+                        Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
+                        Zobrist.PiecesArray[Constants.WhiteRook * 64 + 0] ^
+                        Zobrist.PiecesArray[Constants.WhiteRook * 64 + 3];
             }
         }
         else if (moveType >= 4)
@@ -481,44 +468,29 @@ public static class BoardStateExtensions
             // [2, 7] => 10
             // a + 2b - 6
             var promotionPiece = (byte)(movedPiece + moveType + moveType - 6);
-            board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
-                               Zobrist.PiecesArray[promotionPiece * 64 + toSquare];
+            hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
+                    Zobrist.PiecesArray[promotionPiece * 64 + toSquare];
 
             if (capturedPiece != Constants.None)
             {
-                accumulatorState.ApplyCapture( movedPiece, fromSquare, promotionPiece, toSquare, capturedPiece, toSquare);
-                board.Hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
+                accumulatorState->ApplyCapture(movedPiece, fromSquare, promotionPiece, toSquare, capturedPiece, toSquare);
+                hash ^= Zobrist.PiecesArray[capturedPiece * 64 + toSquare];
             }
             else
             {
-                accumulatorState.ApplyQuiet( movedPiece, fromSquare, promotionPiece, toSquare);
+                accumulatorState->ApplyQuiet(movedPiece, fromSquare, promotionPiece, toSquare);
             }
         }
         else
         {
             // Enpassant
             var enpassantSquare = (byte)(fromSquare.GetRankIndex() * 8 + oldEnpassant);
-            accumulatorState.ApplyCapture( movedPiece, fromSquare, movedPiece, toSquare, capturedPiece, enpassantSquare);
+            accumulatorState->ApplyCapture(movedPiece, fromSquare, movedPiece, toSquare, capturedPiece, enpassantSquare);
 
-            board.Hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
-                               Zobrist.PiecesArray[movedPiece * 64 + toSquare] ^
-                               Zobrist.PiecesArray[capturedPiece * 64 + enpassantSquare];
+            hash ^= Zobrist.PiecesArray[movedPiece * 64 + fromSquare] ^
+                    Zobrist.PiecesArray[movedPiece * 64 + toSquare] ^
+                    Zobrist.PiecesArray[capturedPiece * 64 + enpassantSquare];
         }
-        
-        if (oldEnpassant != board.EnPassantFile)
-        {
-            if (oldEnpassant < 8)
-            {
-                board.Hash ^= Zobrist.EnPassantFile[oldEnpassant];
-            }
-
-            if (board.EnPassantFile < 8)
-            {
-                board.Hash ^= Zobrist.EnPassantFile[board.EnPassantFile];
-            }
-        }
-
-        board.UpdateCastleStatus(prevCastle);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

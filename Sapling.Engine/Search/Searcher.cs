@@ -20,16 +20,26 @@ public unsafe partial class Searcher
     private bool _searchCancelled;
     public uint BestSoFar;
     public int NodesVisited;
-    private const int killersLength = Constants.MaxSearchDepth * 2;
-    private const int historyLength = 13 * 64;
-    private const int countersLength = 13 * 64;
-    public readonly BucketCache* BucketCache;
-    public readonly BoardStateEntry* SearchStack;
-    public readonly ulong* MoveStack;
+    private const int KillersLength = Constants.MaxSearchDepth * 2;
+  
+    private const int HistoryLength = 13 * 64;
+    private const int CountersLength = 13 * 64;
+    public readonly BoardStateData* BucketCacheWhiteBoards;
+    public readonly VectorShort** BucketCacheWhiteAccumulators;
+    public readonly BoardStateData* BucketCacheBlackBoards;
+    public readonly VectorShort** BucketCacheBlackAccumulators;
+    public readonly VectorShort** WhiteAccumulators;
+    public readonly VectorShort** BlackAccumulators;
+    public readonly ulong* HashHistory;
 
+    public readonly BoardStateData* Boards;
+    public readonly AccumulatorState* Accumulators;
+
+
+    public readonly int* History;
+    public readonly uint* Counters;
     public readonly uint* killers;
-    public readonly int* history;
-    public readonly uint* counters;
+
     public Searcher(Transposition* transpositions, int ttCount)
     {
         Transpositions = transpositions;
@@ -37,44 +47,74 @@ public unsafe partial class Searcher
         TtMask = (uint)ttCount - 1;
         _pVTable = AlignedAllocZeroed();
 
-        SearchStack = AllocateSearchStack(Constants.MaxSearchDepth + 1);
+        WhiteAccumulators = AllocateSearchStack(Constants.MaxSearchDepth + 1);
+        BlackAccumulators = AllocateSearchStack(Constants.MaxSearchDepth + 1);
         for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
-            SearchStack[i] = new BoardStateEntry();
+            WhiteAccumulators[i] = AllocateAccumulator();
+            BlackAccumulators[i] = AllocateAccumulator();
         }
 
+        Boards = AllocateBoardState(Constants.MaxSearchDepth);
+        Accumulators = AllocateAccumulatorState(Constants.MaxSearchDepth);
 
-        BucketCache = AllocateBucketCache(NnueWeights.InputBuckets * 2);
+        BucketCacheWhiteBoards = AllocateBoardState(NnueWeights.InputBuckets * 2);
+        BucketCacheBlackBoards = AllocateBoardState(NnueWeights.InputBuckets * 2);
+
+        BucketCacheWhiteAccumulators = AllocateSearchStack(NnueWeights.InputBuckets * 2);
+        BucketCacheBlackAccumulators = AllocateSearchStack(NnueWeights.InputBuckets * 2);
         for (var i = 0; i < NnueWeights.InputBuckets * 2; i++)
         {
-            BucketCache[i] = new BucketCache();
+            BucketCacheWhiteAccumulators[i] = AllocateAccumulator();
+            BucketCacheBlackAccumulators[i] = AllocateAccumulator();
         }
 
-        MoveStack = AllocateUlong(800);
-        killers = AllocateUInt((nuint)killersLength);
-        counters = AllocateUInt((nuint)countersLength);
-        history = AllocateInt((nuint)historyLength);
+        HashHistory = AllocateUlong(800);
+        Counters = AllocateUInt((nuint)CountersLength);
+        History = AllocateInt((nuint)HistoryLength);
+        killers = AllocateUInt((nuint)KillersLength);
+
     }
-    public static unsafe BoardStateEntry* AllocateSearchStack(nuint items)
+
+    public static VectorShort* AllocateAccumulator()
     {
         const nuint alignment = 64;
 
-        nuint bytes = ((nuint)sizeof(BoardStateEntry) * (nuint)items);
-        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
-        NativeMemory.Clear(block, bytes);
+        var block = NativeMemory.AlignedAlloc((nuint)Searcher.L1ByteSize, alignment);
+        NativeMemory.Clear(block, (nuint)Searcher.L1ByteSize);
 
-        return (BoardStateEntry*)block;
+        return (VectorShort*)block;
     }
 
-    public static unsafe BucketCache* AllocateBucketCache(nuint items)
+    public static unsafe VectorShort** AllocateSearchStack(nuint items)
     {
         const nuint alignment = 64;
 
-        nuint bytes = ((nuint)sizeof(BucketCache) * (nuint)items);
+        nuint bytes = ((nuint)sizeof(VectorShort*) * (nuint)items);
         void* block = NativeMemory.AlignedAlloc(bytes, alignment);
         NativeMemory.Clear(block, bytes);
 
-        return (BucketCache*)block;
+        return (VectorShort**)block;
+    }
+    public static unsafe AccumulatorState* AllocateAccumulatorState(nuint items)
+    {
+        const nuint alignment = 64;
+
+        nuint bytes = ((nuint)sizeof(AccumulatorState) * (nuint)items);
+        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
+        NativeMemory.Clear(block, bytes);
+
+        return (AccumulatorState*)block;
+    }
+    public static unsafe BoardStateData* AllocateBoardState(nuint items)
+    {
+        const nuint alignment = 64;
+
+        nuint bytes = ((nuint)sizeof(BoardStateData) * (nuint)items);
+        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
+        NativeMemory.Clear(block, bytes);
+
+        return (BoardStateData*)block;
     }
     public static ulong* AllocateUlong(nuint count)
     {
@@ -107,24 +147,34 @@ public unsafe partial class Searcher
 
     ~Searcher()
     {
-        NativeMemory.AlignedFree(MoveStack);
+        NativeMemory.AlignedFree(HashHistory);
+        NativeMemory.AlignedFree(Counters);
+        NativeMemory.AlignedFree(History);
         NativeMemory.AlignedFree(killers);
-        NativeMemory.AlignedFree(counters);
-        NativeMemory.AlignedFree(history);
+
         for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
-            ref var entry = ref SearchStack[i];
-            entry.Dispose();
+            NativeMemory.AlignedFree(WhiteAccumulators[i]);
+            NativeMemory.AlignedFree(BlackAccumulators[i]);
         }
 
-        for (var i = 0; i < NnueWeights.InputBuckets * 2; i++)
+        NativeMemory.AlignedFree(WhiteAccumulators);
+        NativeMemory.AlignedFree(BlackAccumulators);
+
+        for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
-            ref var entry = ref BucketCache[i];
-            entry.Dispose();
+            NativeMemory.AlignedFree(BucketCacheWhiteAccumulators[i]);
+            NativeMemory.AlignedFree(BucketCacheBlackAccumulators[i]);
         }
 
-        NativeMemory.AlignedFree(SearchStack);
-        NativeMemory.AlignedFree(BucketCache);
+        NativeMemory.AlignedFree(BucketCacheWhiteAccumulators);
+        NativeMemory.AlignedFree(BucketCacheBlackAccumulators);
+
+        NativeMemory.AlignedFree(BucketCacheWhiteBoards);
+        NativeMemory.AlignedFree(BucketCacheBlackBoards);  
+        
+        NativeMemory.AlignedFree(Boards);
+        NativeMemory.AlignedFree(Accumulators);
     }
 
     public static uint* AlignedAllocZeroed()
@@ -172,11 +222,16 @@ public unsafe partial class Searcher
         var depthSearched = 0;
         _searchCancelled = false;
 
-        NativeMemory.Clear(history, (nuint)historyLength);
-        NativeMemory.Clear(killers, (nuint)killersLength);
-        NativeMemory.Clear(counters, (nuint)countersLength);
+        NativeMemory.Clear(History, (nuint)HistoryLength);
+        NativeMemory.Clear(Counters, (nuint)CountersLength);
+        NativeMemory.Clear(killers, (nuint)KillersLength);
+
         NativeMemory.Clear(_pVTable, _pvTableBytes);
-        Unsafe.CopyBlock(MoveStack, inputBoard.Moves, sizeof(ulong) * 800);
+
+        NativeMemory.Clear(Boards, (nuint)sizeof(BoardStateData) * Constants.MaxSearchDepth);
+        NativeMemory.Clear(Accumulators, (nuint)sizeof(AccumulatorState) * Constants.MaxSearchDepth);
+
+        Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * (uint)inputBoard.Board.TurnCount);
 
         var alpha = Constants.MinScore;
         var beta = Constants.MaxScore;
@@ -184,11 +239,12 @@ public unsafe partial class Searcher
 
         var maxDepth = depthLimit > 0 ? depthLimit : Constants.MaxSearchDepth;
 
-        ref var rootBoard = ref SearchStack[0];
-        inputBoard.Board.CloneTo(ref rootBoard.Data);
-        rootBoard.FillAccumulators();
+        ref var rootBoard = ref Boards[0];
 
-        var bestEval = lastIterationEval = NegaMaxSearch(0, 0, alpha, beta, false);
+        inputBoard.Board.CloneTo(ref rootBoard);
+        FillInitialAccumulators(Boards, Accumulators);
+
+        var bestEval = lastIterationEval = NegaMaxSearch(Boards, Accumulators, 0, 0, alpha, beta);
 
         BestSoFar = _pVTable[0];
         var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
@@ -209,10 +265,10 @@ public unsafe partial class Searcher
                     ? Constants.MaxScore
                     : lastIterationEval + AsperationWindows[betaWindowIndex];
 
-                NativeMemory.Clear(killers, (nuint)killersLength);
-                NativeMemory.Clear(counters, (nuint)countersLength);
+                //NativeMemory.Clear(killers, (nuint)KillersLength);
+                NativeMemory.Clear(Counters, (nuint)CountersLength);
 
-                var eval = NegaMaxSearch(0, j, alpha, beta, false);
+                var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
 
                 if (eval <= alpha)
                 {

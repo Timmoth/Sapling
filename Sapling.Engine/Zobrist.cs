@@ -216,6 +216,9 @@ public static unsafe class Zobrist
         0xF8D626AAAF278509
     };
 
+    public static ulong* DeltaCastleRights;
+    public static ulong* DeltaEnpassant;
+
     static Zobrist()
     {
         PiecesArray = AllocateULong(PieceCount * 64);
@@ -237,6 +240,81 @@ public static unsafe class Zobrist
         EnPassantFile[5] = Random64[777];
         EnPassantFile[6] = Random64[778];
         EnPassantFile[7] = Random64[779];
+
+
+        DeltaCastleRights = AllocateULong(16);
+        DeltaEnpassant = AllocateULong(9 * 9);
+
+
+        // Assign individual castling rights
+        DeltaCastleRights[(int)CastleRights.WhiteKingSide] = Zobrist.WhiteKingSideCastlingRights;
+        DeltaCastleRights[(int)CastleRights.WhiteQueenSide] = Zobrist.WhiteQueenSideCastlingRights;
+        DeltaCastleRights[(int)CastleRights.BlackKingSide] = Zobrist.BlackKingSideCastlingRights;
+        DeltaCastleRights[(int)CastleRights.BlackQueenSide] = Zobrist.BlackQueenSideCastlingRights;
+
+        // Precompute all combinations of castling rights
+        DeltaCastleRights[(int)(CastleRights.WhiteKingSide | CastleRights.WhiteQueenSide)] =
+            WhiteKingSideCastlingRights ^ WhiteQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteKingSide | CastleRights.BlackKingSide)] =
+            WhiteKingSideCastlingRights ^ BlackKingSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteKingSide | CastleRights.BlackQueenSide)] =
+            WhiteKingSideCastlingRights ^ BlackQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteKingSide | CastleRights.WhiteQueenSide | CastleRights.BlackKingSide)] =
+            WhiteKingSideCastlingRights ^ WhiteQueenSideCastlingRights ^ BlackKingSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteKingSide | CastleRights.WhiteQueenSide | CastleRights.BlackQueenSide)] =
+            WhiteKingSideCastlingRights ^ WhiteQueenSideCastlingRights ^ BlackQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteKingSide | CastleRights.BlackKingSide | CastleRights.BlackQueenSide)] =
+            WhiteKingSideCastlingRights ^ BlackKingSideCastlingRights ^ BlackQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteKingSide | CastleRights.WhiteQueenSide | CastleRights.BlackKingSide | CastleRights.BlackQueenSide)] =
+            WhiteKingSideCastlingRights ^ WhiteQueenSideCastlingRights ^ BlackKingSideCastlingRights ^ BlackQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.BlackKingSide | CastleRights.BlackQueenSide)] =
+            BlackKingSideCastlingRights ^ BlackQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteQueenSide | CastleRights.BlackKingSide)] =
+            WhiteQueenSideCastlingRights ^ BlackKingSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteQueenSide | CastleRights.BlackQueenSide)] =
+            WhiteQueenSideCastlingRights ^ BlackQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteQueenSide | CastleRights.BlackKingSide | CastleRights.BlackQueenSide)] =
+            WhiteQueenSideCastlingRights ^ Zobrist.BlackKingSideCastlingRights ^ Zobrist.BlackQueenSideCastlingRights;
+
+        DeltaCastleRights[(int)(CastleRights.WhiteQueenSide | CastleRights.WhiteKingSide | CastleRights.BlackKingSide | CastleRights.BlackQueenSide)] =
+            Zobrist.WhiteQueenSideCastlingRights ^ Zobrist.WhiteKingSideCastlingRights ^ Zobrist.BlackKingSideCastlingRights ^ Zobrist.BlackQueenSideCastlingRights;
+
+        // For completeness, ensure index 0 has no XOR applied for no castle rights change
+        DeltaCastleRights[0] = 0;
+
+        for (int i = 0; i < 9; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                ulong hash = 0;
+                if (i != j)
+                {
+                    if (i < 8)
+                    {
+                        hash ^= EnPassantFile[i];
+                    }
+
+                    if (j < 8)
+                    {
+                        hash ^= EnPassantFile[j];
+                    }
+                }
+
+                DeltaEnpassant[i * 9 + j] = hash;
+            }
+        }
+
+
     }
 
     public static ulong* AllocateULong(int count)

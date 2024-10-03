@@ -95,7 +95,7 @@ public static class MoveScoring
             return SpsaOptions.MoveOrderingCounterMoveBias;
         }
 
-        return history[move.GetMovedPiece() * 64 + move.GetToSquare()];
+        return history[move.GetCounterMoveIndex()];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

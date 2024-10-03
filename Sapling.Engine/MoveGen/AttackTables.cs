@@ -661,14 +661,15 @@ public static unsafe class AttackTables
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong PextRookAttacks(ulong occupation, int square)
     {
-        return PextAttacks[RookPextOffset[square] + Bmi2.X64.ParallelBitExtract(occupation, RookAttackMasks[square])];
+        return *(PextAttacks +
+                 *(RookPextOffset + square) + Bmi2.X64.ParallelBitExtract(occupation, *(RookAttackMasks + square)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong PextBishopAttacks(ulong occupation, int square)
     {
-        return PextAttacks[
-            BishopPextOffset[square] + Bmi2.X64.ParallelBitExtract(occupation, BishopAttackMasks[square])];
+        return *(PextAttacks +
+                 *(BishopPextOffset + square) + Bmi2.X64.ParallelBitExtract(occupation, *(BishopAttackMasks + square)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -678,9 +679,9 @@ public static unsafe class AttackTables
                 (board.Occupancy[Constants.WhiteBishop] | board.Occupancy[Constants.WhiteQueen])) != 0 ||
                (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.WhiteRook] | board.Occupancy[Constants.WhiteQueen])) !=
                0 ||
-               (KnightAttackTable[index] & board.Occupancy[Constants.WhiteKnight]) != 0 ||
-               (BlackPawnAttackTable[index] & board.Occupancy[Constants.WhitePawn]) != 0 ||
-               (KingAttackTable[index] & board.Occupancy[Constants.WhiteKing]) != 0;
+               (*(KnightAttackTable + index) & board.Occupancy[Constants.WhiteKnight]) != 0 ||
+               (*(BlackPawnAttackTable + index) & board.Occupancy[Constants.WhitePawn]) != 0 ||
+               (*(KingAttackTable+index) & board.Occupancy[Constants.WhiteKing]) != 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -690,8 +691,8 @@ public static unsafe class AttackTables
                 (board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.BlackQueen])) != 0 ||
                (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.BlackQueen])) !=
                0 ||
-               (KnightAttackTable[index] & board.Occupancy[Constants.BlackKnight]) != 0 ||
-               (WhitePawnAttackTable[index] & board.Occupancy[Constants.BlackPawn]) != 0 ||
-               (KingAttackTable[index] & board.Occupancy[Constants.BlackKing]) != 0;
+               (*(KnightAttackTable + index) & board.Occupancy[Constants.BlackKnight]) != 0 ||
+               (*(WhitePawnAttackTable + index) & board.Occupancy[Constants.BlackPawn]) != 0 ||
+               (*(KingAttackTable + index) & board.Occupancy[Constants.BlackKing]) != 0;
     }
 }

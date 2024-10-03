@@ -10,41 +10,41 @@ public static class StaticExchangeEvaluator
     public static unsafe int StaticExchangeEvaluation(this ref BoardStateData board, ulong* occupancyBitBoards,
         short* captures, uint move)
     {
-        captures[0] = PieceValues.PieceValue[move.GetCapturedPiece()];
-        var lastPieceValue = PieceValues.PieceValue[move.GetMovedPiece()];
+        *captures = *(PieceValues.PieceValue + move.GetCapturedPiece());
+        var lastPieceValue = *(PieceValues.PieceValue + move.GetMovedPiece());
 
-        if (captures[0] - lastPieceValue > 0)
+        if (*captures - lastPieceValue > 0)
         {
             // Return if we give up our piece but the exchange is still positive.
-            return captures[0] - lastPieceValue;
+            return *captures - lastPieceValue;
         }
 
-        var targetSquare = move.GetToSquare();
+        var targetSquare = (int)move.GetToSquare();
         // all pieces except the two involved in the initial move
-        var occupancy = board.Occupancy[Constants.Occupancy] & ~((1UL << move.GetFromSquare()) | (1UL << targetSquare));
+        var occupancy = board.Occupancy[Constants.Occupancy] & ~((1UL << (int)move.GetFromSquare()) | (1UL << targetSquare));
 
         // Bit boards by piece type
-        var pawns = occupancyBitBoards[2];
-        var knights = occupancyBitBoards[3];
-        var bishops = occupancyBitBoards[4];
-        var rooks = occupancyBitBoards[5];
-        var queens = occupancyBitBoards[6];
-        var kings = occupancyBitBoards[7];
+        var pawns = *(occupancyBitBoards + 2);
+        var knights = *(occupancyBitBoards + 3);
+        var bishops = *(occupancyBitBoards + 4);
+        var rooks = *(occupancyBitBoards + 5);
+        var queens = *(occupancyBitBoards + 6);
+        var kings = *(occupancyBitBoards + 7);
 
         // Calculate all squares that can attack the target square
         var attackers = ((AttackTables.PextBishopAttacks(occupancy, targetSquare) & (queens | bishops)) |
                          (AttackTables.PextRookAttacks(occupancy, targetSquare) & (queens | rooks)) |
-                         (AttackTables.KnightAttackTable[targetSquare] & knights) |
-                         (AttackTables.WhitePawnAttackTable[targetSquare] & board.Occupancy[Constants.BlackPawn]) |
-                         (AttackTables.BlackPawnAttackTable[targetSquare] & board.Occupancy[Constants.WhitePawn]) |
-                         (AttackTables.KingAttackTable[targetSquare] & kings)) & occupancy;
+                         (*(AttackTables.KnightAttackTable + targetSquare) & knights) |
+                         (*(AttackTables.WhitePawnAttackTable + targetSquare) & board.Occupancy[Constants.BlackPawn]) |
+                         (*(AttackTables.BlackPawnAttackTable + targetSquare) & board.Occupancy[Constants.WhitePawn]) |
+                         (*(AttackTables.KingAttackTable + targetSquare) & kings)) & occupancy;
 
         // Starts off as the opponents turn
         var turn = board.WhiteToMove ? 1 : 0;
         var cIndex = 1;
         do
         {
-            var remainingAttackers = attackers & occupancyBitBoards[turn] & occupancy;
+            var remainingAttackers = attackers & *(occupancyBitBoards +turn) & occupancy;
 
             if (remainingAttackers == 0)
             {
@@ -52,7 +52,7 @@ public static class StaticExchangeEvaluator
                 break;
             }
 
-            captures[cIndex] = (short)(-captures[cIndex - 1] + lastPieceValue);
+            *(captures + cIndex) = (short)(-*(captures + cIndex - 1) + lastPieceValue);
 
             // Remove the least valuable attacker
             ulong attacker;
@@ -90,13 +90,13 @@ public static class StaticExchangeEvaluator
 
             // Flip turn
             turn ^= 1;
-        } while (captures[cIndex++] - lastPieceValue <= 0);
+        } while (*(captures + cIndex++) - lastPieceValue <= 0);
 
         for (var n = cIndex - 1; n > 0; n--)
         {
-            captures[n - 1] = (short)-Math.Max(-captures[n - 1], captures[n]);
+            *(captures + n - 1) = (short)-Math.Max(-*(captures + n - 1), *(captures + n));
         }
 
-        return captures[0];
+        return *captures;
     }
 }

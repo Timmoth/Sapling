@@ -212,7 +212,7 @@ public static class OutputHelpers
         bool includeZobristKey = true)
     {
         StringBuilder output = new();
-        var lastMoveSquare = gameState.History.Count > 0 ? gameState.History[^1].GetToSquare() : -1;
+        var lastMoveSquare = gameState.History.Count > 0 ? (int)gameState.History[^1].GetToSquare() : -1;
 
         for (var y = 0; y < 8; y++)
         {
@@ -353,7 +353,7 @@ public static class OutputHelpers
         }
 
         return
-            $"{move.GetFromSquare().ConvertPosition()}{move.GetToSquare().ConvertPosition()}{promotion}";
+            $"{((byte)move.GetFromSquare()).ConvertPosition()}{((byte)move.GetToSquare()).ConvertPosition()}{promotion}";
     }
 
     public static string ToPgnMoveName(this uint move)
@@ -371,13 +371,13 @@ public static class OutputHelpers
         var stringBuilder = new StringBuilder();
 
         stringBuilder.Append(((Piece)movedPiece).PieceToUpperChar());
-        stringBuilder.Append(PgnSplitter.ConvertPosition(fromSquare));
+        stringBuilder.Append(PgnSplitter.ConvertPosition(((byte)fromSquare)));
         if (move.IsCapture())
         {
             stringBuilder.Append("x");
         }
 
-        stringBuilder.Append(PgnSplitter.ConvertPosition(move.GetToSquare()));
+        stringBuilder.Append(PgnSplitter.ConvertPosition((byte)move.GetToSquare()));
 
         if (move.GetMoveType() == Constants.PawnRookPromotion)
         {
