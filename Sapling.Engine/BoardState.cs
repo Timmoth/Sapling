@@ -5,9 +5,11 @@ using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine;
 
-[StructLayout(LayoutKind.Explicit, Size = 140)]  // Updated size to fit alignment
+[StructLayout(LayoutKind.Explicit, Size = 148)]  // Updated size to fit alignment
 public unsafe struct BoardStateData
 {
+    public const uint BoardStateSize = 148;
+
     // 15 * 8 = 120 bytes (no padding needed)
     [FieldOffset(0)] public fixed ulong Occupancy[15];  // 15 ulong values
 
@@ -37,6 +39,7 @@ public unsafe struct BoardStateData
 
     // Add padding for alignment (2 bytes of padding at the end to make the size a multiple of 8)
     [FieldOffset(138)] private fixed byte _padding[2];  // Padding to align total size to 8-byte boundary
+    [FieldOffset(139)] public ulong PawnHash;
 
 }
 

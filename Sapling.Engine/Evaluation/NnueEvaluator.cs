@@ -513,7 +513,7 @@ public unsafe partial class Searcher
         {
             FullRefreshWhite(boards, mirrored, accumulators->WhiteInputBucket, accumulator);
             Unsafe.CopyBlock(cachedAccumulator, accumulator, L1ByteSize);
-            Unsafe.CopyBlock(cachedBoard, boards, BoardStateExtensions.BoardStateSize);
+            Unsafe.CopyBlock(cachedBoard, boards, BoardStateData.BoardStateSize);
             return;
         }
 
@@ -556,7 +556,7 @@ public unsafe partial class Searcher
         }
 
         Unsafe.CopyBlock(accumulator, cachedAccumulator, L1ByteSize);
-        Unsafe.CopyBlock(cachedBoard, boards, BoardStateExtensions.BoardStateSize);
+        Unsafe.CopyBlock(cachedBoard, boards, BoardStateData.BoardStateSize);
     }
 
 
@@ -580,7 +580,7 @@ public unsafe partial class Searcher
         {
             FullRefreshBlack(board, mirrored, accumulatorState->BlackInputBucket, accumulator);
             Unsafe.CopyBlock(cachedAccumulator, accumulator, L1ByteSize);
-            Unsafe.CopyBlock(cachedBoard, board, BoardStateExtensions.BoardStateSize);
+            Unsafe.CopyBlock(cachedBoard, board, BoardStateData.BoardStateSize);
             return;
         }
 
@@ -622,6 +622,6 @@ public unsafe partial class Searcher
         }
 
         Unsafe.CopyBlock(accumulator, cachedAccumulator, L1ByteSize);
-        Unsafe.CopyBlock(cachedBoard, board, BoardStateExtensions.BoardStateSize);
+        Unsafe.CopyBlock(cachedBoard, board, BoardStateData.BoardStateSize);
     }
 }

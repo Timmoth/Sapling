@@ -9,7 +9,6 @@ namespace Sapling.Engine;
 
 public static class BoardStateExtensions
 {
-    public const uint BoardStateSize = 140;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool CanEnPassant(this byte enpassantFile)
@@ -450,19 +449,34 @@ public static class BoardStateExtensions
 
         m.Deconstruct(out var movedPiece, out var fromSquare, out var toSquare, out var capturedPiece, out var moveType);
 
+        ulong deltaHash = 0;
+
         var movedPieceZobristIndex = (movedPiece << 6);
         var movedPieceFeatureIndex = (movedPiece << 7);
         if (moveType == 0)
         {
-            hash ^= *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
-                    *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare);
+            deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
+                         *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare);
+            hash ^= deltaHash;
+
+            if (movedPiece is Constants.WhitePawn or Constants.BlackPawn)
+            {
+                board.PawnHash ^= deltaHash;
+            }
 
             if (capturedPiece != Constants.None)
             {
                 accumulatorState.ApplyCapture(movedPieceFeatureIndex + (fromSquare << 1),
                     movedPieceFeatureIndex + (toSquare << 1),
                     (capturedPiece << 7) + (toSquare << 1));
-                hash ^= *(Zobrist.PiecesArray + (capturedPiece << 6) + toSquare);
+
+                deltaHash = *(Zobrist.PiecesArray + (capturedPiece << 6) + toSquare);
+                hash ^= deltaHash;
+
+                if (capturedPiece is Constants.WhitePawn or Constants.BlackPawn)
+                {
+                    board.PawnHash ^= deltaHash;
+                }
             }
             else
             {
@@ -474,8 +488,11 @@ public static class BoardStateExtensions
         {
             accumulatorState.ApplyQuiet(movedPieceFeatureIndex + (fromSquare << 1),
                 movedPieceFeatureIndex + (toSquare << 1));
-            hash ^= *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
+            deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
                     *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare);
+
+            hash ^= deltaHash;
+            board.PawnHash ^= deltaHash;
         }
         else if (moveType == Constants.Castle)
         {
@@ -527,8 +544,14 @@ public static class BoardStateExtensions
             // [2, 7] => 10
             // a + 2b - 6
             var promotionPiece = (ushort)(movedPiece + moveType + moveType - 6);
-            hash ^= *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
-                      *(Zobrist.PiecesArray + (promotionPiece << 6) + toSquare);
+
+            deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare);
+                        
+
+            hash ^= deltaHash ^
+                    *(Zobrist.PiecesArray + (promotionPiece << 6) + toSquare);
+
+            board.PawnHash ^= deltaHash;
 
             if (capturedPiece != Constants.None)
             {
@@ -551,9 +574,12 @@ public static class BoardStateExtensions
                 movedPieceFeatureIndex + (toSquare << 1),
                 (capturedPiece << 7) + (enpassantSquare << 1));
 
-            hash ^= *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
-                      *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare) ^
+            deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
+                        *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare) ^
                         *(Zobrist.PiecesArray + (capturedPiece << 6) + enpassantSquare);
+
+            hash ^= deltaHash;
+            board.PawnHash ^= deltaHash;
         }
     }
 
@@ -589,6 +615,11 @@ public static class BoardStateExtensions
         else if (piece == Constants.BlackKing)
         {
             board.BlackKingSquare = index;
+        }
+
+        if (piece is Constants.WhitePawn or Constants.BlackPawn)
+        {
+            board.PawnHash ^= Zobrist.PiecesArray[piece * 64 + index];
         }
     }
 

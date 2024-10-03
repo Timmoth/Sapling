@@ -20,6 +20,7 @@ public partial class Searcher
             return 0;
         }
  
+
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Reached max depth
@@ -65,8 +66,10 @@ public partial class Searcher
         var inCheck = boardState->InCheck;
         if (!inCheck)
         {
+            var corrhistIndex = CorrectionIndex(boardState->PawnHash, boardState->WhiteToMove);
+
             // Evaluate current position
-            var val = Evaluate(boardState, accumulatorState, depthFromRoot);
+            var val = AdjustEval(corrhistIndex, Evaluate(boardState, accumulatorState, depthFromRoot));
             if (val >= beta)
             {
                 // Beta cut off
@@ -160,7 +163,7 @@ public partial class Searcher
                 }
             }
 
-            Unsafe.CopyBlock(nextBoardState, boardState, BoardStateExtensions.BoardStateSize);
+            Unsafe.CopyBlock(nextBoardState, boardState, BoardStateData.BoardStateSize);
 
             var m = *currentMovePtr;
 

@@ -39,6 +39,7 @@ public unsafe partial class Searcher
     public readonly int* History;
     public readonly uint* Counters;
     public readonly uint* killers;
+    public readonly int* PawnCorrHist;
 
     public Searcher(Transposition* transpositions, int ttCount)
     {
@@ -73,6 +74,8 @@ public unsafe partial class Searcher
         Counters = AllocateUInt((nuint)CountersLength);
         History = AllocateInt((nuint)HistoryLength);
         killers = AllocateUInt((nuint)KillersLength);
+        PawnCorrHist = AllocateInt((nuint)TableElementsSize);
+
 
     }
 
@@ -221,6 +224,7 @@ public unsafe partial class Searcher
 
         var depthSearched = 0;
         _searchCancelled = false;
+        //NativeMemory.Clear(PawnCorrHist, (nuint)TableElementsSize);
 
         NativeMemory.Clear(History, (nuint)HistoryLength);
         NativeMemory.Clear(Counters, (nuint)CountersLength);

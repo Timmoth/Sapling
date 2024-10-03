@@ -42,6 +42,9 @@ public partial class Searcher
         TranspositionTableFlag transpositionType = default;
         var transpositionEvaluation = TranspositionTableExtensions.NoHashEntry;
         ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
+        var corrhistIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
+        var staticEval = AdjustEval(corrhistIndex,
+            Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
 
         if (depthFromRoot > 0)
         {
@@ -98,8 +101,6 @@ public partial class Searcher
             }
             else if (!pvNode)
             {
-                var staticEval = Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot);
-
                 // Reverse futility pruning
                 var margin = depth * SpsaOptions.ReverseFutilityPruningMargin;
                 if (depth <= SpsaOptions.ReverseFutilityPruningDepth && staticEval >= beta + margin)
@@ -115,7 +116,7 @@ public partial class Searcher
                 {
                     var reduction = Math.Max(0, (depth - SpsaOptions.NullMovePruningReductionA) / SpsaOptions.NullMovePruningReductionB + SpsaOptions.NullMovePruningReductionC);
 
-                    Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateExtensions.BoardStateSize);
+                    Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
 
                     newBoardState->ApplyNullMove();
 
@@ -192,6 +193,12 @@ public partial class Searcher
             // No available moves, either stalemate or checkmate
             var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, parentInCheck);
 
+            if (!currentBoardState->InCheck)
+            {
+                var diff = eval - staticEval;
+                UpdateCorrectionHistory(corrhistIndex, diff, depth);
+            }
+
             ttEntry.Set(pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
@@ -237,6 +244,7 @@ public partial class Searcher
         var evaluationBound = TranspositionTableFlag.Alpha;
         var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
 
+        var bestScore = int.MinValue;
         // Evaluate each move
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
@@ -265,7 +273,7 @@ public partial class Searcher
                 }
             }
 
-            Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateExtensions.BoardStateSize);
+            Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
 
             var m = *currentMovePtr;
 
@@ -341,6 +349,12 @@ public partial class Searcher
                 return 0;
             }
 
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestMove = m;
+            }
+
             if (score <= alpha)
             {
                 // Move didn't cause an alpha cut off, continue searching
@@ -348,12 +362,18 @@ public partial class Searcher
             }
 
             // Update best move seen so far
-            bestMove = m;
             alpha = score;
             evaluationBound = TranspositionTableFlag.Exact;
 
             if (score >= beta)
             {
+                if (!currentBoardState->InCheck && (bestMove == default || !bestMove.IsCapture())
+                                                && !(score >= staticEval))
+                {
+                    var diff = bestScore - staticEval;
+                    UpdateCorrectionHistory(corrhistIndex, diff, depth);
+                }
+
                 // Cache in transposition table
                 ttEntry.Set(pHash, (byte)depth, depthFromRoot,
                     score,
@@ -402,10 +422,26 @@ public partial class Searcher
             // No available moves, either stalemate or checkmate
             var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, parentInCheck);
 
+            if (!currentBoardState->InCheck)
+            {
+                var diff = eval - staticEval;
+                UpdateCorrectionHistory(corrhistIndex, diff, depth);
+            }
+
             ttEntry.Set(pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
+        }
+
+
+        if (!currentBoardState->InCheck
+                            && (bestMove == default || !bestMove.IsCapture())
+                            && !(evaluationBound == TranspositionTableFlag.Alpha && alpha <= staticEval)
+                            && !(evaluationBound == TranspositionTableFlag.Beta && alpha >= staticEval))
+        {
+            var diff = bestScore - staticEval;
+            UpdateCorrectionHistory(corrhistIndex, diff, depth);
         }
 
         // Cache in transposition table
