@@ -157,10 +157,7 @@ public class DataGenerator
                         }
                     }
 
-                    if (!gameState.Apply(move))
-                    {
-                        throw new Exception("Failed to apply move.");
-                    }
+                    gameState.Apply(move);
 
                     if (Math.Abs(score) >= 2000)
                     {

@@ -40,7 +40,7 @@ public partial class Searcher
         }
 
         var pHash = boardState->Hash;
-        ref var ttEntry = ref Transpositions[pHash & TtMask];
+        ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
         uint ttBestMove = default;
 
         if (pHash == ttEntry.FullHash)
@@ -174,14 +174,14 @@ public partial class Searcher
 
             hasValidMove = true;
 
-            if (!boardState->InCheck && !nextBoardState->InCheck && (*currentScorePtr) < SpsaOptions.InterestingQuiescenceMoveScore)
+            if (!inCheck && !nextBoardState->InCheck && (*currentScorePtr) < SpsaOptions.InterestingQuiescenceMoveScore)
             {
                 //skip playing bad captures when not in check
                 continue;
             }
 
             nextAccumulatorState->UpdateToParent(accumulatorState, nextBoardState);
-            nextBoardState->FinishApply(nextAccumulatorState, m, prevEnpassant, prevCastleRights);
+            nextBoardState->FinishApply(ref *nextAccumulatorState, m, prevEnpassant, prevCastleRights);
             *nextHashHistoryEntry = nextBoardState->Hash;
 
             Sse.Prefetch0(Transpositions + (nextBoardState->Hash & TtMask));
@@ -242,7 +242,7 @@ public partial class Searcher
     private unsafe void ShiftPvMoves(int target, int source, int moveCountToCopy)
     {
         // Check if the source position is zero
-        if (_pVTable[source] == 0)
+        if (*(_pVTable + source) == 0)
         {
             // Calculate the number of bytes to clear
             var bytesToClear = _pvTableBytes - (nuint)target * sizeof(uint);

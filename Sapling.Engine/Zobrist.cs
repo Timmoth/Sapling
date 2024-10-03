@@ -219,6 +219,10 @@ public static unsafe class Zobrist
     public static ulong* DeltaCastleRights;
     public static ulong* DeltaEnpassant;
 
+    public static readonly ulong BlackKingSideCastleZobrist;
+    public static readonly ulong BlackQueenSideCastleZobrist;
+    public static readonly ulong WhiteKingSideCastleZobrist;
+    public static readonly ulong WhiteQueenSideCastleZobrist;
     static Zobrist()
     {
         PiecesArray = AllocateULong(PieceCount * 64);
@@ -313,8 +317,28 @@ public static unsafe class Zobrist
                 DeltaEnpassant[i * 9 + j] = hash;
             }
         }
+        
+        BlackKingSideCastleZobrist = *(Zobrist.PiecesArray + Constants.BlackKingZobristOffset + 60) ^
+                                  *(Zobrist.PiecesArray + Constants.BlackKingZobristOffset + 62) ^
+                                    *(Zobrist.PiecesArray + Constants.BlackRookZobristOffset + 63) ^
+                                      *(Zobrist.PiecesArray + Constants.BlackRookZobristOffset + 61);
 
 
+        BlackQueenSideCastleZobrist =  *(Zobrist.PiecesArray + Constants.BlackKingZobristOffset + 60) ^
+                  *(Zobrist.PiecesArray + Constants.BlackKingZobristOffset + 58)
+                    ^ *(Zobrist.PiecesArray + Constants.BlackRookZobristOffset + 56) ^
+                        *(Zobrist.PiecesArray + Constants.BlackRookZobristOffset + 59);
+
+        WhiteKingSideCastleZobrist =  *(Zobrist.PiecesArray + Constants.WhiteKingZobristOffset + 4) ^
+                      *(Zobrist.PiecesArray + Constants.WhiteKingZobristOffset + 6) ^
+                        *(Zobrist.PiecesArray + Constants.WhiteRookZobristOffset + 7) ^
+                          *(Zobrist.PiecesArray + Constants.WhiteRookZobristOffset + 5);
+
+
+        WhiteQueenSideCastleZobrist = *(Zobrist.PiecesArray + Constants.WhiteKingZobristOffset + 4) ^
+                      *(Zobrist.PiecesArray + Constants.WhiteKingZobristOffset + 2) ^
+                        *(Zobrist.PiecesArray + Constants.WhiteRookZobristOffset + 0) ^
+                          *(Zobrist.PiecesArray + Constants.WhiteRookZobristOffset + 3);
     }
 
     public static ulong* AllocateULong(int count)

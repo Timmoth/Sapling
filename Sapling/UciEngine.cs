@@ -176,18 +176,19 @@ public class UciEngine
         foreach (var move in moveList)
         {
             var mov = _gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == move);
-            if (_gameState.Apply(mov))
+            if (mov == default)
             {
-                continue;
+                var moves = string.Join(",", _gameState.LegalMoves.Select(m => m.ToUciMoveName()));
+                LogToFile("ERRROR!");
+                LogToFile("Couldn't apply move: " + move +
+                          $" for {(_gameState.Board.WhiteToMove ? "white" : "black")}");
+                LogToFile("Valid moves: " + moves);
+
+                LogToFile($"Error applying move: '{mov.ToMoveString()}'");
+                break;
             }
 
-            var moves = string.Join(",", _gameState.LegalMoves.Select(m => m.ToUciMoveName()));
-            LogToFile("ERRROR!");
-            LogToFile("Couldn't apply move: " + move +
-                      $" for {(_gameState.Board.WhiteToMove ? "white" : "black")}");
-            LogToFile("Valid moves: " + moves);
-
-            LogToFile($"Error applying move: '{mov.ToMoveString()}'");
+            _gameState.Apply(mov);
         }
     }
 

@@ -32,7 +32,7 @@ public sealed unsafe class GameState
         History = new List<uint>();
         LegalMoves = new List<uint>();
         Board.GenerateLegalMoves(LegalMoves, false);
-        HashHistory[Board.TurnCount - 1] = Board.Hash;
+        *(HashHistory + Board.TurnCount - 1) = Board.Hash;
     }
 
     public static GameState InitialState()
@@ -44,8 +44,8 @@ public sealed unsafe class GameState
     {
         History.Clear();
         newBoard.CloneTo(ref Board);
-        Board.GenerateLegalMoves(LegalMoves, false); 
-        HashHistory[Board.TurnCount - 1] = Board.Hash;
+        Board.GenerateLegalMoves(LegalMoves, false);
+        *(HashHistory + Board.TurnCount - 1) = Board.Hash;
     }
     public void ResetToFen(string fen)
     {
@@ -53,7 +53,7 @@ public sealed unsafe class GameState
         var state = BoardStateExtensions.CreateBoardFromFen(fen);
         state.CloneTo(ref Board);
         Board.GenerateLegalMoves(LegalMoves, false);
-        HashHistory[Board.TurnCount - 1] = Board.Hash;
+        *(HashHistory + Board.TurnCount - 1) = Board.Hash;
     }
 
     public void Reset()
@@ -62,7 +62,7 @@ public sealed unsafe class GameState
         var state = Constants.InitialBoard;
         state.CloneTo(ref Board);
         Board.GenerateLegalMoves(LegalMoves, false);
-        HashHistory[Board.TurnCount - 1] = Board.Hash;
+        *(HashHistory + Board.TurnCount - 1) = Board.Hash;
     }
 
     public void ResetTo(ref BoardStateData newBoard, uint[] legalMoves)
@@ -71,15 +71,10 @@ public sealed unsafe class GameState
         newBoard.CloneTo(ref Board);
         LegalMoves.Clear();
         LegalMoves.AddRange(legalMoves);
-        HashHistory[Board.TurnCount - 1] = Board.Hash;
+        *(HashHistory + Board.TurnCount - 1) = Board.Hash;
     }
-    public bool Apply(uint move)
+    public void Apply(uint move)
     {
-        if (!LegalMoves.Contains(move))
-        {
-            return false;
-        }
-
         var oldEnpassant = Board.EnPassantFile;
         var oldCastle = Board.CastleRights;
 
@@ -90,14 +85,12 @@ public sealed unsafe class GameState
         fixed (BoardStateData* boardPtr = &Board)
         {
             // Copy the memory block from source to destination
-            boardPtr->FinishApply(&emptyAccumulator, move, oldEnpassant, oldCastle);
+            boardPtr->FinishApply(ref emptyAccumulator, move, oldEnpassant, oldCastle);
         }
 
         Board.GenerateLegalMoves(LegalMoves, false);
         History.Add(move);
-        HashHistory[Board.TurnCount - 1] = Board.Hash;
-
-        return true;
+        *(HashHistory + Board.TurnCount - 1) = Board.Hash;
     }
  
     public bool GameOver()

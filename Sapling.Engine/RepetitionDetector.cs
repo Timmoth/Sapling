@@ -126,7 +126,7 @@ public static unsafe class RepetitionDetector
             int moveFrom = (int)m.GetFromSquare();
             int moveTo = (int)m.GetToSquare();
 
-            if ((occupancy & *(AttackTables.LineBitBoards+(moveFrom * 64 + moveTo))) != 0)
+            if ((occupancy & *(AttackTables.LineBitBoards+((moveFrom << 6) + moveTo))) != 0)
             {
                 continue;
             }

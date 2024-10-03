@@ -127,7 +127,25 @@ public static class OutputHelpers
 
         return fen.ToString();
     }
-
+    public static char PieceToChar(this ushort piece)
+    {
+        return piece switch
+        {
+            Constants.BlackPawn => 'p',
+            Constants.BlackRook => 'r',
+            Constants.BlackKnight => 'n',
+            Constants.BlackBishop => 'b',
+            Constants.BlackQueen => 'q',
+            Constants.BlackKing => 'k',
+            Constants.WhitePawn => 'P',
+            Constants.WhiteRook => 'R',
+            Constants.WhiteKnight => 'N',
+            Constants.WhiteBishop => 'B',
+            Constants.WhiteQueen => 'Q',
+            Constants.WhiteKing => 'K',
+            _ => '1'
+        };
+    }
     public static char PieceToChar(this byte piece)
     {
         return piece switch

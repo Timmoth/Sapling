@@ -23,32 +23,21 @@ public static unsafe class NnueExtensions
     private const int PieceStride = 64;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ApplyQuiet(this ref AccumulatorState accumulatorState, byte fromPiece, byte fromSquare,
-        byte toPiece, byte toSquare)
+    public static void ApplyQuiet(this ref AccumulatorState accumulatorState, int fromIndex, int toIndex)
     {
         // Precompute mirroring as integers
         var whiteMirrored = accumulatorState.WhiteMirrored ? 1 : 0;
         var blackMirrored = accumulatorState.BlackMirrored ? 1 : 0;
 
-        // Calculate indices once and reuse
-        var fromIndex = (fromPiece * 128) + (fromSquare * 2);
-        var toIndex = (toPiece * 128) + (toSquare * 2);
-
         // Precompute the bucket offsets
         var wBucketOffset = accumulatorState.WhiteInputBucket * InputBucketWeightCount;
         var bBucketOffset = accumulatorState.BlackInputBucket * InputBucketWeightCount;
 
-        // Directly calculate feature updates using precomputed indices
-        var whiteFeatureFrom = WhiteFeatureIndexes[fromIndex + whiteMirrored];
-        var blackFeatureFrom = BlackFeatureIndexes[fromIndex + blackMirrored];
-        var whiteFeatureTo = WhiteFeatureIndexes[toIndex + whiteMirrored];
-        var blackFeatureTo = BlackFeatureIndexes[toIndex + blackMirrored];
-
         // Update the accumulator state with calculated feature updates
-        accumulatorState.WhiteSubFeatureUpdatesA = wBucketOffset + whiteFeatureFrom;
-        accumulatorState.BlackSubFeatureUpdatesA = bBucketOffset + blackFeatureFrom;
-        accumulatorState.WhiteAddFeatureUpdatesA = wBucketOffset + whiteFeatureTo;
-        accumulatorState.BlackAddFeatureUpdatesA = bBucketOffset + blackFeatureTo;
+        accumulatorState.WhiteSubFeatureUpdatesA = wBucketOffset + *(WhiteFeatureIndexes + fromIndex + whiteMirrored);
+        accumulatorState.BlackSubFeatureUpdatesA = bBucketOffset + *(BlackFeatureIndexes + fromIndex + blackMirrored);
+        accumulatorState.WhiteAddFeatureUpdatesA = wBucketOffset + *(WhiteFeatureIndexes + toIndex + whiteMirrored);
+        accumulatorState.BlackAddFeatureUpdatesA = bBucketOffset + *(BlackFeatureIndexes + toIndex + blackMirrored);
 
         // Set the change type
         accumulatorState.ChangeType = AccumulatorChangeType.SubAdd;
@@ -57,38 +46,24 @@ public static unsafe class NnueExtensions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ApplyCapture(this ref AccumulatorState accumulatorState,
-        byte fromPiece, byte fromSquare,
-        byte toPiece, byte toSquare,
-        byte capturedPiece, byte capturedSquare)
+        int fromIndex, int toIndex,
+        int capIndex)
     {
         // Precompute mirroring as integers
         var whiteMirrored = accumulatorState.WhiteMirrored ? 1 : 0;
         var blackMirrored = accumulatorState.BlackMirrored ? 1 : 0;
 
-        // Calculate indices once and reuse
-        var fromIndex = (fromPiece * 128) + (fromSquare * 2);
-        var toIndex = (toPiece * 128) + (toSquare * 2);
-        var capIndex = (capturedPiece * 128) + (capturedSquare * 2);
-
         // Precompute the bucket offsets
         var wBucketOffset = accumulatorState.WhiteInputBucket * InputBucketWeightCount;
         var bBucketOffset = accumulatorState.BlackInputBucket * InputBucketWeightCount;
 
-        // Directly calculate feature updates using precomputed indices
-        var whiteFeatureFrom = WhiteFeatureIndexes[fromIndex + whiteMirrored];
-        var blackFeatureFrom = BlackFeatureIndexes[fromIndex + blackMirrored];
-        var whiteFeatureCaptured = WhiteFeatureIndexes[capIndex + whiteMirrored];
-        var blackFeatureCaptured = BlackFeatureIndexes[capIndex + blackMirrored];
-        var whiteFeatureTo = WhiteFeatureIndexes[toIndex + whiteMirrored];
-        var blackFeatureTo = BlackFeatureIndexes[toIndex + blackMirrored];
-
         // Update the accumulator state with calculated feature updates
-        accumulatorState.WhiteSubFeatureUpdatesA = wBucketOffset + whiteFeatureFrom;
-        accumulatorState.BlackSubFeatureUpdatesA = bBucketOffset + blackFeatureFrom;
-        accumulatorState.WhiteSubFeatureUpdatesB = wBucketOffset + whiteFeatureCaptured;
-        accumulatorState.BlackSubFeatureUpdatesB = bBucketOffset + blackFeatureCaptured;
-        accumulatorState.WhiteAddFeatureUpdatesA = wBucketOffset + whiteFeatureTo;
-        accumulatorState.BlackAddFeatureUpdatesA = bBucketOffset + blackFeatureTo;
+        accumulatorState.WhiteSubFeatureUpdatesA = wBucketOffset + *(WhiteFeatureIndexes + fromIndex + whiteMirrored);
+        accumulatorState.BlackSubFeatureUpdatesA = bBucketOffset + *(BlackFeatureIndexes + fromIndex + blackMirrored);
+        accumulatorState.WhiteSubFeatureUpdatesB = wBucketOffset + *(WhiteFeatureIndexes + capIndex + whiteMirrored);
+        accumulatorState.BlackSubFeatureUpdatesB = bBucketOffset + *(BlackFeatureIndexes + capIndex + blackMirrored);
+        accumulatorState.WhiteAddFeatureUpdatesA = wBucketOffset + *(WhiteFeatureIndexes + toIndex + whiteMirrored);
+        accumulatorState.BlackAddFeatureUpdatesA = bBucketOffset + *(BlackFeatureIndexes + toIndex + blackMirrored);
 
         // Set the change type
         accumulatorState.ChangeType = AccumulatorChangeType.SubSubAdd;
@@ -96,43 +71,26 @@ public static unsafe class NnueExtensions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ApplyCastle(this ref AccumulatorState accumulatorState,
-    byte kingPiece, byte fromKingSquare, byte toKingSquare,
-    byte rookPiece, byte fromRookSquare, byte toRookSquare)
+        int kingFromIndex, int kingToIndex, int rookFromIndex, int rookToIndex)
     {
         // Precompute mirroring as integers
         var whiteMirrored = accumulatorState.WhiteMirrored ? 1 : 0;
         var blackMirrored = accumulatorState.BlackMirrored ? 1 : 0;
-
-        // Calculate indices once and reuse
-        var kingFromIndex = (kingPiece * 128) + (fromKingSquare * 2);
-        var kingToIndex = (kingPiece * 128) + (toKingSquare * 2);
-        var rookFromIndex = (rookPiece * 128) + (fromRookSquare * 2);
-        var rookToIndex = (rookPiece * 128) + (toRookSquare * 2);
-
+        
         // Precompute bucket offsets
         var wBucketOffset = accumulatorState.WhiteInputBucket * InputBucketWeightCount;
         var bBucketOffset = accumulatorState.BlackInputBucket * InputBucketWeightCount;
 
-        // Directly calculate feature updates using precomputed indices
-        var whiteKingFromFeature = WhiteFeatureIndexes[kingFromIndex + whiteMirrored];
-        var blackKingFromFeature = BlackFeatureIndexes[kingFromIndex + blackMirrored];
-        var whiteKingToFeature = WhiteFeatureIndexes[kingToIndex + whiteMirrored];
-        var blackKingToFeature = BlackFeatureIndexes[kingToIndex + blackMirrored];
-        var whiteRookFromFeature = WhiteFeatureIndexes[rookFromIndex + whiteMirrored];
-        var blackRookFromFeature = BlackFeatureIndexes[rookFromIndex + blackMirrored];
-        var whiteRookToFeature = WhiteFeatureIndexes[rookToIndex + whiteMirrored];
-        var blackRookToFeature = BlackFeatureIndexes[rookToIndex + blackMirrored];
-
         // Update the accumulator state with calculated feature updates
-        accumulatorState.WhiteSubFeatureUpdatesA = wBucketOffset + whiteKingFromFeature;
-        accumulatorState.BlackSubFeatureUpdatesA = bBucketOffset + blackKingFromFeature;
-        accumulatorState.WhiteSubFeatureUpdatesB = wBucketOffset + whiteRookFromFeature;
-        accumulatorState.BlackSubFeatureUpdatesB = bBucketOffset + blackRookFromFeature;
+        accumulatorState.WhiteSubFeatureUpdatesA = wBucketOffset + *(WhiteFeatureIndexes + kingFromIndex + whiteMirrored);
+        accumulatorState.BlackSubFeatureUpdatesA = bBucketOffset + *(BlackFeatureIndexes + kingFromIndex + blackMirrored);
+        accumulatorState.WhiteSubFeatureUpdatesB = wBucketOffset + *(WhiteFeatureIndexes + rookFromIndex + whiteMirrored);
+        accumulatorState.BlackSubFeatureUpdatesB = bBucketOffset + *(BlackFeatureIndexes + rookFromIndex + blackMirrored);
 
-        accumulatorState.WhiteAddFeatureUpdatesA = wBucketOffset + whiteKingToFeature;
-        accumulatorState.BlackAddFeatureUpdatesA = bBucketOffset + blackKingToFeature;
-        accumulatorState.WhiteAddFeatureUpdatesB = wBucketOffset + whiteRookToFeature;
-        accumulatorState.BlackAddFeatureUpdatesB = bBucketOffset + blackRookToFeature;
+        accumulatorState.WhiteAddFeatureUpdatesA = wBucketOffset + *(WhiteFeatureIndexes + kingToIndex + whiteMirrored);
+        accumulatorState.BlackAddFeatureUpdatesA = bBucketOffset + *(BlackFeatureIndexes + kingToIndex + blackMirrored);
+        accumulatorState.WhiteAddFeatureUpdatesB = wBucketOffset + *(WhiteFeatureIndexes + rookToIndex + whiteMirrored);
+        accumulatorState.BlackAddFeatureUpdatesB = bBucketOffset + *(BlackFeatureIndexes + rookToIndex + blackMirrored);
 
         // Set the change type
         accumulatorState.ChangeType = AccumulatorChangeType.SubSubAddAdd;

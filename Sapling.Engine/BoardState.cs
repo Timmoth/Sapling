@@ -37,6 +37,7 @@ public unsafe struct BoardStateData
 
     // Add padding for alignment (2 bytes of padding at the end to make the size a multiple of 8)
     [FieldOffset(138)] private fixed byte _padding[2];  // Padding to align total size to 8-byte boundary
+
 }
 
 public static unsafe class AccumulatorStateExtensions

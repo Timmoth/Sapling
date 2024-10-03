@@ -4,9 +4,8 @@ namespace Sapling.Engine.MoveGen;
 
 public static class MoveExtensions
 {
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Deconstruct(
+    public static void DeconstructByte(
         this uint move, out byte movedPiece, out byte fromSquare, out byte toSquare, out byte capturedSquare, out byte moveType)
     {
         movedPiece = (byte)(move & 0x0F); // Extract the moved piece (lower 4 bits)
@@ -25,15 +24,34 @@ public static class MoveExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Deconstruct(
+        this uint move, out ushort movedPiece, out ushort fromSquare, out ushort toSquare, out ushort capturedSquare, out ushort moveType)
+    {
+        movedPiece = (ushort)(move & 0x0F); // Extract the moved piece (lower 4 bits)
+
+        // Extracting fromSquare (bits 4 to 9)
+        fromSquare = (ushort)((move >> 4) & 0x3F); // Shift right by 4 and mask with 0x3F (binary 00111111)
+
+        // Extracting toSquare (bits 10 to 15)
+        toSquare = (ushort)((move >> 10) & 0x3F); // Shift right by 10 and mask with 0x3F
+
+        // Extracting capturedSquare (bits 16 to 19)
+        capturedSquare = (ushort)((move >> 16) & 0x0F); // Shift right by 16 and mask with 0x0F (binary 00001111)
+
+        // Extracting moveType (bits 20 to 23)
+        moveType = (ushort)((move >> 20) & 0x0F); // Shift right by 20 and mask with 0x0F
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint GetMovedPiece(this uint move)
     {
         return (move & 0x0F);
     }
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint GetCounterMoveIndex(this uint move)
     {
-        return (move & 0x0F) * 64 + ((move >> 10) & 0x3F);
+        return ((move & 0x0F) << 6) + ((move >> 10) & 0x3F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -237,6 +255,7 @@ public static class MoveExtensions
                       (moveType << 20));
     }
 
+    private const int whiteEnpassantOffset = 5 * 8;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint EncodeWhiteEnpassantMove(
         byte fromSquare,
@@ -244,10 +263,12 @@ public static class MoveExtensions
     {
         return (uint)(Constants.WhitePawn |
                       (fromSquare << 4) |
-                      ((5 * 8 + enpassantFile) << 10) |
+                      ((whiteEnpassantOffset + enpassantFile) << 10) |
                       (Constants.BlackPawn << 16) |
                       (Constants.EnPassant << 20));
     }
+
+    private const int blackEnpassantOffset = 2 * 8;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint EncodeBlackEnpassantMove(
@@ -256,7 +277,7 @@ public static class MoveExtensions
     {
         return (uint)(Constants.BlackPawn |
                       (fromSquare << 4) |
-                      ((2 * 8 + enpassantFile) << 10) |
+                      ((blackEnpassantOffset + enpassantFile) << 10) |
                       (Constants.WhitePawn << 16) |
                       (Constants.EnPassant << 20));
     }
@@ -287,6 +308,7 @@ public static class MoveExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsQuiet(this uint move)
     {
+        // Not a capture or promotion
         return ((move >> 16) & 0x0F) == Constants.None && ((move >> 20) & 0x0F) < 4;
     }
 }

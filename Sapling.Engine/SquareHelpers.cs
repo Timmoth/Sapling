@@ -52,6 +52,14 @@ public static class SquareHelpers
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ushort GetRankIndex(this ushort square)
+    {
+        // Rank is obtained by shifting right by 3 bits
+        return (ushort)(square >> 3); // Equivalent to square / 8
+    }
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsSecondRank(this byte rankIndex)
     {
         return rankIndex == 1;

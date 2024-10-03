@@ -265,7 +265,7 @@ public unsafe partial class Searcher
                     ? Constants.MaxScore
                     : lastIterationEval + AsperationWindows[betaWindowIndex];
 
-                //NativeMemory.Clear(killers, (nuint)KillersLength);
+                NativeMemory.Clear(killers, (nuint)KillersLength);
                 NativeMemory.Clear(Counters, (nuint)CountersLength);
 
                 var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);

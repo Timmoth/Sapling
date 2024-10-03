@@ -41,7 +41,7 @@ public partial class Searcher
         uint transpositionBestMove = default;
         TranspositionTableFlag transpositionType = default;
         var transpositionEvaluation = TranspositionTableExtensions.NoHashEntry;
-        ref var ttEntry = ref Transpositions[pHash & TtMask];
+        ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
 
         if (depthFromRoot > 0)
         {
@@ -203,8 +203,8 @@ public partial class Searcher
         var counterMove = counterMoveIndex == default ? default: *(Counters + counterMoveIndex);
 
         // Get killer move
-        var killerA = *(killers + depthFromRoot * 2);
-        var killerB = *(killers + depthFromRoot * 2 + 1);
+        var killerA = *(killers + (depthFromRoot << 1));
+        var killerB = *(killers + (depthFromRoot << 1) + 1);
 
         // Data used in move ordering
         var scores = stackalloc int[psuedoMoveCount];
@@ -272,6 +272,7 @@ public partial class Searcher
             if (!newBoardState->PartialApply(m))
             {
                 *currentMovePtr = default;
+
                 // Illegal move, undo
                 continue;
             }
@@ -291,7 +292,7 @@ public partial class Searcher
             }
 
             newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
-            newBoardState->FinishApply(newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+            newBoardState->FinishApply(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
             *nextHashHistoryEntry = newBoardState->Hash;
 
             Sse.Prefetch0(Transpositions + (newBoardState->Hash & TtMask));
@@ -369,8 +370,8 @@ public partial class Searcher
                     if (m != killerA)
                     {
                         // Killer move
-                        *(killers + depthFromRoot * 2 + 1) = killerA;
-                        *(killers + depthFromRoot * 2) = m;
+                        *(killers + (depthFromRoot << 1) + 1) = killerA;
+                        *(killers + (depthFromRoot << 1)) = m;
                     }
 
                     if (counterMoveIndex != 0)
