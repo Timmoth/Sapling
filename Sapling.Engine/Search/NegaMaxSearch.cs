@@ -42,9 +42,6 @@ public partial class Searcher
         TranspositionTableFlag transpositionType = default;
         var transpositionEvaluation = TranspositionTableExtensions.NoHashEntry;
         ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
-        var corrhistIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
-        var staticEval = AdjustEval(corrhistIndex,
-            Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
 
         if (depthFromRoot > 0)
         {
@@ -93,7 +90,14 @@ public partial class Searcher
                     }
                 }
             }
+        }
 
+        var corrhistIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
+        var staticEval = AdjustEval(corrhistIndex,
+            Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
+
+        if (depthFromRoot > 0)
+        {
             if (parentInCheck)
             {
                 // Extend searches when in check
@@ -367,8 +371,8 @@ public partial class Searcher
 
             if (score >= beta)
             {
-                if (!currentBoardState->InCheck && (bestMove == default || !bestMove.IsCapture())
-                                                && !(score >= staticEval))
+                if (!parentInCheck && (bestMove == default || bestMove.IsQuiet())
+                                   && (score > staticEval))
                 {
                     var diff = bestScore - staticEval;
                     UpdateCorrectionHistory(corrhistIndex, diff, depth);
@@ -422,7 +426,7 @@ public partial class Searcher
             // No available moves, either stalemate or checkmate
             var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, parentInCheck);
 
-            if (!currentBoardState->InCheck)
+            if (!parentInCheck)
             {
                 var diff = eval - staticEval;
                 UpdateCorrectionHistory(corrhistIndex, diff, depth);
@@ -435,10 +439,9 @@ public partial class Searcher
         }
 
 
-        if (!currentBoardState->InCheck
-                            && (bestMove == default || !bestMove.IsCapture())
-                            && !(evaluationBound == TranspositionTableFlag.Alpha && alpha <= staticEval)
-                            && !(evaluationBound == TranspositionTableFlag.Beta && alpha >= staticEval))
+        if (!parentInCheck
+                            && (bestMove == default || bestMove.IsQuiet())
+                            && (evaluationBound == TranspositionTableFlag.Exact || bestScore < staticEval))
         {
             var diff = bestScore - staticEval;
             UpdateCorrectionHistory(corrhistIndex, diff, depth);

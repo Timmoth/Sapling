@@ -28,13 +28,6 @@ public partial class Searcher
         var pawnCh = PawnCorrHist + index;
         var pawnBonus = (*(pawnCh) * (CorrectionScale - scaledWeight) + (diff * CorrectionGrain * scaledWeight)) / CorrectionScale;
         *pawnCh = Math.Clamp(pawnBonus, -CorrectionMax, CorrectionMax);
-        //var scaledDiff = diff * CorrectionGrain;
-        //var newWeight = Math.Min(depth * depth + 2 * depth + 1, 128);
-
-        //var index = CorrectionIndex(board.PawnHash, board.WhiteToMove);
-        //var pawnCh = PawnCorrHist[index];
-        //pawnCh = (pawnCh * (CorrectionScale - newWeight) + scaledDiff * newWeight) / CorrectionScale;
-        //PawnCorrHist[index] = Math.Clamp(pawnCh, -CorrectionMax, CorrectionMax);
     }
 
     const int MinMateScore = Constants.ImmediateMateScore - Constants.MaxSearchDepth;
@@ -42,9 +35,6 @@ public partial class Searcher
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe int AdjustEval(int index, int rawEval)
     {
-        return (short)(rawEval + *(PawnCorrHist + index) / CorrectionGrain);
-
-        //var pawnCh = PawnCorrHist[CorrectionIndex(board.PawnHash, board.WhiteToMove)];
-        //return Math.Clamp(rawEval + pawnCh / CorrectionGrain, -MinMateScore + 1, MinMateScore - 1);
+        return (rawEval + *(PawnCorrHist + index) / CorrectionGrain);
     }
 }
