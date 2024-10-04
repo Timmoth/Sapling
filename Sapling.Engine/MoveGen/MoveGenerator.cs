@@ -28,7 +28,7 @@ public static class MoveGenerator
         {
             var m = moves[moveIndex];
             board.CloneTo(ref copy);
-            if (copy.PartialApply(m))
+            if (copy.WhiteToMove ? copy.PartialApplyWhite(m) : copy.PartialApplyBlack(m))
             {
                 legalMoves.Add(m);
             }

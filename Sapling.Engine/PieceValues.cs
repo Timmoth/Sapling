@@ -8,7 +8,7 @@ public static unsafe class PieceValues
 
     static PieceValues()
     {
-        PieceValue = Allocate(13);
+        PieceValue = MemoryHelpers.Allocate<short>(13);
 
         PieceValue[Constants.WhitePawn] = Constants.PawnValue;
         PieceValue[Constants.WhiteKnight] = Constants.KnightValue;
@@ -23,15 +23,5 @@ public static unsafe class PieceValues
         PieceValue[Constants.BlackRook] = Constants.RookValue;
         PieceValue[Constants.BlackQueen] = Constants.QueenValue;
         PieceValue[Constants.BlackKing] = Constants.KingValue;
-    }
-
-    public static short* Allocate(int count)
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc(sizeof(short) * (nuint)count, alignment);
-        NativeMemory.Clear(block, sizeof(short) * (nuint)count);
-
-        return (short*)block;
     }
 }

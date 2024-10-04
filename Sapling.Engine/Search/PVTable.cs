@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 using Sapling.Engine;
+using Sapling.Engine.Transpositions;
 
 namespace Sapling;
 
@@ -9,7 +10,7 @@ public static unsafe class PVTable
     public const int IndexCount = Constants.MaxSearchDepth + 16;
     static PVTable()
     {
-        Indexes = AllocateULong(IndexCount);
+        Indexes = MemoryHelpers.Allocate<int>(IndexCount);
         var previousPvIndex = 0;
         Indexes[0] = previousPvIndex;
 
@@ -18,15 +19,5 @@ public static unsafe class PVTable
             Indexes[depth + 1] = previousPvIndex + Constants.MaxSearchDepth - depth;
             previousPvIndex = Indexes[depth + 1];
         }
-    }
-
-    public static int* AllocateULong(int count)
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc(sizeof(int) * (nuint)count, alignment);
-        NativeMemory.Clear(block, sizeof(int) * (nuint)count);
-
-        return (int*)block;
     }
 }

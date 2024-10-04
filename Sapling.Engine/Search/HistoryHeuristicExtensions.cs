@@ -1,5 +1,4 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Tuning;
 
@@ -10,21 +9,11 @@ public static unsafe class HistoryHeuristicExtensions
     public static short* BonusTable;
     static HistoryHeuristicExtensions()
     {
-        BonusTable = Allocate();
+        BonusTable = MemoryHelpers.Allocate<short>(Constants.MaxSearchDepth);
         for (var i = 0; i < Constants.MaxSearchDepth; i++)
         {
             BonusTable[i] = Math.Min((short)SpsaOptions.HistoryHeuristicBonusMax, (short)(SpsaOptions.HistoryHeuristicBonusCoeff * (i - 1)));
         }
-    }
-
-    public static short* Allocate()
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc((nuint)sizeof(short) * Constants.MaxSearchDepth, alignment);
-        NativeMemory.Clear(block, (nuint)sizeof(short) * Constants.MaxSearchDepth);
-
-        return (short*)block;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

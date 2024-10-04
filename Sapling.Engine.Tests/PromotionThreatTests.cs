@@ -15,7 +15,7 @@ public class PromotionThreatTests
         // Given
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
         var moves = new List<uint>();
-        board.Data.GenerateLegalMoves(moves, false);
+        board.GenerateLegalMoves(moves, false);
 
         var move = Assert.Single(moves.Where(m => m.ToUciMoveName() == uciMove));
 

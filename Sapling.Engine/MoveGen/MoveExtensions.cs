@@ -5,47 +5,9 @@ namespace Sapling.Engine.MoveGen;
 public static class MoveExtensions
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void DeconstructByte(
-        this uint move, out byte movedPiece, out byte fromSquare, out byte toSquare, out byte capturedSquare, out byte moveType)
+    public static byte GetMovedPiece(this uint move)
     {
-        movedPiece = (byte)(move & 0x0F); // Extract the moved piece (lower 4 bits)
-
-        // Extracting fromSquare (bits 4 to 9)
-        fromSquare = (byte)((move >> 4) & 0x3F); // Shift right by 4 and mask with 0x3F (binary 00111111)
-
-        // Extracting toSquare (bits 10 to 15)
-        toSquare = (byte)((move >> 10) & 0x3F); // Shift right by 10 and mask with 0x3F
-
-        // Extracting capturedSquare (bits 16 to 19)
-        capturedSquare = (byte)((move >> 16) & 0x0F); // Shift right by 16 and mask with 0x0F (binary 00001111)
-
-        // Extracting moveType (bits 20 to 23)
-        moveType = (byte)((move >> 20) & 0x0F); // Shift right by 20 and mask with 0x0F
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Deconstruct(
-        this uint move, out ushort movedPiece, out ushort fromSquare, out ushort toSquare, out ushort capturedSquare, out ushort moveType)
-    {
-        movedPiece = (ushort)(move & 0x0F); // Extract the moved piece (lower 4 bits)
-
-        // Extracting fromSquare (bits 4 to 9)
-        fromSquare = (ushort)((move >> 4) & 0x3F); // Shift right by 4 and mask with 0x3F (binary 00111111)
-
-        // Extracting toSquare (bits 10 to 15)
-        toSquare = (ushort)((move >> 10) & 0x3F); // Shift right by 10 and mask with 0x3F
-
-        // Extracting capturedSquare (bits 16 to 19)
-        capturedSquare = (ushort)((move >> 16) & 0x0F); // Shift right by 16 and mask with 0x0F (binary 00001111)
-
-        // Extracting moveType (bits 20 to 23)
-        moveType = (ushort)((move >> 20) & 0x0F); // Shift right by 20 and mask with 0x0F
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint GetMovedPiece(this uint move)
-    {
-        return (move & 0x0F);
+        return (byte)(move & 0x0F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -139,27 +101,27 @@ public static class MoveExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint GetFromSquare(this uint move)
+    public static byte GetFromSquare(this uint move)
     {
-        return (move >> 4) & 0x3F;
+        return (byte)((move >> 4) & 0x3F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint GetToSquare(this uint move)
+    public static byte GetToSquare(this uint move)
     {
-        return (move >> 10) & 0x3F;
+        return (byte)((move >> 10) & 0x3F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint GetCapturedPiece(this uint move)
+    public static byte GetCapturedPiece(this uint move)
     {
-        return ((move >> 16) & 0x0F);
+        return (byte)((move >> 16) & 0x0F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint GetMoveType(this uint move)
+    public static byte GetMoveType(this uint move)
     {
-        return ((move >> 20) & 0x0F);
+        return (byte)((move >> 20) & 0x0F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

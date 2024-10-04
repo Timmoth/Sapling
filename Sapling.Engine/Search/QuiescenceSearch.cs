@@ -134,7 +134,7 @@ public partial class Searcher
         var nextHashHistoryEntry = HashHistory + boardState->TurnCount;
         var prevEnpassant = boardState->EnPassantFile;
         var prevCastleRights = boardState->CastleRights;
-
+        var whiteToMove = boardState->WhiteToMove;
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
             // Incremental move sorting
@@ -167,7 +167,7 @@ public partial class Searcher
 
             var m = *currentMovePtr;
 
-            if (!nextBoardState->PartialApply(m))
+            if (whiteToMove ? !nextBoardState->PartialApplyWhite(m) : !nextBoardState->PartialApplyBlack(m))
             {
                 // illegal move
                 continue;
@@ -184,7 +184,16 @@ public partial class Searcher
             }
 
             nextAccumulatorState->UpdateToParent(accumulatorState, nextBoardState);
-            nextBoardState->FinishApply(ref *nextAccumulatorState, m, prevEnpassant, prevCastleRights);
+
+            if (whiteToMove)
+            {
+                nextBoardState->FinishApplyWhite(ref *nextAccumulatorState, m, prevEnpassant, prevCastleRights);
+            }
+            else
+            {
+                nextBoardState->FinishApplyBlack(ref *nextAccumulatorState, m, prevEnpassant, prevCastleRights);
+            }
+
             *nextHashHistoryEntry = nextBoardState->Hash;
 
             Sse.Prefetch0(Transpositions + (nextBoardState->Hash & TtMask));

@@ -11,13 +11,13 @@ public static class Perft
         var moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, false);
         BoardStateData copy = default;
-
+        var whiteToMove = board.WhiteToMove;
         ulong nodeCount = 0;
         for (var index = 0; index < moveCount; index++)
         {
             var m = moves[index];
             board.CloneTo(ref copy);
-            if (!copy.PartialApply(m))
+            if (whiteToMove ? !copy.PartialApplyWhite(m) : !copy.PartialApplyBlack(m))
             {
                 continue;
             }
@@ -42,6 +42,7 @@ public static class Perft
         var moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, false);
         BoardStateData copy = default;
+        var whiteToMove = board.WhiteToMove;
 
         var rootMoves = new ConcurrentBag<(ulong nodes, string move)>();
         for (var i = 0; i < moveCount; i++)
@@ -49,7 +50,7 @@ public static class Perft
             var m = moves[i];
             board.CloneTo(ref copy);
 
-            if (!copy.PartialApply(m))
+            if (whiteToMove ? !copy.PartialApplyWhite(m) : !copy.PartialApplyBlack(m))
             {
                 // Illegal move
                 continue;
@@ -71,6 +72,7 @@ public static class Perft
     {
         var moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, false);
+        var whiteToMove = board.WhiteToMove;
 
         var rootMoves = new ConcurrentBag<(ulong nodes, string move)>();
         Parallel.For(0, moveCount, new ParallelOptions
@@ -83,7 +85,7 @@ public static class Perft
 
             var m = moves[i];
 
-            if (!copy.PartialApply(m))
+            if (whiteToMove ? !copy.PartialApplyWhite(m) : !copy.PartialApplyBlack(m))
             {
                 // Illegal move
                 return;

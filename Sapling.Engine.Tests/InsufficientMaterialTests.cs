@@ -18,6 +18,7 @@ public class InsufficientMaterialTests
     [InlineData("8/8/8/8/8/6k1/NK6/8 b - - 0 96", true)]
     public void ApplyUnapplyMatchesInitialState(string fen, bool isInsufficientMaterial)
     {
-        BoardStateExtensions.CreateBoardFromFen(fen).Data.InsufficientMatingMaterial().Should().Be(isInsufficientMaterial);
+        var board = BoardStateExtensions.CreateBoardFromFen(fen);
+        board.InsufficientMatingMaterial().Should().Be(isInsufficientMaterial);
     }
 }

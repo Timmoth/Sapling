@@ -9,9 +9,8 @@ public static class OutputHelpers
 {
     public static string ToMoveString(this uint move)
     {
-        move.Deconstruct(out var movedPiece, out var fromSquare, out var toSquare, out var capturedPiece, out var moveType);
         return
-            $"{movedPiece.PieceToChar()} from: {fromSquare} to: {toSquare} cap: {capturedPiece.PieceToChar()} mov: {moveType}";
+            $"{move.GetMovedPiece().PieceToChar()} from: {move.GetFromSquare()} to: {move.GetToSquare()} cap: {move.GetCapturedPiece().PieceToChar()} mov: {move.GetMoveType()}";
     }
 
 

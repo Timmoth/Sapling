@@ -10,16 +10,6 @@ public sealed unsafe class GameState
     public readonly ulong* HashHistory;
     public BoardStateData Board = default;
 
-    public static ulong* AllocateMoves()
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc((nuint)sizeof(ulong) * 800, alignment);
-        NativeMemory.Clear(block, (nuint)sizeof(ulong) * 800);
-
-        return (ulong*)block;
-    }
-
     ~GameState()
     {
         NativeMemory.AlignedFree(HashHistory);
@@ -27,7 +17,7 @@ public sealed unsafe class GameState
 
     public GameState(BoardStateData board)
     {
-        HashHistory = AllocateMoves();
+        HashHistory = MemoryHelpers.Allocate<ulong>(800);
         Board = board;
         History = new List<uint>();
         LegalMoves = new List<uint>();
@@ -79,20 +69,37 @@ public sealed unsafe class GameState
         var oldCastle = Board.CastleRights;
 
         AccumulatorState emptyAccumulator = default;
-        Board.PartialApply(move);
+        var whiteToMove = Board.WhiteToMove;
+        if (whiteToMove)
+        {
+            Board.PartialApplyWhite(move);
+        }
+        else
+        {
+            Board.PartialApplyBlack(move);
+        }
+
         Board.UpdateCheckStatus();
 
         fixed (BoardStateData* boardPtr = &Board)
         {
             // Copy the memory block from source to destination
-            boardPtr->FinishApply(ref emptyAccumulator, move, oldEnpassant, oldCastle);
+
+            if (whiteToMove)
+            {
+                boardPtr->FinishApplyWhite(ref emptyAccumulator, move, oldEnpassant, oldCastle);
+            }
+            else
+            {
+                boardPtr->FinishApplyBlack(ref emptyAccumulator, move, oldEnpassant, oldCastle);
+            }
         }
 
         Board.GenerateLegalMoves(LegalMoves, false);
         History.Add(move);
         *(HashHistory + Board.TurnCount - 1) = Board.Hash;
     }
- 
+
     public bool GameOver()
     {
         return LegalMoves.Count == 0 || Board.HalfMoveClock >= 100 || Board.InsufficientMatingMaterial();

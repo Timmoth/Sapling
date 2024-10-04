@@ -13,7 +13,7 @@ public partial class Searcher
             int alpha, int beta)
     {
         NodesVisited++;
-
+        
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Max depth reached, return evaluation
@@ -249,6 +249,7 @@ public partial class Searcher
         var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
 
         var bestScore = int.MinValue;
+        var whiteToMove = currentBoardState->WhiteToMove;
         // Evaluate each move
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
@@ -281,7 +282,7 @@ public partial class Searcher
 
             var m = *currentMovePtr;
 
-            if (!newBoardState->PartialApply(m))
+            if (whiteToMove ? !newBoardState->PartialApplyWhite(m) : !newBoardState->PartialApplyBlack(m))
             {
                 *currentMovePtr = default;
 
@@ -304,7 +305,14 @@ public partial class Searcher
             }
 
             newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
-            newBoardState->FinishApply(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+            if (whiteToMove)
+            {
+                newBoardState->FinishApplyWhite(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+            }
+            else
+            {
+                newBoardState->FinishApplyBlack(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+            }
             *nextHashHistoryEntry = newBoardState->Hash;
 
             Sse.Prefetch0(Transpositions + (newBoardState->Hash & TtMask));

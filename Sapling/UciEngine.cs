@@ -145,12 +145,12 @@ public class UciEngine
                 }
                 break;
             default:
-                LogToFile($"Unrecognized command: {messageType}");
+                LogToFileForce($"Unrecognized command: {messageType}");
                 break;
         }
     }
 
-    private unsafe void ProcessPositionCommand(string message)
+    private void ProcessPositionCommand(string message)
     {
         // FEN
         if (message.ToLower().Contains("startpos"))
@@ -181,12 +181,12 @@ public class UciEngine
             if (mov == default)
             {
                 var moves = string.Join(",", _gameState.LegalMoves.Select(m => m.ToUciMoveName()));
-                LogToFile("ERRROR!");
-                LogToFile("Couldn't apply move: " + move +
-                          $" for {(_gameState.Board.WhiteToMove ? "white" : "black")}");
-                LogToFile("Valid moves: " + moves);
+                LogToFileForce("ERRROR!");
+                LogToFileForce("Couldn't apply move: " + move +
+                               $" for {(_gameState.Board.WhiteToMove ? "white" : "black")}");
+                LogToFileForce("Valid moves: " + moves);
 
-                LogToFile($"Error applying move: '{mov.ToMoveString()}'");
+                LogToFileForce($"Error applying move: '{mov.ToMoveString()}'");
                 break;
             }
 
@@ -278,6 +278,21 @@ public class UciEngine
         }
 
         Info(result);
+
+        if (result.move.Count == 0)
+        {
+            if (_gameState.LegalMoves.Any())
+            {
+                LogToFileForce("No moves generated, picked randomly.");
+                Respond($"bestmove {_gameState.LegalMoves.FirstOrDefault().ToUciMoveName()}");
+            }
+            else
+            {
+                LogToFileForce("No legal moves available.");
+                Respond($"bestmove (none)");
+            }
+            return;
+        }
 
         if (_ponderEnabled && result.move.Count > 1)
         {
@@ -413,6 +428,18 @@ public class UciEngine
     }
 
     private void LogToFile(string text)
+    {
+        if (!UciOptions.IsDebug)
+        {
+            return;
+        }
+
+        var delta = DateTime.Now - _dt;
+        _dt = DateTime.Now;
+        _logWriter.WriteLine($"{delta.TotalMilliseconds}ms {text}");
+    }
+
+    private void LogToFileForce(string text)
     {
         var delta = DateTime.Now - _dt;
         _dt = DateTime.Now;

@@ -1,5 +1,4 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Sapling.Engine.Evaluation;
 
 namespace Sapling.Engine.Search;
@@ -101,8 +100,8 @@ public static unsafe class NnueExtensions
     public static readonly int* BlackFeatureIndexes;
     static NnueExtensions()
     {
-        WhiteFeatureIndexes = AllocateInt(13 * 64 * 2);
-        BlackFeatureIndexes = AllocateInt(13 * 64 * 2);
+        WhiteFeatureIndexes = MemoryHelpers.Allocate<int>(13 * 64 * 2);
+        BlackFeatureIndexes = MemoryHelpers.Allocate<int>(13 * 64 * 2);
         for (byte i = 0; i <= Constants.WhiteKing; i++)
         {
             for (byte j = 0; j < 64; j++)
@@ -115,17 +114,6 @@ public static unsafe class NnueExtensions
             }
         }
     }
-
-    public static int* AllocateInt(nuint count)
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc((nuint)sizeof(int) * count, alignment);
-        NativeMemory.Clear(block, (nuint)sizeof(int) * count);
-
-        return (int*)block;
-    }
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int WhiteFeatureIndices(int mirrored, int piece, byte square)

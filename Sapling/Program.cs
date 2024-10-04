@@ -10,13 +10,20 @@ using Sapling.Engine.Search;
 
 namespace Sapling;
 
+public static class UciOptions
+{
+    public static bool IsDebug = false;
+}
 internal class Program
 {
-    private static readonly ConcurrentQueue<string> commandQueue = new();
-    private static readonly ManualResetEventSlim commandAvailable = new(false);
+    private static readonly ConcurrentQueue<string> CommandQueue = new();
+    private static readonly ManualResetEventSlim CommandAvailable = new(false);
     private static bool hasQuit = false;
 
-    private static void Main(string[] args)
+    private static FileStream _fileStream;
+    private static StreamWriter _logWriter;
+
+private static void Main(string[] args)
     {
         Console.SetIn(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8, false, 2048 * 4));
 
@@ -65,15 +72,31 @@ internal class Program
             Console.WriteLine("[Error] Sse is not supported on this system");
             return;
         }
+        var logDirectory = Path.Combine(Environment.CurrentDirectory, "logs");
+        if (!Directory.Exists(logDirectory))
+        {
+            Directory.CreateDirectory(logDirectory);
+        }
+
+        var fileName = (DateTime.Now.ToString("g") + Guid.NewGuid()).Replace("/", "-").Replace(" ", "_")
+            .Replace(":", "-");
+        var logFilePath = Path.Combine(logDirectory, $"{fileName}.txt");
+        _fileStream = new FileStream(logFilePath, FileMode.Append, FileAccess.Write);
+        _logWriter = new StreamWriter(_fileStream);
+
 
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
         {
             // Log the exception or take appropriate action
             Console.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
+            _logWriter.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
+            _logWriter.Flush();
+            _logWriter.Close();
+
         };
 
         // Force the static constructors to be called
-        Task[] tasks = new Task[]
+        var tasks = new[]
         {
             Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NnueWeights).TypeHandle)),
             Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NnueExtensions).TypeHandle)),
@@ -97,21 +120,12 @@ internal class Program
             return;
         }
 
-        var logDirectory = Path.Combine(Environment.CurrentDirectory, "logs");
-        if (!Directory.Exists(logDirectory))
-        {
-            Directory.CreateDirectory(logDirectory);
-        }
+        UciOptions.IsDebug = args.Contains("debug");
 
-        var fileName = (DateTime.Now.ToString("g") + Guid.NewGuid()).Replace("/", "-").Replace(" ", "_")
-            .Replace(":", "-");
-        var logFilePath = Path.Combine(logDirectory, $"{fileName}.txt");
-        using var fileStream = new FileStream(logFilePath, FileMode.Append, FileAccess.Write);
-        using var logWriter = new StreamWriter(fileStream);
-        
+      
         try
         {
-            UciEngine engine = new(logWriter);
+            UciEngine engine = new(_logWriter);
 
             // Start the command reading task
             _ = Task.Run(() =>
@@ -124,14 +138,16 @@ internal class Program
         }
         catch (Exception ex)
         {
-            logWriter.WriteLine("[FATAL ERROR]");
-            logWriter.WriteLine("----------");
-            logWriter.WriteLine(ex.ToString());
-            logWriter.WriteLine("----------");
+            _logWriter.WriteLine("[FATAL ERROR]");
+            _logWriter.WriteLine("----------");
+            _logWriter.WriteLine(ex.ToString());
+            _logWriter.WriteLine("----------");
         }
         finally
         {
-            logWriter.Flush();
+            _logWriter.Flush();
+            _logWriter.Flush();
+            _logWriter.Close();
         }
     }
 
@@ -160,8 +176,8 @@ internal class Program
                 continue;
             }
 
-            commandQueue.Enqueue(command);
-            commandAvailable.Set(); // Signal that a command is available
+            CommandQueue.Enqueue(command);
+            CommandAvailable.Set(); // Signal that a command is available
         }
     }
 
@@ -169,10 +185,10 @@ internal class Program
     {
         while (!hasQuit)
         {
-            commandAvailable.Wait(); // Wait until a command is available
-            commandAvailable.Reset(); // Reset the event for the next wait
+            CommandAvailable.Wait(); // Wait until a command is available
+            CommandAvailable.Reset(); // Reset the event for the next wait
 
-            while (commandQueue.TryDequeue(out var command))
+            while (CommandQueue.TryDequeue(out var command))
             {
                 engine.ReceiveCommand(command);
             }

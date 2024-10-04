@@ -18,7 +18,7 @@ public class PerftTests
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
 
         // When
-        var result = board.Data.PerftRootSequential(depth);
+        var result = board.PerftRootSequential(depth);
 
         // Then
         ulong sum = 0;

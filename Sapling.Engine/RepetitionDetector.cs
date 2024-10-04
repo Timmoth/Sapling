@@ -1,39 +1,10 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine;
 
 public static unsafe class RepetitionDetector
 {
-    public static unsafe uint* AllocateMoves()
-    {
-        const nuint alignment = 64;
-        var bytes = (nuint)sizeof(uint) * TableSize;
-        var block = NativeMemory.AlignedAlloc(bytes, alignment);
-        if (block == null)
-        {
-            throw new OutOfMemoryException("Failed to allocate aligned memory.");
-        }
-
-        NativeMemory.Clear(block, bytes);
-        return (uint*)block;
-    }
-
-    public static unsafe ulong* AllocateKeys()
-    {
-        const nuint alignment = 64;
-        var bytes = (nuint)sizeof(ulong) * TableSize;
-        var block = NativeMemory.AlignedAlloc(bytes, alignment);
-        if (block == null)
-        {
-            throw new OutOfMemoryException("Failed to allocate aligned memory.");
-        }
-
-        NativeMemory.Clear(block, bytes);
-        return (ulong*)block;
-    }
-
     private static readonly uint* Moves;
     private static readonly ulong* Keys;
 
@@ -48,8 +19,8 @@ public static unsafe class RepetitionDetector
 
     static RepetitionDetector()
     {
-        Moves = AllocateMoves();
-        Keys = AllocateKeys();
+        Moves = MemoryHelpers.Allocate<uint>(TableSize);
+        Keys = MemoryHelpers.Allocate<ulong>(TableSize);
         new Span<uint>(Moves, TableSize).Fill(0);
 
         for (var piece = 3; piece <= 12; piece++)
