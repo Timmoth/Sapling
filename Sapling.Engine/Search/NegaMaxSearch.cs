@@ -14,12 +14,6 @@ public partial class Searcher
     {
         NodesVisited++;
 
-        if (_searchCancelled)
-        {
-            // Search was cancelled, return
-            return 0;
-        }
-
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Max depth reached, return evaluation
@@ -45,6 +39,12 @@ public partial class Searcher
 
         if (depthFromRoot > 0)
         {
+            if (_searchCancelled)
+            {
+                // Search was cancelled, return
+                return 0;
+            }
+
             var mateScore = Constants.ImmediateMateScore - depthFromRoot;
             alpha = Math.Max(alpha, -mateScore);
             beta = Math.Min(beta, mateScore);
@@ -347,10 +347,10 @@ public partial class Searcher
 
             searchedMoves++;
 
-            if (_searchCancelled)
+            if (_searchCancelled && depthFromRoot > 0)
             {
                 // Search was cancelled
-                return 0;
+                break;
             }
 
             if (score > bestScore)
@@ -407,7 +407,7 @@ public partial class Searcher
                 return score;
             }
 
-            if (!_searchCancelled)
+            if (!_searchCancelled || depthFromRoot > 0)
             {
                 // update pv table
                 *(_pVTable + pvIndex) = m;
@@ -415,7 +415,7 @@ public partial class Searcher
             }
         }
 
-        if (_searchCancelled)
+        if (_searchCancelled && depthFromRoot > 0)
         {
             // Search was cancelled
             return 0;
