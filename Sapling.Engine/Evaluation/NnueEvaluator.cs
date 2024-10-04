@@ -228,10 +228,7 @@ public unsafe partial class Searcher
 
     private static void FullRefreshBlack(BoardStateData* board, int mirrored, int bucket, VectorShort* blackAcc)
     {
-
         Unsafe.CopyBlock(blackAcc, NnueWeights.FeatureBiases, L1ByteSize);
-
-
 
         var bFeaturePtr = NnueWeights.FeatureWeights + bucket * InputBucketWeightCount;
         var blackFeatureIndexes = NnueExtensions.BlackFeatureIndexes + mirrored;

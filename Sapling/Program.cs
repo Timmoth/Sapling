@@ -148,8 +148,8 @@ internal class Program
             if (command.Contains("quit", StringComparison.OrdinalIgnoreCase))
             {
                 hasQuit = true;
-                commandQueue.Enqueue(command);
-                commandAvailable.Set(); // Signal that a command is available
+                engine.ReceiveCommand("stop");
+                Environment.Exit(0);
                 break;
             }
 
