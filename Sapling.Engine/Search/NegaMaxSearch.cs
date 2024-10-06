@@ -54,7 +54,9 @@ public partial class Searcher
                 return alpha;
             }
 
-            if (currentBoardState->HalfMoveClock >= 100 || currentBoardState->InsufficientMatingMaterial())
+            if (currentBoardState->HalfMoveClock >= 100 || 
+                currentBoardState->InsufficientMatingMaterial() || 
+                RepetitionDetector.IsThreefoldRepetition(currentBoardState->TurnCount, currentBoardState->HalfMoveClock, HashHistory))
             {
                 // Detect draw by Fifty move counter or repetition
                 return 0;
@@ -248,6 +250,7 @@ public partial class Searcher
                 counterMove);
         }
 
+        var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
         var probCutSortedUpTo = 0;
 
         // Probcut
@@ -316,6 +319,7 @@ public partial class Searcher
                 {
                     newBoardState->FinishApplyBlack(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
                 }
+                *nextHashHistoryEntry = newBoardState->Hash;
 
                 NodesVisited--;
                 var score = -QuiescenceSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, -probBeta, -probBeta + 1);
@@ -344,7 +348,6 @@ public partial class Searcher
 
         uint bestMove = default;
         var evaluationBound = TranspositionTableFlag.Alpha;
-        var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
 
         var bestScore = int.MinValue;
         // Evaluate each move

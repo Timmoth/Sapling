@@ -77,6 +77,34 @@ public static unsafe class RepetitionDetector
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsThreefoldRepetition(ushort turnCount, ushort halfMoveClock, ulong* hashHistory)
+    {
+        if (halfMoveClock < 3)
+            return false;
+
+        var currHash = hashHistory + turnCount - 1;
+
+        var initialHash = *(currHash);
+
+        var count = 1;
+        for (var i = 2; i < halfMoveClock; i+=2)
+        {
+            currHash -= 2;
+            if (*(currHash) != initialHash)
+            {
+                continue;
+            }
+
+            if (++count >= 3)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool HasRepetition(this ref BoardStateData pos, ulong* hashHistory, int depthFromRoot)
     {
         if (pos.HalfMoveClock < 3)

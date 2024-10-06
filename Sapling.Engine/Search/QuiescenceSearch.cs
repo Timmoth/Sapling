@@ -1,5 +1,4 @@
-﻿using System.IO;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.MoveGen;
@@ -27,7 +26,9 @@ public partial class Searcher
             return Evaluate(boardState, accumulatorState, depthFromRoot);
         }
 
-        if (boardState->InsufficientMatingMaterial())
+        if (boardState->HalfMoveClock >= 100 ||
+            boardState->InsufficientMatingMaterial() ||
+            RepetitionDetector.IsThreefoldRepetition(boardState->TurnCount, boardState->HalfMoveClock, HashHistory))
         {
             // Detect draw by Fifty move counter or repetition
             return 0;
