@@ -66,10 +66,12 @@ public partial class Searcher
         var inCheck = boardState->InCheck;
         if (!inCheck)
         {
-            var corrhistIndex = CorrectionIndex(boardState->PawnHash, boardState->WhiteToMove);
+            var pawnChIndex = CorrectionIndex(boardState->PawnHash, boardState->WhiteToMove);
+            var whiteMaterialChIndex = CorrectionIndex(boardState->WhiteMaterialHash, boardState->WhiteToMove);
+            var blackMaterialChIndex = CorrectionIndex(boardState->BlackMaterialHash, boardState->WhiteToMove);
 
             // Evaluate current position
-            var val = AdjustEval(corrhistIndex, Evaluate(boardState, accumulatorState, depthFromRoot));
+            var val = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, Evaluate(boardState, accumulatorState, depthFromRoot));
             if (val >= beta)
             {
                 // Beta cut off

@@ -40,6 +40,8 @@ public unsafe partial class Searcher
     public readonly uint* Counters;
     public readonly uint* killers;
     public readonly int* PawnCorrHist;
+    public readonly int* WhiteMaterialCorrHist;
+    public readonly int* BlackMaterialCorrHist;
 
     public Searcher(Transposition* transpositions, int ttCount)
     {
@@ -76,6 +78,8 @@ public unsafe partial class Searcher
         History = MemoryHelpers.Allocate<int>(HistoryLength);
         killers = MemoryHelpers.Allocate<uint>(KillersLength);
         PawnCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
+        WhiteMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
+        BlackMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
     }
 
     public static VectorShort* AllocateAccumulator()
@@ -118,6 +122,12 @@ public unsafe partial class Searcher
 
         if (PawnCorrHist != null)
             NativeMemory.AlignedFree(PawnCorrHist);
+
+        if (WhiteMaterialCorrHist != null)
+            NativeMemory.AlignedFree(WhiteMaterialCorrHist);
+
+        if (BlackMaterialCorrHist != null)
+            NativeMemory.AlignedFree(BlackMaterialCorrHist);
 
         for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
@@ -197,15 +207,14 @@ public unsafe partial class Searcher
         NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
         NativeMemory.Clear(Counters, (nuint)CountersLength * sizeof(uint));
         NativeMemory.Clear(killers, (nuint)KillersLength * sizeof(uint));
-        //NativeMemory.Clear(PawnCorrHist, (nuint)TableElementsSize * sizeof(int));
 
         NativeMemory.Clear(_pVTable, _pvTableBytes);
 
         NativeMemory.Clear(Boards, (nuint)sizeof(BoardStateData) * Constants.MaxSearchDepth);
         NativeMemory.Clear(Accumulators, (nuint)sizeof(AccumulatorState) * Constants.MaxSearchDepth);
 
-        //NativeMemory.Clear(BucketCacheWhiteBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
-        //NativeMemory.Clear(BucketCacheBlackBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
+        NativeMemory.Clear(BucketCacheWhiteBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
+        NativeMemory.Clear(BucketCacheBlackBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
 
         Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * (uint)inputBoard.Board.TurnCount);
 
@@ -240,9 +249,6 @@ public unsafe partial class Searcher
                 beta = betaWindowIndex >= 5
                     ? Constants.MaxScore
                     : lastIterationEval + AsperationWindows[betaWindowIndex];
-
-                NativeMemory.Clear(killers, (nuint)KillersLength * sizeof(uint));
-                NativeMemory.Clear(Counters, (nuint)CountersLength * sizeof(uint));
 
                 var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
 

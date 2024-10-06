@@ -561,6 +561,10 @@ public static class BoardStateExtensions
             {
                 board.PawnHash ^= deltaHash;
             }
+            else
+            {
+                board.WhiteMaterialHash ^= deltaHash;
+            }
 
             if (capturedPiece != Constants.None)
             {
@@ -574,6 +578,10 @@ public static class BoardStateExtensions
                 if (capturedPiece == Constants.BlackPawn)
                 {
                     board.PawnHash ^= deltaHash;
+                }
+                else
+                {
+                    board.BlackMaterialHash ^= deltaHash;
                 }
             }
             else
@@ -614,6 +622,7 @@ public static class BoardStateExtensions
                 board.Hash ^= Zobrist.WhiteKingSideCastleZobrist ^ Zobrist.SideToMove ^
                               *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
                               *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
+                board.WhiteMaterialHash ^= Zobrist.WhiteKingSideCastleZobrist;
             }
             else
             {
@@ -624,6 +633,7 @@ public static class BoardStateExtensions
                 board.Hash ^= Zobrist.WhiteQueenSideCastleZobrist ^ Zobrist.SideToMove ^
                               *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
                               *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
+                board.WhiteMaterialHash ^= Zobrist.WhiteQueenSideCastleZobrist;
             }
         }
         else if (moveType >= 4)
@@ -649,14 +659,14 @@ public static class BoardStateExtensions
             var promotionPiece = (ushort)(movedPiece + moveType + moveType - 6);
 
             var deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare);
-
+            var promotionHash = *(Zobrist.PiecesArray + (promotionPiece << 6) + toSquare);
 
             board.Hash ^= deltaHash ^
-                          *(Zobrist.PiecesArray + (promotionPiece << 6) + toSquare) ^ 
+                          promotionHash ^
                           Zobrist.SideToMove ^
                           *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
-
+            board.WhiteMaterialHash ^= promotionHash;
             board.PawnHash ^= deltaHash;
 
             if (capturedPiece != Constants.None)
@@ -664,7 +674,9 @@ public static class BoardStateExtensions
                 accumulatorState.ApplyCapture(movedPieceFeatureIndex + (fromSquare << 1),
                     (promotionPiece << 7) + (toSquare << 1),
                     (capturedPiece << 7) + (toSquare << 1));
-                board.Hash ^= *(Zobrist.PiecesArray + (capturedPiece << 6) + toSquare);
+                deltaHash = *(Zobrist.PiecesArray + (capturedPiece << 6) + toSquare);
+                board.Hash ^= deltaHash;
+                board.BlackMaterialHash ^= deltaHash;
             }
             else
             {
@@ -725,6 +737,10 @@ public static class BoardStateExtensions
             {
                 board.PawnHash ^= deltaHash;
             }
+            else
+            {
+                board.BlackMaterialHash ^= deltaHash;
+            }
 
             if (capturedPiece != Constants.None)
             {
@@ -738,6 +754,10 @@ public static class BoardStateExtensions
                 if (capturedPiece == Constants.WhitePawn)
                 {
                     board.PawnHash ^= deltaHash;
+                }
+                else
+                {
+                    board.WhiteMaterialHash ^= deltaHash;
                 }
             }
             else
@@ -780,6 +800,7 @@ public static class BoardStateExtensions
                 board.Hash ^= Zobrist.BlackKingSideCastleZobrist ^ Zobrist.SideToMove ^
                               *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
                               *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
+                board.BlackMaterialHash ^= Zobrist.BlackKingSideCastleZobrist;
             }
             else
             {
@@ -790,6 +811,7 @@ public static class BoardStateExtensions
                 board.Hash ^= Zobrist.BlackQueenSideCastleZobrist ^ Zobrist.SideToMove ^
                               *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
                               *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
+                board.BlackMaterialHash ^= Zobrist.BlackQueenSideCastleZobrist;
             }
         }
         else if (moveType >= 4)
@@ -816,21 +838,24 @@ public static class BoardStateExtensions
             var promotionPiece = (ushort)(movedPiece + moveType + moveType - 6);
 
             var deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare);
-
+            var promotionDelta = *(Zobrist.PiecesArray + (promotionPiece << 6) + toSquare);
             board.Hash ^= deltaHash ^
-                          *(Zobrist.PiecesArray + (promotionPiece << 6) + toSquare) ^
+                          promotionDelta ^
                           Zobrist.SideToMove ^
                           *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
 
             board.PawnHash ^= deltaHash;
+            board.BlackMaterialHash ^= promotionDelta;
 
             if (capturedPiece != Constants.None)
             {
                 accumulatorState.ApplyCapture(movedPieceFeatureIndex + (fromSquare << 1),
                     (promotionPiece << 7) + (toSquare << 1),
                     (capturedPiece << 7) + (toSquare << 1));
-                board.Hash ^= *(Zobrist.PiecesArray + (capturedPiece << 6) + toSquare);
+                deltaHash = *(Zobrist.PiecesArray + (capturedPiece << 6) + toSquare);
+                board.Hash ^= deltaHash;
+                board.WhiteMaterialHash ^= deltaHash;
             }
             else
             {
@@ -899,9 +924,14 @@ public static class BoardStateExtensions
                 {
                     board.WhiteKingSquare = index;
                 }
-                else if (piece == Constants.WhitePawn)
+                
+                if (piece == Constants.WhitePawn)
                 {
                     board.PawnHash ^= Zobrist.PiecesArray[piece * 64 + index];
+                }
+                else
+                {
+                    board.WhiteMaterialHash ^= Zobrist.PiecesArray[piece * 64 + index];
                 }
             }
             else
@@ -913,10 +943,15 @@ public static class BoardStateExtensions
                 if (piece == Constants.BlackKing)
                 {
                     board.BlackKingSquare = index;
-                }
-                else if (piece == Constants.BlackPawn)
+                } 
+                
+                if (piece == Constants.BlackPawn)
                 {
                     board.PawnHash ^= Zobrist.PiecesArray[piece * 64 + index];
+                }
+                else
+                {
+                    board.BlackMaterialHash ^= Zobrist.PiecesArray[piece * 64 + index];
                 }
             }
         }

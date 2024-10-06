@@ -13,14 +13,14 @@ public partial class Searcher
             int alpha, int beta)
     {
         NodesVisited++;
-        
+
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
             // Max depth reached, return evaluation
             return Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot);
         }
 
-        var newAccumulatorState = currentAccumulatorState + 1; 
+        var newAccumulatorState = currentAccumulatorState + 1;
         var newBoardState = currentBoardState + 1;
 
         var pvIndex = *(PVTable.Indexes + depthFromRoot);
@@ -92,8 +92,11 @@ public partial class Searcher
             }
         }
 
-        var corrhistIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
-        var staticEval = AdjustEval(corrhistIndex,
+        var pawnChIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
+        var whiteMaterialChIndex = CorrectionIndex(currentBoardState->WhiteMaterialHash, currentBoardState->WhiteToMove);
+        var blackMaterialChIndex = CorrectionIndex(currentBoardState->BlackMaterialHash, currentBoardState->WhiteToMove);
+
+        var staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex,
             Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
 
         if (depthFromRoot > 0)
@@ -184,12 +187,11 @@ public partial class Searcher
             depth--;
         }
 
-        // Best move seen so far used in move ordering.
-        var moveOrderingBestMove = depthFromRoot == 0
-            ? BestSoFar
-            : transpositionBestMove;
-        // Generate pseudo legal moves from this position
+        var whiteToMove = currentBoardState->WhiteToMove;
+ 
         var moves = stackalloc uint[218];
+
+        // Generate pseudo legal moves from this position
         var psuedoMoveCount = currentBoardState->GeneratePseudoLegalMoves(moves, false);
 
         if (psuedoMoveCount == 0)
@@ -200,7 +202,7 @@ public partial class Searcher
             if (!currentBoardState->InCheck)
             {
                 var diff = eval - staticEval;
-                UpdateCorrectionHistory(corrhistIndex, diff, depth);
+                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
             }
 
             ttEntry.Set(pHash, (byte)depth, depthFromRoot, eval,
@@ -209,16 +211,23 @@ public partial class Searcher
             return eval;
         }
 
+        // Best move seen so far used in move ordering.
+        var moveOrderingBestMove = depthFromRoot == 0
+            ? BestSoFar
+            : transpositionBestMove;
+
         // Get counter move
         var counterMoveIndex = currentAccumulatorState->Move.GetCounterMoveIndex();
-        var counterMove = counterMoveIndex == default ? default: *(Counters + counterMoveIndex);
+        var counterMove = counterMoveIndex == default ? default : *(Counters + counterMoveIndex);
 
         // Get killer move
         var killerA = *(killers + (depthFromRoot << 1));
-        var killerB = *(killers + (depthFromRoot << 1) + 1);
 
         // Data used in move ordering
         var scores = stackalloc int[psuedoMoveCount];
+
+        var captures = stackalloc short[currentBoardState->PieceCount];
+
         var occupancyBitBoards = stackalloc ulong[8]
         {
             currentBoardState->Occupancy[Constants.WhitePieces],
@@ -231,14 +240,103 @@ public partial class Searcher
             currentBoardState->Occupancy[Constants.BlackKing] | currentBoardState->Occupancy[Constants.WhiteKing]
         };
 
-        var captures = stackalloc short[currentBoardState->PieceCount];
-
         for (var i = 0; i < psuedoMoveCount; i++)
         {
             // Estimate each moves score for move ordering
-            *(scores + i) = currentBoardState->ScoreMove(History, occupancyBitBoards, captures, *(moves + i), killerA, killerB,
+            *(scores + i) = currentBoardState->ScoreMove(History, occupancyBitBoards, captures, *(moves + i), killerA,
                 moveOrderingBestMove,
                 counterMove);
+        }
+
+        var probCutSortedUpTo = 0;
+
+        // Probcut
+        int probBeta = beta + 220;
+        if (!pvNode && !parentInCheck
+            && currentAccumulatorState->Move != default
+            && depth > 2
+            && Math.Abs(beta) < TranspositionTableExtensions.PositiveCheckmateDetectionLimit
+            && (pHash != ttEntry.FullHash || ttEntry.Depth < depth - 3 || (ttEntry.Evaluation != TranspositionTableExtensions.NoHashEntry && ttEntry.Evaluation >= probBeta)))
+        {
+
+            for (; probCutSortedUpTo < psuedoMoveCount; ++probCutSortedUpTo)
+            {
+                var currentScorePtr = scores + probCutSortedUpTo;
+                var currentMovePtr = moves + probCutSortedUpTo;
+
+                // Incremental move sorting
+                for (var j = probCutSortedUpTo + 1; j < psuedoMoveCount; j++)
+                {
+                    // Pointer to the score and move being compared
+                    var compareScorePtr = scores + j;
+                    var compareMovePtr = moves + j;
+
+                    if (*compareScorePtr > *currentScorePtr)
+                    {
+                        // Swap the scores and moves directly using pointers
+                        // Using temporary variables for clarity
+                        int tempScore = *currentScorePtr;
+                        uint tempMove = *currentMovePtr;
+
+                        *currentScorePtr = *compareScorePtr;
+                        *currentMovePtr = *compareMovePtr;
+
+                        *compareScorePtr = tempScore;
+                        *compareMovePtr = tempMove;
+                    }
+                }
+
+                if (*currentScorePtr < SpsaOptions.MoveOrderingPromoteBias)
+                {
+                    break;
+                }
+
+                var m = *currentMovePtr;
+                if (m.IsQuiet())
+                {
+                    continue;
+                }
+
+                Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
+
+                if (whiteToMove ? !newBoardState->PartialApplyWhite(m) : !newBoardState->PartialApplyBlack(m))
+                {
+                    *currentMovePtr = default;
+                    // Illegal move, undo
+                    continue;
+                }
+
+                newBoardState->UpdateCheckStatus();
+                newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
+                if (whiteToMove)
+                {
+                    newBoardState->FinishApplyWhite(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+                }
+                else
+                {
+                    newBoardState->FinishApplyBlack(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+                }
+
+                NodesVisited--;
+                var score = -QuiescenceSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, -probBeta, -probBeta + 1);
+
+                if (score >= probBeta)
+                {
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 3,
+                        -probBeta, -probBeta + 1);
+
+                }
+
+                if (score >= probBeta)
+                {
+                    ttEntry.Set(pHash, (byte)(depth - 3), depthFromRoot,
+                        score,
+                        TranspositionTableFlag.Beta,
+                        default);
+
+                    return score;
+                }
+            }
         }
 
         var logDepth = MathHelpers.LogLookup[depth];
@@ -249,38 +347,45 @@ public partial class Searcher
         var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
 
         var bestScore = int.MinValue;
-        var whiteToMove = currentBoardState->WhiteToMove;
         // Evaluate each move
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
             var currentScorePtr = scores + moveIndex;
             var currentMovePtr = moves + moveIndex;
 
-            // Incremental move sorting
-            for (var j = moveIndex + 1; j < psuedoMoveCount; j++)
+            if (moveIndex >= probCutSortedUpTo)
             {
-                // Pointer to the score and move being compared
-                var compareScorePtr = scores + j;
-                var compareMovePtr = moves + j;
-
-                if (*compareScorePtr > *currentScorePtr)
+                // Incremental move sorting
+                for (var j = moveIndex + 1; j < psuedoMoveCount; j++)
                 {
-                    // Swap the scores and moves directly using pointers
-                    // Using temporary variables for clarity
-                    int tempScore = *currentScorePtr;
-                    uint tempMove = *currentMovePtr;
+                    // Pointer to the score and move being compared
+                    var compareScorePtr = scores + j;
+                    var compareMovePtr = moves + j;
 
-                    *currentScorePtr = *compareScorePtr;
-                    *currentMovePtr = *compareMovePtr;
+                    if (*compareScorePtr > *currentScorePtr)
+                    {
+                        // Swap the scores and moves directly using pointers
+                        // Using temporary variables for clarity
+                        int tempScore = *currentScorePtr;
+                        uint tempMove = *currentMovePtr;
 
-                    *compareScorePtr = tempScore;
-                    *compareMovePtr = tempMove;
+                        *currentScorePtr = *compareScorePtr;
+                        *currentMovePtr = *compareMovePtr;
+
+                        *compareScorePtr = tempScore;
+                        *compareMovePtr = tempMove;
+                    }
                 }
             }
 
-            Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
-
             var m = *currentMovePtr;
+
+            if (m == default)
+            {
+                continue;
+            }
+
+            Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
 
             if (whiteToMove ? !newBoardState->PartialApplyWhite(m) : !newBoardState->PartialApplyBlack(m))
             {
@@ -383,7 +488,7 @@ public partial class Searcher
                                    && (score > staticEval))
                 {
                     var diff = bestScore - staticEval;
-                    UpdateCorrectionHistory(corrhistIndex, diff, depth);
+                    UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
                 }
 
                 // Cache in transposition table
@@ -399,12 +504,8 @@ public partial class Searcher
                     // History
                     HistoryHeuristicExtensions.UpdateMovesHistory(History, moves, moveIndex, m, depth);
 
-                    if (m != killerA)
-                    {
-                        // Killer move
-                        *(killers + (depthFromRoot << 1) + 1) = killerA;
-                        *(killers + (depthFromRoot << 1)) = m;
-                    }
+                    *(killers + (depthFromRoot << 1)) = m;
+
 
                     if (counterMoveIndex != 0)
                     {
@@ -437,7 +538,7 @@ public partial class Searcher
             if (!parentInCheck)
             {
                 var diff = eval - staticEval;
-                UpdateCorrectionHistory(corrhistIndex, diff, depth);
+                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
             }
 
             ttEntry.Set(pHash, (byte)depth, depthFromRoot, eval,
@@ -452,7 +553,7 @@ public partial class Searcher
                             && (evaluationBound == TranspositionTableFlag.Exact || bestScore < staticEval))
         {
             var diff = bestScore - staticEval;
-            UpdateCorrectionHistory(corrhistIndex, diff, depth);
+            UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
         }
 
         // Cache in transposition table

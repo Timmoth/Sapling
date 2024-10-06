@@ -41,7 +41,6 @@ public static class MoveScoring
         short* captures,
         uint move,
         uint killerA,
-        uint killerB,
         uint bestMove,
         uint counterMove)
     {
@@ -83,11 +82,6 @@ public static class MoveScoring
         if (killerA == move)
         {
             return SpsaOptions.MoveOrderingKillerABias;
-        }
-
-        if (killerB == move)
-        {
-            return SpsaOptions.MoveOrderingKillerBBias;
         }
 
         if (counterMove == move)
