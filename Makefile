@@ -39,20 +39,9 @@ else
 	SLASH := /
 endif
 
-# Extract the output directory from the EXE path (everything before the last slash)
-OUTPUT_DIR := $(dir $(EXE))
-
-# Extract the filename from the EXE path (everything after the last slash, without extension)
-OUTPUT_EXE := $(notdir $(EXE))
+ifdef EXE
+	OUTPUT_DIR=./
+endif
 
 publish:
-	@$(MKDIR_CMD)
-	dotnet publish Sapling/Sapling.csproj -c Release --runtime $(RUNTIME) --self-contained \
-		-p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR) -p:DefineConstants="AVX512;Dev"
-
-	# Renaming the generated .exe file
-	@if [ "$(OS)" = "Windows_NT" ]; then \
-		$(MOVE_CMD) $(subst /,$(SLASH),$(OUTPUT_DIR))Sapling.exe $(subst /,$(SLASH),$(OUTPUT_DIR))$(OUTPUT_EXE).exe; \
-	else \
-		$(MOVE_CMD) $(OUTPUT_DIR)Sapling $(OUTPUT_DIR)$(OUTPUT_EXE); \
-	fi
+	dotnet publish Sapling/Sapling.csproj -c Release --runtime $(RUNTIME) --self-contained -p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR) -p:ExecutableName=$(EXE)
