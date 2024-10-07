@@ -87,6 +87,7 @@ public class UciEngine
         var tokens = message.Split(' ');
         var messageType = tokens[0];
 
+
         switch (messageType)
         {
             case "uci":
