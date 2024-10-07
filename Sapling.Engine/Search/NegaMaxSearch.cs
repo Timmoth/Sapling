@@ -141,9 +141,9 @@ public partial class Searcher
                         // Beta cutoff
 
                         // Cache in Transposition table
-                        ttEntry.Set(pHash, (byte)depth,
-                            depthFromRoot,
-                            beta, TranspositionTableFlag.Beta);
+                        //ttEntry.Set(pHash, (byte)depth,
+                        //    depthFromRoot,
+                        //    beta, TranspositionTableFlag.Beta);
                         return beta;
                     }
                 }
@@ -254,12 +254,12 @@ public partial class Searcher
         var probCutSortedUpTo = 0;
 
         // Probcut
-        int probBeta = beta + 220;
+        int probBeta = beta + SpsaOptions.ProbCutBetaMargin;
         if (!pvNode && !parentInCheck
             && currentAccumulatorState->Move != default
-            && depth > 2
+            && depth >= SpsaOptions.ProbCutMinDepth
             && Math.Abs(beta) < TranspositionTableExtensions.PositiveCheckmateDetectionLimit
-            && (pHash != ttEntry.FullHash || ttEntry.Depth < depth - 3 || (ttEntry.Evaluation != TranspositionTableExtensions.NoHashEntry && ttEntry.Evaluation >= probBeta)))
+            && (pHash != ttEntry.FullHash || ttEntry.Depth < depth - SpsaOptions.ProbCutMinDepth || (ttEntry.Evaluation != TranspositionTableExtensions.NoHashEntry && ttEntry.Evaluation >= probBeta)))
         {
 
             for (; probCutSortedUpTo < psuedoMoveCount; ++probCutSortedUpTo)
@@ -321,19 +321,21 @@ public partial class Searcher
                 }
                 *nextHashHistoryEntry = newBoardState->Hash;
 
+                Sse.Prefetch0(Transpositions + (newBoardState->Hash & TtMask));
+
                 NodesVisited--;
                 var score = -QuiescenceSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, -probBeta, -probBeta + 1);
 
                 if (score >= probBeta)
                 {
-                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 3,
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - SpsaOptions.ProbCutMinDepth,
                         -probBeta, -probBeta + 1);
 
                 }
 
                 if (score >= probBeta)
                 {
-                    ttEntry.Set(pHash, (byte)(depth - 3), depthFromRoot,
+                    ttEntry.Set(pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
                         score,
                         TranspositionTableFlag.Beta,
                         default);

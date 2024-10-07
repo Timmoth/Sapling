@@ -49,52 +49,52 @@ namespace Sapling.Engine.Tuning
 
     public static class SpsaOptions
     {
-        [SpsaMinValue("10"), SpsaMaxValue("100")]
+        [SpsaMinValue("0"), SpsaMaxValue("100")]
         public static int ReverseFutilityPruningMargin = 75;
 
-        [SpsaMinValue("1"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int ReverseFutilityPruningDepth = 7;
 
-        [SpsaMinValue("1"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int NullMovePruningDepth = 2;
 
-        [SpsaMinValue("1"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int NullMovePruningReductionA = 3;
 
-        [SpsaMinValue("1"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int NullMovePruningReductionB = 4;
 
-        [SpsaMinValueAttribute("1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
         public static int NullMovePruningReductionC = 3;
 
-        [SpsaMinValueAttribute("10"), SpsaMaxValue("400")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("400")]
         public static int RazorMarginA = 125;
 
-        [SpsaMinValueAttribute("10"), SpsaMaxValue("400")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("400")]
         public static int RazorMarginB = 300;
 
-        [SpsaMinValueAttribute("1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
         public static int InternalIterativeDeepeningDepth = 2;
 
-        [SpsaMinValueAttribute("1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
         public static int LateMovePruningConstant = 8;
 
-        [SpsaMinValueAttribute("1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
         public static int LateMoveReductionMinDepth = 3;
 
-        [SpsaMinValueAttribute("1"), SpsaMaxValue("10")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
         public static int LateMoveReductionMinMoves = 2;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionInterestingA = 0.2f;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionInterestingB = 3.3f;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionA = 1.35f;
 
-        [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
         public static float LateMoveReductionB = 2.75f;
 
         [SpsaMinValueAttribute("7000"), SpsaMaxValue("10000")]
@@ -103,32 +103,36 @@ namespace Sapling.Engine.Tuning
         [SpsaMinValueAttribute("500"), SpsaMaxValue("1000")]
         public static int HistoryHeuristicBonusMax = 640;
 
-        [SpsaMinValueAttribute("10"), SpsaMaxValue("100")]
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("100")]
         public static int HistoryHeuristicBonusCoeff = 80;
 
-        [SpsaMinValueAttribute("500000"), SpsaMaxValue("10000000")]
+        [SpsaMinValueAttribute("500000"), SpsaMaxValue("10000000"), SpsaIgnore()]
         public static int MoveOrderingWinningCaptureBias = 10_000_000;
 
-        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000")]
+        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000"), SpsaIgnore()]
         public static int MoveOrderingLosingCaptureBias = 16_000;
 
-        [SpsaMinValueAttribute("70000"), SpsaMaxValue("700000")]
+        [SpsaMinValueAttribute("70000"), SpsaMaxValue("700000"), SpsaIgnore()]
         public static int MoveOrderingPromoteBias = 600_000;
 
-        [SpsaMinValueAttribute("70000"), SpsaMaxValue("600000")]
+        [SpsaMinValueAttribute("70000"), SpsaMaxValue("600000"), SpsaIgnore()]
         public static int MoveOrderingKillerABias = 500_000;
 
-        [SpsaMinValueAttribute("70000"), SpsaMaxValue("300000")]
-        public static int MoveOrderingKillerBBias = 250_000;
-
-        [SpsaMinValueAttribute("20000"), SpsaMaxValue("80000")]
+        [SpsaMinValueAttribute("20000"), SpsaMaxValue("80000"), SpsaIgnore()]
         public static int MoveOrderingCounterMoveBias = 65_000;
 
-        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000")]
+        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000"), SpsaIgnore()]
         public static int InterestingNegaMaxMoveScore = 16_000;
 
-        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000")]
+        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000"), SpsaIgnore()]
         public static int InterestingQuiescenceMoveScore = 16_000;
+
+
+        [SpsaMinValueAttribute("100"), SpsaMaxValue("400")]
+        public static int ProbCutBetaMargin = 220;
+
+        [SpsaMinValueAttribute("0"), SpsaMaxValue("6")]
+        public static int ProbCutMinDepth = 3;
     }
 
     public static class SpsaTuner
@@ -143,7 +147,7 @@ namespace Sapling.Engine.Tuning
         public static string FormatParameter(SpsaParameter parameter)
         {
             const double minStepSize = 0.01;
-            const double normalLearningRate = 0.002;
+            const double normalLearningRate = 0.02;
 
             if (parameter.Type == "int")
             {

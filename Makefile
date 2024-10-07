@@ -40,7 +40,7 @@ OUTPUT_EXE := $(notdir $(EXE))
 publish:
 	@if [ ! -d "$(OUTPUT_DIR)" ]; then mkdir -p $(OUTPUT_DIR); fi
 	dotnet publish Sapling/Sapling.csproj -c Release --runtime $(RUNTIME) --self-contained \
-		-p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR)
+		-p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR) -p:DefineConstants="AVX512" -p:DefineConstants="Dev"
 
 	# Renaming the generated .exe file
 	@if [ "$(OS)" = "Windows_NT" ]; then \
