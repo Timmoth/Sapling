@@ -10,6 +10,10 @@ ifeq ($(OS),Windows_NT)
 	else
 		RUNTIME=win-x86
 	endif
+	SHELL := cmd.exe
+	MKDIR_CMD := if not exist "$(subst /,\,$(OUTPUT_DIR))" mkdir "$(subst /,\,$(OUTPUT_DIR))"
+	MOVE_CMD := move
+	SLASH := \\
 else
 	UNAME_S := $(shell uname -s)
 	UNAME_P := $(shell uname -p)
@@ -29,6 +33,10 @@ else
 			RUNTIME=osx-x64
 		endif
 	endif
+	SHELL := /bin/sh
+	MKDIR_CMD := if [ ! -d "$(OUTPUT_DIR)" ]; then mkdir -p $(OUTPUT_DIR); fi
+	MOVE_CMD := mv
+	SLASH := /
 endif
 
 # Extract the output directory from the EXE path (everything before the last slash)
@@ -38,13 +46,13 @@ OUTPUT_DIR := $(dir $(EXE))
 OUTPUT_EXE := $(notdir $(EXE))
 
 publish:
-	@if [ ! -d "$(OUTPUT_DIR)" ]; then mkdir -p $(OUTPUT_DIR); fi
+	@$(MKDIR_CMD)
 	dotnet publish Sapling/Sapling.csproj -c Release --runtime $(RUNTIME) --self-contained \
 		-p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR) -p:DefineConstants="AVX512;Dev"
 
 	# Renaming the generated .exe file
 	@if [ "$(OS)" = "Windows_NT" ]; then \
-		mv $(OUTPUT_DIR)Sapling.exe $(OUTPUT_DIR)$(OUTPUT_EXE).exe; \
+		$(MOVE_CMD) $(subst /,$(SLASH),$(OUTPUT_DIR))Sapling.exe $(subst /,$(SLASH),$(OUTPUT_DIR))$(OUTPUT_EXE).exe; \
 	else \
-		mv $(OUTPUT_DIR)Sapling $(OUTPUT_DIR)$(OUTPUT_EXE); \
+		$(MOVE_CMD) $(OUTPUT_DIR)Sapling $(OUTPUT_DIR)$(OUTPUT_EXE); \
 	fi
