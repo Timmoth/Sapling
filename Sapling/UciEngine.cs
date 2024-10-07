@@ -95,7 +95,7 @@ public class UciEngine
                 Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                 Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
                 Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max 2046");
-#if Dev
+#if OpenBench
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)
                 {
                     Respond($"option name {spsaParameters.Name} type spin default {spsaParameters.DefaultValue} min {spsaParameters.MinValue} max {spsaParameters.MaxValue}");

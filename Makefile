@@ -44,4 +44,4 @@ ifdef EXE
 endif
 
 publish:
-	dotnet publish Sapling/Sapling.csproj -c Release --runtime $(RUNTIME) --self-contained -p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR) -p:ExecutableName=$(EXE)
+	dotnet publish Sapling/Sapling.csproj -c Release --runtime $(RUNTIME) --self-contained -p:PublishSingleFile=true -p:DeterministicBuild=true -o $(OUTPUT_DIR) -p:ExecutableName=$(EXE) -p:DefineConstants="OpenBench"
