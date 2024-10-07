@@ -41,7 +41,6 @@ public static class MoveScoring
         short* captures,
         uint move,
         uint killerA,
-        uint killerB,
         uint bestMove,
         uint counterMove)
     {
@@ -85,17 +84,12 @@ public static class MoveScoring
             return SpsaOptions.MoveOrderingKillerABias;
         }
 
-        if (killerB == move)
-        {
-            return SpsaOptions.MoveOrderingKillerBBias;
-        }
-
         if (counterMove == move)
         {
             return SpsaOptions.MoveOrderingCounterMoveBias;
         }
 
-        return history[move.GetMovedPiece() * 64 + move.GetToSquare()];
+        return *(history + move.GetCounterMoveIndex());
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

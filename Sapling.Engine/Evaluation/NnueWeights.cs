@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Sapling.Engine.Evaluation;
-public static class NnueWeights
+public static unsafe class NnueWeights
 {
     public const int InputSize = 768;
     public const int Layer1Size = 1024;
@@ -15,17 +15,8 @@ public static class NnueWeights
     public static readonly unsafe VectorShort* OutputWeights;
     public static readonly short[] OutputBiases = new short[OutputBuckets];
 
-    public static readonly byte[] BucketLayout = new byte[64]
-    {
-        0, 0, 1, 1, 1, 1, 0, 0,
-        2, 2, 2, 2, 2, 2, 2, 2,
-        3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3,
-        3, 3, 3, 3, 3, 3, 3, 3,
-    };
+    public static readonly byte* BucketLayout;
+
 
     //public static byte[] BucketLayout = new byte[64]
     //{
@@ -41,6 +32,26 @@ public static class NnueWeights
 
     static unsafe NnueWeights()
     {
+        var kingBuckets = new byte[64]
+        {
+            0, 0, 1, 1, 1, 1, 0, 0,
+            2, 2, 2, 2, 2, 2, 2, 2,
+            3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3,
+        };
+
+        BucketLayout = AlignedAllocZeroedByte(64);
+        fixed (byte* kingBucketsPtr = kingBuckets) // Pin the array in memory
+        {
+            // Copy the data from kingBucketsPtr to BucketLayout
+            Buffer.MemoryCopy(kingBucketsPtr, BucketLayout, 64, 64);
+        }
+
+
         var assembly = Assembly.GetAssembly(typeof(GameState));
         var info = assembly.GetName();
         var name = info.Name;
@@ -120,6 +131,19 @@ public static class NnueWeights
         }
     }
 
+    public static unsafe byte* AlignedAllocZeroedByte(nuint items)
+    {
+        const nuint alignment = 64;
+        var bytes = sizeof(short) * items;
+        var block = NativeMemory.AlignedAlloc(bytes, alignment);
+        if (block == null)
+        {
+            throw new OutOfMemoryException("Failed to allocate aligned memory.");
+        }
+
+        NativeMemory.Clear(block, bytes);
+        return (byte*)block;
+    }
     public static unsafe VectorShort* AlignedAllocZeroedShort(nuint items)
     {
         const nuint alignment = 64;

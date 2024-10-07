@@ -129,7 +129,7 @@ public class DataGenerator
                 while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount && !IsAdjudicatedDraw(gameState, drawScoreCount))
                 {
                     uint move = default;
-                    if (randomMoveCount <= 9)
+                    if (randomMoveCount <= 8)
                     {
                         move = gameState.LegalMoves[Random.Shared.Next(0, gameState.LegalMoves.Count)];
                         randomMoveCount++;
@@ -157,10 +157,7 @@ public class DataGenerator
                         }
                     }
 
-                    if (!gameState.Apply(move))
-                    {
-                        throw new Exception("Failed to apply move.");
-                    }
+                    gameState.Apply(move);
 
                     if (Math.Abs(score) >= 2000)
                     {

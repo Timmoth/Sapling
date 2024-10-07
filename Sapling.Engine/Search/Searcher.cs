@@ -9,7 +9,7 @@ namespace Sapling.Engine.Search;
 
 public unsafe partial class Searcher
 {
-    private const nuint _pvTableLength = Constants.MaxSearchDepth * (Constants.MaxSearchDepth + 1) / 2;
+    private const int _pvTableLength = Constants.MaxSearchDepth * (Constants.MaxSearchDepth + 1) / 2;
     private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
     private static readonly int[] AsperationWindows = { 40, 100, 300, 900, 2700, Constants.MaxScore };
     private readonly uint* _pVTable;
@@ -20,124 +20,156 @@ public unsafe partial class Searcher
     private bool _searchCancelled;
     public uint BestSoFar;
     public int NodesVisited;
-    private const int killersLength = Constants.MaxSearchDepth * 2;
-    private const int historyLength = 13 * 64;
-    private const int countersLength = 13 * 64;
-    public readonly BucketCache* BucketCache;
-    public readonly BoardStateEntry* SearchStack;
-    public readonly ulong* MoveStack;
+    private const int KillersLength = Constants.MaxSearchDepth * 2;
 
+    private const int HistoryLength = 13 * 64;
+    private const int CountersLength = 13 * 64;
+    public readonly BoardStateData* BucketCacheWhiteBoards;
+    public readonly VectorShort** BucketCacheWhiteAccumulators;
+    public readonly BoardStateData* BucketCacheBlackBoards;
+    public readonly VectorShort** BucketCacheBlackAccumulators;
+    public readonly VectorShort** WhiteAccumulators;
+    public readonly VectorShort** BlackAccumulators;
+    public readonly ulong* HashHistory;
+
+    public readonly BoardStateData* Boards;
+    public readonly AccumulatorState* Accumulators;
+
+
+    public readonly int* History;
+    public readonly uint* Counters;
     public readonly uint* killers;
-    public readonly int* history;
-    public readonly uint* counters;
+    public readonly int* PawnCorrHist;
+    public readonly int* WhiteMaterialCorrHist;
+    public readonly int* BlackMaterialCorrHist;
+
     public Searcher(Transposition* transpositions, int ttCount)
     {
+        GC.SuppressFinalize(this);
         Transpositions = transpositions;
 
         TtMask = (uint)ttCount - 1;
-        _pVTable = AlignedAllocZeroed();
+        _pVTable = MemoryHelpers.Allocate<uint>(_pvTableLength);
 
-        SearchStack = AllocateSearchStack(Constants.MaxSearchDepth + 1);
+        WhiteAccumulators = AllocateSearchStack(Constants.MaxSearchDepth + 1);
+        BlackAccumulators = AllocateSearchStack(Constants.MaxSearchDepth + 1);
         for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
-            SearchStack[i] = new BoardStateEntry();
+            WhiteAccumulators[i] = AllocateAccumulator();
+            BlackAccumulators[i] = AllocateAccumulator();
         }
 
+        Boards = MemoryHelpers.Allocate<BoardStateData>(Constants.MaxSearchDepth);
+        Accumulators = MemoryHelpers.Allocate<AccumulatorState>(Constants.MaxSearchDepth);
 
-        BucketCache = AllocateBucketCache(NnueWeights.InputBuckets * 2);
+        BucketCacheWhiteBoards = MemoryHelpers.Allocate<BoardStateData>(NnueWeights.InputBuckets * 2);
+        BucketCacheBlackBoards = MemoryHelpers.Allocate<BoardStateData>(NnueWeights.InputBuckets * 2);
+
+        BucketCacheWhiteAccumulators = AllocateSearchStack(NnueWeights.InputBuckets * 2);
+        BucketCacheBlackAccumulators = AllocateSearchStack(NnueWeights.InputBuckets * 2);
         for (var i = 0; i < NnueWeights.InputBuckets * 2; i++)
         {
-            BucketCache[i] = new BucketCache();
+            BucketCacheWhiteAccumulators[i] = AllocateAccumulator();
+            BucketCacheBlackAccumulators[i] = AllocateAccumulator();
         }
 
-        MoveStack = AllocateUlong(800);
-        killers = AllocateUInt((nuint)killersLength);
-        counters = AllocateUInt((nuint)countersLength);
-        history = AllocateInt((nuint)historyLength);
+        HashHistory = MemoryHelpers.Allocate<ulong>(800);
+        Counters = MemoryHelpers.Allocate<uint>(CountersLength);
+        History = MemoryHelpers.Allocate<int>(HistoryLength);
+        killers = MemoryHelpers.Allocate<uint>(KillersLength);
+        PawnCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
+        WhiteMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
+        BlackMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
     }
-    public static unsafe BoardStateEntry* AllocateSearchStack(nuint items)
+
+    public static VectorShort* AllocateAccumulator()
     {
         const nuint alignment = 64;
 
-        nuint bytes = ((nuint)sizeof(BoardStateEntry) * (nuint)items);
+        var block = NativeMemory.AlignedAlloc((nuint)Searcher.L1ByteSize, alignment);
+        NativeMemory.Clear(block, (nuint)Searcher.L1ByteSize);
+
+        return (VectorShort*)block;
+    }
+
+    public static unsafe VectorShort** AllocateSearchStack(nuint items)
+    {
+        const nuint alignment = 64;
+
+        nuint bytes = ((nuint)sizeof(VectorShort*) * (nuint)items);
         void* block = NativeMemory.AlignedAlloc(bytes, alignment);
         NativeMemory.Clear(block, bytes);
 
-        return (BoardStateEntry*)block;
-    }
-
-    public static unsafe BucketCache* AllocateBucketCache(nuint items)
-    {
-        const nuint alignment = 64;
-
-        nuint bytes = ((nuint)sizeof(BucketCache) * (nuint)items);
-        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
-        NativeMemory.Clear(block, bytes);
-
-        return (BucketCache*)block;
-    }
-    public static ulong* AllocateUlong(nuint count)
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc((nuint)sizeof(ulong) * count, alignment);
-        NativeMemory.Clear(block, (nuint)sizeof(ulong) * count);
-
-        return (ulong*)block;
-    }
-
-    public static uint* AllocateUInt(nuint count)
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc((nuint)sizeof(uint) * count, alignment);
-        NativeMemory.Clear(block, (nuint)sizeof(uint) * count);
-
-        return (uint*)block;
-    }
-    public static int* AllocateInt(nuint count)
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc((nuint)sizeof(int) * count, alignment);
-        NativeMemory.Clear(block, (nuint)sizeof(int) * count);
-
-        return (int*)block;
+        return (VectorShort**)block;
     }
 
     ~Searcher()
     {
-        NativeMemory.AlignedFree(MoveStack);
-        NativeMemory.AlignedFree(killers);
-        NativeMemory.AlignedFree(counters);
-        NativeMemory.AlignedFree(history);
+        if (_pVTable != null)
+            NativeMemory.AlignedFree(_pVTable);
+
+        if (HashHistory != null)
+            NativeMemory.AlignedFree(HashHistory);
+
+        if (Counters != null)
+            NativeMemory.AlignedFree(Counters);
+
+        if (History != null)
+            NativeMemory.AlignedFree(History);
+
+        if (killers != null)
+            NativeMemory.AlignedFree(killers);
+
+        if (PawnCorrHist != null)
+            NativeMemory.AlignedFree(PawnCorrHist);
+
+        if (WhiteMaterialCorrHist != null)
+            NativeMemory.AlignedFree(WhiteMaterialCorrHist);
+
+        if (BlackMaterialCorrHist != null)
+            NativeMemory.AlignedFree(BlackMaterialCorrHist);
+
         for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
-            ref var entry = ref SearchStack[i];
-            entry.Dispose();
+            if (WhiteAccumulators[i] != null)
+                NativeMemory.AlignedFree(WhiteAccumulators[i]);
+
+            if (BlackAccumulators[i] != null)
+                NativeMemory.AlignedFree(BlackAccumulators[i]);
         }
+
+        if (WhiteAccumulators != null)
+            NativeMemory.AlignedFree(WhiteAccumulators);
+
+        if (BlackAccumulators != null)
+            NativeMemory.AlignedFree(BlackAccumulators);
 
         for (var i = 0; i < NnueWeights.InputBuckets * 2; i++)
         {
-            ref var entry = ref BucketCache[i];
-            entry.Dispose();
+            if (BucketCacheWhiteAccumulators[i] != null)
+                NativeMemory.AlignedFree(BucketCacheWhiteAccumulators[i]);
+
+            if (BucketCacheBlackAccumulators[i] != null)
+                NativeMemory.AlignedFree(BucketCacheBlackAccumulators[i]);
         }
 
-        NativeMemory.AlignedFree(SearchStack);
-        NativeMemory.AlignedFree(BucketCache);
-    }
+        if (BucketCacheWhiteAccumulators != null)
+            NativeMemory.AlignedFree(BucketCacheWhiteAccumulators);
 
-    public static uint* AlignedAllocZeroed()
-    {
-        const nuint alignment = 64;
-        var block = NativeMemory.AlignedAlloc(_pvTableBytes, alignment);
-        if (block == null)
-        {
-            throw new OutOfMemoryException("Failed to allocate aligned memory.");
-        }
+        if (BucketCacheBlackAccumulators != null)
+            NativeMemory.AlignedFree(BucketCacheBlackAccumulators);
 
-        NativeMemory.Clear(block, _pvTableBytes);
-        return (uint*)block;
+        if (BucketCacheWhiteBoards != null)
+            NativeMemory.AlignedFree(BucketCacheWhiteBoards);
+
+        if (BucketCacheBlackBoards != null)
+            NativeMemory.AlignedFree(BucketCacheBlackBoards);
+
+        if (Boards != null)
+            NativeMemory.AlignedFree(Boards);
+
+        if (Accumulators != null)
+            NativeMemory.AlignedFree(Accumulators);
     }
 
     public void Stop()
@@ -172,11 +204,19 @@ public unsafe partial class Searcher
         var depthSearched = 0;
         _searchCancelled = false;
 
-        NativeMemory.Clear(history, (nuint)historyLength);
-        NativeMemory.Clear(killers, (nuint)killersLength);
-        NativeMemory.Clear(counters, (nuint)countersLength);
+        NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
+        NativeMemory.Clear(Counters, (nuint)CountersLength * sizeof(uint));
+        NativeMemory.Clear(killers, (nuint)KillersLength * sizeof(uint));
+
         NativeMemory.Clear(_pVTable, _pvTableBytes);
-        Unsafe.CopyBlock(MoveStack, inputBoard.Moves, sizeof(ulong) * 800);
+
+        NativeMemory.Clear(Boards, (nuint)sizeof(BoardStateData) * Constants.MaxSearchDepth);
+        NativeMemory.Clear(Accumulators, (nuint)sizeof(AccumulatorState) * Constants.MaxSearchDepth);
+
+        NativeMemory.Clear(BucketCacheWhiteBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
+        NativeMemory.Clear(BucketCacheBlackBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
+
+        Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * (uint)inputBoard.Board.TurnCount);
 
         var alpha = Constants.MinScore;
         var beta = Constants.MaxScore;
@@ -184,11 +224,12 @@ public unsafe partial class Searcher
 
         var maxDepth = depthLimit > 0 ? depthLimit : Constants.MaxSearchDepth;
 
-        ref var rootBoard = ref SearchStack[0];
-        inputBoard.Board.CloneTo(ref rootBoard.Data);
-        rootBoard.FillAccumulators();
+        ref var rootBoard = ref Boards[0];
 
-        var bestEval = lastIterationEval = NegaMaxSearch(0, 0, alpha, beta, false);
+        inputBoard.Board.CloneTo(ref rootBoard);
+        FillInitialAccumulators(Boards, Accumulators);
+
+        var bestEval = lastIterationEval = NegaMaxSearch(Boards, Accumulators, 0, 0, alpha, beta);
 
         BestSoFar = _pVTable[0];
         var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
@@ -196,7 +237,7 @@ public unsafe partial class Searcher
         NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
 
         var startTime = DateTime.Now;
-        for (var j = 1; j <= maxDepth; j++)
+        for (var j = 1; j < maxDepth; j++)
         {
             var alphaWindowIndex = 0;
             var betaWindowIndex = 0;
@@ -209,10 +250,7 @@ public unsafe partial class Searcher
                     ? Constants.MaxScore
                     : lastIterationEval + AsperationWindows[betaWindowIndex];
 
-                NativeMemory.Clear(killers, (nuint)killersLength);
-                NativeMemory.Clear(counters, (nuint)countersLength);
-
-                var eval = NegaMaxSearch(0, j, alpha, beta, false);
+                var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
 
                 if (eval <= alpha)
                 {
@@ -232,6 +270,7 @@ public unsafe partial class Searcher
                 {
                     break;
                 }
+
             } while (true);
 
             if (_pVTable[0] == 0)

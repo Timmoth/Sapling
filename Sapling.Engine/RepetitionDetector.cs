@@ -1,39 +1,10 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine;
 
 public static unsafe class RepetitionDetector
 {
-    public static unsafe uint* AllocateMoves()
-    {
-        const nuint alignment = 64;
-        var bytes = (nuint)sizeof(uint) * TableSize;
-        var block = NativeMemory.AlignedAlloc(bytes, alignment);
-        if (block == null)
-        {
-            throw new OutOfMemoryException("Failed to allocate aligned memory.");
-        }
-
-        NativeMemory.Clear(block, bytes);
-        return (uint*)block;
-    }
-
-    public static unsafe ulong* AllocateKeys()
-    {
-        const nuint alignment = 64;
-        var bytes = (nuint)sizeof(ulong) * TableSize;
-        var block = NativeMemory.AlignedAlloc(bytes, alignment);
-        if (block == null)
-        {
-            throw new OutOfMemoryException("Failed to allocate aligned memory.");
-        }
-
-        NativeMemory.Clear(block, bytes);
-        return (ulong*)block;
-    }
-
     private static readonly uint* Moves;
     private static readonly ulong* Keys;
 
@@ -48,8 +19,8 @@ public static unsafe class RepetitionDetector
 
     static RepetitionDetector()
     {
-        Moves = AllocateMoves();
-        Keys = AllocateKeys();
+        Moves = MemoryHelpers.Allocate<uint>(TableSize);
+        Keys = MemoryHelpers.Allocate<ulong>(TableSize);
         new Span<uint>(Moves, TableSize).Fill(0);
 
         for (var piece = 3; piece <= 12; piece++)
@@ -106,27 +77,55 @@ public static unsafe class RepetitionDetector
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsThreefoldRepetition(ushort turnCount, ushort halfMoveClock, ulong* hashHistory)
+    {
+        if (halfMoveClock < 3)
+            return false;
+
+        var currHash = hashHistory + turnCount - 1;
+
+        var initialHash = *(currHash);
+
+        var count = 1;
+        for (var i = 2; i < halfMoveClock; i+=2)
+        {
+            currHash -= 2;
+            if (*(currHash) != initialHash)
+            {
+                continue;
+            }
+
+            if (++count >= 3)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool HasRepetition(this ref BoardStateData pos, ulong* hashHistory, int depthFromRoot)
     {
         if (pos.HalfMoveClock < 3)
             return false;
 
         var lastMoveIndex = pos.TurnCount - 1;
-
+        var occupancy = pos.Occupancy[Constants.Occupancy];
         int slot;
         for (var i = 3; i <= pos.HalfMoveClock && i < lastMoveIndex; i += 2)
         {
-            var diff = pos.Hash ^ hashHistory[lastMoveIndex - i];
+            var diff = pos.Hash ^ *(hashHistory + lastMoveIndex - i);
 
             if (diff != Keys[(slot = Hash1(diff))] &&
                 diff != Keys[(slot = Hash2(diff))])
                 continue;
 
             var m = Moves[slot];
-            int moveFrom = m.GetFromSquare();
-            int moveTo = m.GetToSquare();
+            int moveFrom = (int)m.GetFromSquare();
+            int moveTo = (int)m.GetToSquare();
 
-            if ((pos.Occupancy[Constants.Occupancy] & AttackTables.LineBitBoards[moveFrom * 64 + moveTo]) != 0)
+            if ((occupancy & *(AttackTables.LineBitBoards+((moveFrom << 6) + moveTo))) != 0)
             {
                 continue;
             }
@@ -135,7 +134,7 @@ public static unsafe class RepetitionDetector
                 return true;
 
             var isWhite = false;
-            if ((pos.Occupancy[Constants.Occupancy] & (1ul << moveFrom)) != 0)
+            if ((occupancy & (1ul << moveFrom)) != 0)
             {
                 isWhite = (pos.Occupancy[Constants.WhitePieces] & (1ul << moveFrom)) != 0;
             }

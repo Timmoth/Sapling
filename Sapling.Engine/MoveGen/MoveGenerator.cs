@@ -28,7 +28,7 @@ public static class MoveGenerator
         {
             var m = moves[moveIndex];
             board.CloneTo(ref copy);
-            if (copy.PartialApply(m))
+            if (copy.WhiteToMove ? copy.PartialApplyWhite(m) : copy.PartialApplyBlack(m))
             {
                 legalMoves.Add(m);
             }
@@ -139,7 +139,7 @@ public static class MoveGenerator
         if (board.EnPassantFile.CanEnPassant() && !board.WhiteToMove && rankIndex.IsBlackEnPassantRankIndex() &&
             Math.Abs(index.GetFileIndex() - board.EnPassantFile) == 1)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeBlackEnpassantMove(index, board.EnPassantFile);
+            *(moves + moveIndex++) = MoveExtensions.EncodeBlackEnpassantMove(index, board.EnPassantFile);
         }
 
         var canPromote = rankIndex.IsSecondRank();
@@ -154,26 +154,26 @@ public static class MoveGenerator
 
             if (canPromote)
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnKnightPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnBishopPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnRookPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnQueenPromotion);
             }
             else
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare);
             }
@@ -188,26 +188,26 @@ public static class MoveGenerator
 
             if (canPromote)
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnKnightPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnBishopPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnRookPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnQueenPromotion);
             }
             else
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackPawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.BlackPawn, index,
                     capturePiece,
                     toSquare);
             }
@@ -225,16 +225,16 @@ public static class MoveGenerator
         if (canPromote)
         {
             // Promotion
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
                 toSquare,
                 Constants.PawnKnightPromotion);
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
                 toSquare,
                 Constants.PawnBishopPromotion);
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
                 toSquare,
                 Constants.PawnRookPromotion);
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.BlackPawn, index,
                 toSquare,
                 Constants.PawnQueenPromotion);
             return;
@@ -247,13 +247,13 @@ public static class MoveGenerator
         }
 
         // Move down
-        moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.BlackPawn, index, toSquare);
+        *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.BlackPawn, index, toSquare);
 
         target = target.ShiftDown();
         if (rankIndex.IsSeventhRank() && board.IsEmptySquare(target))
         {
             // Double push
-            moves[moveIndex++] = MoveExtensions.EncodeBlackDoublePushMove(index, toSquare.ShiftDown());
+            *(moves + moveIndex++) = MoveExtensions.EncodeBlackDoublePushMove(index, toSquare.ShiftDown());
         }
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -268,7 +268,7 @@ public static class MoveGenerator
         if (board.EnPassantFile.CanEnPassant() && board.WhiteToMove && rankIndex.IsWhiteEnPassantRankIndex() &&
             Math.Abs(index.GetFileIndex() - board.EnPassantFile) == 1)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeWhiteEnpassantMove(index, board.EnPassantFile);
+            *(moves + moveIndex++) = MoveExtensions.EncodeWhiteEnpassantMove(index, board.EnPassantFile);
         }
 
         var canPromote = rankIndex.IsSeventhRank();
@@ -283,26 +283,26 @@ public static class MoveGenerator
 
             if (canPromote)
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnKnightPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnBishopPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnRookPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnQueenPromotion);
             }
             else
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare);
             }
@@ -317,26 +317,26 @@ public static class MoveGenerator
 
             if (canPromote)
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnKnightPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnBishopPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnRookPromotion);
-                moves[moveIndex++] = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCapturePromotionMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare,
                     Constants.PawnQueenPromotion);
             }
             else
             {
-                moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhitePawn, index,
+                *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.WhitePawn, index,
                     capturePiece,
                     toSquare);
             }
@@ -352,16 +352,16 @@ public static class MoveGenerator
         toSquare = index.ShiftUp();
         if (canPromote)
         {
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
                 toSquare,
                 Constants.PawnKnightPromotion);
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
                 toSquare,
                 Constants.PawnBishopPromotion);
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
                 toSquare,
                 Constants.PawnRookPromotion);
-            moves[moveIndex++] = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, index,
                 toSquare,
                 Constants.PawnQueenPromotion);
             return;
@@ -372,12 +372,12 @@ public static class MoveGenerator
             return;
         }
 
-        moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhitePawn, index, toSquare);
+        *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.WhitePawn, index, toSquare);
 
         target = target.ShiftUp();
         if (rankIndex.IsSecondRank() && board.IsEmptySquare(target))
         {
-            moves[moveIndex++] = MoveExtensions.EncodeWhiteDoublePushMove(index, toSquare.ShiftUp());
+            *(moves + moveIndex++) = MoveExtensions.EncodeWhiteDoublePushMove(index, toSquare.ShiftUp());
         }
     }
 
@@ -390,12 +390,12 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.KnightAttackTable[index];
+        var potentialMoves = *(AttackTables.KnightAttackTable + index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.BlackPieces];
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteKnight, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.WhiteKnight, index,
                 board.GetBlackPiece(i), i);
         }
 
@@ -407,7 +407,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteKnight, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.WhiteKnight, index,
                 emptyMoves.PopLSB());
         }
     }
@@ -417,12 +417,12 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.KnightAttackTable[index];
+        var potentialMoves = *(AttackTables.KnightAttackTable + index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.WhitePieces];
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackKnight, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.BlackKnight, index,
                 board.GetWhitePiece(i), i);
         }
 
@@ -434,7 +434,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.BlackKnight, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.BlackKnight, index,
                 emptyMoves.PopLSB());
         }
     }
@@ -453,7 +453,7 @@ public static class MoveGenerator
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteRook, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.WhiteRook, index,
                 board.GetBlackPiece(i), i);
         }
 
@@ -465,7 +465,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteRook, index, emptyMoves.PopLSB());
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.WhiteRook, index, emptyMoves.PopLSB());
         }
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -479,7 +479,7 @@ public static class MoveGenerator
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackRook, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.BlackRook, index,
                 board.GetWhitePiece(i), i);
         }
 
@@ -491,7 +491,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.BlackRook, index, emptyMoves.PopLSB());
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.BlackRook, index, emptyMoves.PopLSB());
         }
     }
 
@@ -509,7 +509,7 @@ public static class MoveGenerator
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteBishop, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.WhiteBishop, index,
                 board.GetBlackPiece(i), i);
         }
 
@@ -521,7 +521,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteBishop, index, emptyMoves.PopLSB());
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.WhiteBishop, index, emptyMoves.PopLSB());
         }
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -535,7 +535,7 @@ public static class MoveGenerator
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackBishop, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.BlackBishop, index,
                 board.GetWhitePiece(i), i);
         }
 
@@ -547,7 +547,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.BlackBishop, index, emptyMoves.PopLSB());
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.BlackBishop, index, emptyMoves.PopLSB());
         }
     }
 
@@ -566,7 +566,7 @@ public static class MoveGenerator
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteQueen, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.WhiteQueen, index,
                 board.GetBlackPiece(i), i);
         }
 
@@ -578,7 +578,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteQueen, index, emptyMoves.PopLSB());
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.WhiteQueen, index, emptyMoves.PopLSB());
         }
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -593,7 +593,7 @@ public static class MoveGenerator
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackQueen, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.BlackQueen, index,
                 board.GetWhitePiece(i), i);
         }
 
@@ -605,7 +605,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.BlackQueen, index, emptyMoves.PopLSB());
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.BlackQueen, index, emptyMoves.PopLSB());
         }
     }
 
@@ -618,13 +618,13 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.KingAttackTable[index];
+        var potentialMoves = *(AttackTables.KingAttackTable + index);
 
         var captureMoves = potentialMoves & board.Occupancy[Constants.BlackPieces];
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.WhiteKing, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.WhiteKing, index,
                 board.GetBlackPiece(i), i);
         }
 
@@ -636,7 +636,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.WhiteKing, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.WhiteKing, index,
                 emptyMoves.PopLSB());
         }
 
@@ -653,7 +653,7 @@ public static class MoveGenerator
             !board.IsAttackedByBlack(6) &&
             !board.IsAttackedByBlack(5))
         {
-            moves[moveIndex++] = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
                 6);
         }
 
@@ -664,7 +664,7 @@ public static class MoveGenerator
             !board.IsAttackedByBlack(2) &&
             !board.IsAttackedByBlack(3))
         {
-            moves[moveIndex++] = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
                 2);
         }
     }
@@ -674,12 +674,12 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.KingAttackTable[index];
+        var potentialMoves = *(AttackTables.KingAttackTable + index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.WhitePieces];
         while (captureMoves != 0)
         {
             var i = captureMoves.PopLSB();
-            moves[moveIndex++] = MoveExtensions.EncodeCaptureMove(Constants.BlackKing, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCaptureMove(Constants.BlackKing, index,
                 board.GetWhitePiece(i), i);
         }
 
@@ -691,7 +691,7 @@ public static class MoveGenerator
         var emptyMoves = potentialMoves & ~board.Occupancy[Constants.Occupancy];
         while (emptyMoves != 0)
         {
-            moves[moveIndex++] = MoveExtensions.EncodeNormalMove(Constants.BlackKing, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeNormalMove(Constants.BlackKing, index,
                 emptyMoves.PopLSB());
         }
 
@@ -708,7 +708,7 @@ public static class MoveGenerator
             !board.IsAttackedByWhite(61) &&
             !board.IsAttackedByWhite(62))
         {
-            moves[moveIndex++] = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index,
+            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index,
                 62);
         }
 
@@ -719,7 +719,7 @@ public static class MoveGenerator
             !board.IsAttackedByWhite(58) &&
             !board.IsAttackedByWhite(59))
         {
-            moves[moveIndex++] = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index, 58);
+            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index, 58);
         }
     }
 

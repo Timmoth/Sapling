@@ -11,8 +11,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sapling", "Sapling\Sapling.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sapling.Utils", "Sapling.Utils\Sapling.Utils.csproj", "{F0836F77-0512-4AF6-B0D1-4AF34B6CAE91}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sapling.SourceGenerators", "Sapling.SourceGenerators\Sapling.SourceGenerators.csproj", "{B4CCB683-5152-4406-BBA4-C7EDDFF18343}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,10 +33,6 @@ Global
 		{F0836F77-0512-4AF6-B0D1-4AF34B6CAE91}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F0836F77-0512-4AF6-B0D1-4AF34B6CAE91}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F0836F77-0512-4AF6-B0D1-4AF34B6CAE91}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B4CCB683-5152-4406-BBA4-C7EDDFF18343}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B4CCB683-5152-4406-BBA4-C7EDDFF18343}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B4CCB683-5152-4406-BBA4-C7EDDFF18343}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B4CCB683-5152-4406-BBA4-C7EDDFF18343}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -28,6 +28,13 @@ public static class PgnSplitter
         var rank = position.GetRankIndex();
         var file = position.GetFileIndex();
         return $"{(char)('a' + file)}{(char)('1' + rank)}";
+    }  
+    
+    public static string ConvertPosition(this uint position)
+    {
+        var rank = position.GetRankIndex();
+        var file = position.GetFileIndex();
+        return $"{(char)('a' + file)}{(char)('1' + rank)}";
     }
 
     public static (int file, int rank) GetPosition(this string name)

@@ -18,13 +18,15 @@ public static class TranspositionTableExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int RecalculateMateScores(int score, int ply)
     {
-        return score
-               + score switch
-               {
-                   > PositiveCheckmateDetectionLimit => -ply,
-                   < NegativeCheckmateDetectionLimit => ply,
-                   _ => 0
-               };
+        if (score > PositiveCheckmateDetectionLimit)
+        {
+            return score - ply; // Positive checkmate, reduce score by ply
+        }
+        if (score < NegativeCheckmateDetectionLimit)
+        {
+            return score + ply; // Negative checkmate, increase score by ply
+        }
+        return score; // No change
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -61,11 +63,9 @@ public static class TranspositionTableExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void Set(Transposition* tt, uint ttMask, ulong hash, byte depth, int ply,
+    public static void Set(this ref Transposition entry, ulong hash, byte depth, int ply,
         int eval, TranspositionTableFlag nodeType, uint move = default)
     {
-        ref var entry = ref tt[hash & ttMask];
-
         var shouldReplace =
             entry.FullHash == 0 // No actual entry
             || hash != entry.FullHash // Different key: collision
@@ -84,9 +84,9 @@ public static class TranspositionTableExtensions
         entry.Move = move != 0 ? move : entry.Move; //Don't clear TT move if no best move is provided: keep old one
     }
 
-    public static uint CalculateTranspositionTableSize(int sizeInMb)
+    public static unsafe uint CalculateTranspositionTableSize(int sizeInMb)
     {
-        var transpositionCount = (ulong)sizeInMb * 1024ul * 1024ul / 18;
+        var transpositionCount = (ulong)sizeInMb * 1024ul * 1024ul / (ulong)sizeof(Transposition);
         if (!BitOperations.IsPow2(transpositionCount))
         {
             transpositionCount = BitOperations.RoundUpToPowerOf2(transpositionCount) >> 1;
@@ -100,7 +100,7 @@ public static class TranspositionTableExtensions
         return (uint)transpositionCount;
     }
 
-    public static int CalculateSizeInMb(uint transpositionCount)
+    public static unsafe int CalculateSizeInMb(uint transpositionCount)
     {
         // If transpositionCount is less than 2, the original function would have shifted it
         // to a power of 2 and then shifted it back down by >> 1, so adjust it.
@@ -113,7 +113,7 @@ public static class TranspositionTableExtensions
         ulong adjustedTranspositionCount = transpositionCount << 1;
 
         // Calculate the size in MB
-        var sizeInMb = (int)(adjustedTranspositionCount * 18 / (1024 * 1024));
+        var sizeInMb = (int)(adjustedTranspositionCount * (ulong)sizeof(Transposition) / (1024 * 1024));
 
         // Check if the original function would have produced the same transposition count
         // for this sizeInMb, if not, decrement the size until it matches.

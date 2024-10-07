@@ -10,6 +10,10 @@ ifeq ($(OS),Windows_NT)
 	else
 		RUNTIME=win-x86
 	endif
+	SHELL := cmd.exe
+	MKDIR_CMD := if not exist "$(subst /,\,$(OUTPUT_DIR))" mkdir "$(subst /,\,$(OUTPUT_DIR))"
+	MOVE_CMD := move
+	SLASH := \\
 else
 	UNAME_S := $(shell uname -s)
 	UNAME_P := $(shell uname -p)
@@ -29,6 +33,10 @@ else
 			RUNTIME=osx-x64
 		endif
 	endif
+	SHELL := /bin/sh
+	MKDIR_CMD := if [ ! -d "$(OUTPUT_DIR)" ]; then mkdir -p $(OUTPUT_DIR); fi
+	MOVE_CMD := mv
+	SLASH := /
 endif
 
 ifdef EXE

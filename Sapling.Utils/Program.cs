@@ -1,224 +1,139 @@
 ﻿using System.Buffers.Binary;
 using System.Text;
 using Sapling.Engine;
+using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 
 namespace Sapling.Utils
 {
-
     internal class Program
     {
-        public static string PolyGlotToUciMove(ushort move)
+        public static string UnrollAndInsert(string source, string replace, Func<int, string> line)
         {
-            // Extract components using bit-shifting and masking
+            var simdCopySourceBuilder = new StringBuilder();
 
-            // To file (0-2 bits)
-            int toFile = (move & 0b0000000000000111);
-
-            // To rank (3-5 bits)
-            int toRank = (move >> 3) & 0b0000000000000111;
-
-            // From file (6-8 bits)
-            int fromFile = (move >> 6) & 0b0000000000000111;
-
-            // From rank (9-11 bits)
-            int fromRank = (move >> 9) & 0b0000000000000111;
-
-            // Promotion piece (12-14 bits)
-            int promotionPiece = (move >> 12) & 0b0000000000000111;
-
-            // Convert the file (0-7) to a letter ('a' = 0, 'b' = 1, ..., 'h' = 7)
-            char fromFileChar = (char)('a' + fromFile);
-            char toFileChar = (char)('a' + toFile);
-
-            // Convert the rank (0-7) to a number ('1' = 0, '2' = 1, ..., '8' = 7)
-            char fromRankChar = (char)('1' + fromRank);
-            char toRankChar = (char)('1' + toRank);
-
-            // Create the basic move string (like "e2e4")
-            string moveStr = $"{fromFileChar}{fromRankChar}{toFileChar}{toRankChar}";
-
-            // Handle promotion if present (promotionPiece > 0 means promotion)
-            if (promotionPiece > 0)
+            var avx512Elements = NnueWeights.Layer1Size / 32;
+            var avx256Elements = NnueWeights.Layer1Size / 16;
+            var i = 0;
+            for (; i < avx512Elements; i++)
             {
-                // Convert promotion piece (1=q, 2=r, 3=b, 4=n)
-                char promotionChar = promotionPiece switch
-                {
-                    1 => 'q',  // Queen
-                    2 => 'r',  // Rook
-                    3 => 'b',  // Bishop
-                    4 => 'n',  // Knight
-                    _ => throw new InvalidOperationException("Invalid promotion piece")
-                };
-
-                // Append the promotion character to the move string
-                moveStr += promotionChar;
+                simdCopySourceBuilder.AppendLine(line(i));
             }
 
-            return moveStr;
-        }
-
-        public static ushort ToOpeningMove(uint move)
-        {
-            var moveType = move.GetMoveType();
-
-            var promotion = 0;
-            if (moveType >= Constants.PawnKnightPromotion)
+            simdCopySourceBuilder.AppendLine("#if !AVX512");
+            for (; i < avx256Elements; i++)
             {
-                promotion = moveType - 3;
+                simdCopySourceBuilder.AppendLine(line(i));
             }
+            simdCopySourceBuilder.AppendLine("#endif");
 
-            var from = move.GetFromSquare();
-            var to = move.GetToSquare();
-
-            return (ushort)(to.GetFileIndex() |
-                   to.GetRankIndex() << 3 |
-                   from.GetFileIndex() << 6 |
-                   from.GetRankIndex() << 9 |
-                   promotion << 12
-                   );
+            return source.Replace(replace, simdCopySourceBuilder.ToString());
         }
 
         static void Main(string[] args)
         {
-            var fileName = "./Human.bin";
-            var entrySize = sizeof(ulong) + sizeof(ushort) + sizeof(ushort) + sizeof(uint);
-            var entryCount = (int)new FileInfo(fileName).Length / entrySize;
 
-            var openingMoves = new Dictionary<ulong, List<ushort>>();
-            using (var fs = new FileStream(fileName, FileMode.Open, FileAccess.Read))
-            {
-                using var reader = new BinaryReader(fs, Encoding.UTF8, false);
-                for (var i = 0; i < entryCount; i++)
-                {
-                    ulong hash;
-                    ushort move;
+            var source = @"
+using System.Runtime.CompilerServices;
+using Sapling.Engine.Evaluation;
 
-                    if (BitConverter.IsLittleEndian)
-                    {
-                        hash = BinaryPrimitives.ReverseEndianness(reader.ReadUInt64());
-                        move = BinaryPrimitives.ReverseEndianness(reader.ReadUInt16());
-                    }
-                    else
-                    {
-                        hash = reader.ReadUInt64();
-                        move = reader.ReadUInt16();
-                    }
+namespace Sapling.Engine.Search;
 
-                    // Skip weight & learn
-                    reader.ReadUInt16();
-                    reader.ReadUInt32();
+public unsafe partial class Searcher
+{
+    private static readonly VectorShort Ceil = VectorType.Create<short>(255);
+    private static readonly VectorShort Floor = VectorType.Create<short>(0);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SimdResetAccumulators(VectorShort* whiteAcc, VectorShort* blackAcc)
+    {
+        @SimdResetAccumulators@
+    }
 
-                    if (!openingMoves.TryGetValue(hash, out var moveList))
-                    {
-                        openingMoves[hash] = moveList = new List<ushort>();
-                    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SimdResetAccumulator(VectorShort* acc)
+    {
+        @SimdResetAccumulator@
+    }
 
-                    moveList.Add(move);
-                }
-            }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SimdCopy(VectorShort* dest, VectorShort* src)
+    {
+        @SimdCopy@
+    }
 
-            Console.WriteLine("Size: " + entryCount);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Sub(
+        VectorShort* source,
+        VectorShort* dest,
+        VectorShort* sub)
+    {
+        @Sub@
+    }
 
-            var gameHashes = new HashSet<ulong>();
-            var openingBookBulder = new StringBuilder();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Add(
+        VectorShort* source,
+        VectorShort* dest,
+        VectorShort* add)
+    {
+        @Add@
+    }
 
-            var validFirstMoves = new Dictionary<string, int>
-            {
-                // Pawn moves
-                {"a2a3", 0}, {"a2a4", 0},
-                {"b2b3", 0}, {"b2b4", 0},
-                {"c2c3", 0}, {"c2c4", 0},
-                {"d2d3", 0}, {"d2d4", 0},
-                {"e2e3", 0}, {"e2e4", 0},
-                {"f2f3", 0}, {"f2f4", 0},
-                {"g2g3", 0}, {"g2g4", 0},
-                {"h2h3", 0}, {"h2h4", 0},
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AddWeights(VectorShort* accuPtr, VectorShort* featurePtr)
+    {
+        @AddWeights@
+    }
+ 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ForwardCReLU(VectorShort* usAcc, VectorShort* themAcc, int bucket)
+    {
+        var sum = VectorInt.Zero;
+        var featureWeightsPtr = NnueWeights.OutputWeights + bucket * AccumulatorSize * 2;
+        var themWeightsPtr = featureWeightsPtr + AccumulatorSize;
 
-                // Knight moves
-                {"b1a3", 0}, {"b1c3", 0},
-                {"g1f3", 0}, {"g1h3", 0}
-            };
+        @ForwardCReLU@
 
-            var initialGameState = new GameState(BoardStateExtensions.CreateBoardFromArray(Constants.InitialState));
-            var gameState = new GameState(BoardStateExtensions.CreateBoardFromArray(Constants.InitialState));
-            for (var i = 0; i < 5000000; i++)
-            {
-                    gameState.ResetTo(initialGameState.Board);
-                    var firstMove = gameState.LegalMoves[Random.Shared.Next(0, gameState.LegalMoves.Count)];
-                    gameState.Apply(firstMove);
+        return VectorType.Sum(sum);
+    }
 
-                    var openingMovesBuilder = new StringBuilder();
-                    openingMovesBuilder.Append(firstMove.ToUciMoveName());
-                    var gameOk = true;
-                    var j = 1;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SubAdd(
+        VectorShort* source,
+        VectorShort* dest,
+        VectorShort* sub1, VectorShort* add1)
+    {
+        @SubAdd@
+    }
 
-                    for (j = 1; j < 12; j++)
-                    {
-                        var hash = Zobrist.CalculatePolyGlotKey(ref gameState.Board.Data);
-                        if (!openingMoves.TryGetValue(hash, out var openingMoveList))
-                        {
-                            gameOk = false;
-                            break;
-                        }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SubSubAdd(VectorShort* source, VectorShort* dest, VectorShort* sub1, VectorShort* sub2, VectorShort* add1)
+    {
+        @SubSubAdd@
+    }
 
-                        var randomOpeningMove = openingMoveList[Random.Shared.Next(0, openingMoveList.Count)];
-                        var mv = gameState.LegalMoves.FirstOrDefault(m => ToOpeningMove(m) == randomOpeningMove);
-                        if (mv == default)
-                        {
-                            var uciMove = PolyGlotToUciMove(randomOpeningMove);
-                            if (uciMove == "e1h1")
-                            {
-                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e1g1");
-                            }
-                            else if (uciMove == "e1a1")
-                            {
-                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e1b1");
-                            }
-                            else if (uciMove == "e8h8")
-                            {
-                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e8g8");
-                            }
-                            else if (uciMove == "e8a8")
-                            {
-                                mv = gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == "e8b8");
-                            }
-                        }
+   
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SubSubAddAdd(VectorShort* source, VectorShort* dest, VectorShort* sub1, VectorShort* sub2, VectorShort* add1, VectorShort* add2)
+    {
+        @SubSubAddAdd@
+    }
+}
+";
 
-                        if (mv == default)
-                        {
-                            if (j < 8)
-                            {
-                                gameOk = false;
-                            }
+            source = UnrollAndInsert(source, "@SimdResetAccumulator@", (i) => $"*(acc+{i}) = *(NnueWeights.FeatureBiases+{i});");
+            source = UnrollAndInsert(source, "@SimdResetAccumulators@", (i) => $"*(whiteAcc+{i}) = *(blackAcc+{i}) = *(NnueWeights.FeatureBiases+{i});");
+            source = UnrollAndInsert(source, "@SimdCopy@", (i) => $"*(dest+{i}) = *(src+{i});");
+            source = UnrollAndInsert(source, "@Sub@", (i) => $"*(dest + {i}) = *(source + {i}) - *(sub + {i});");
+            source = UnrollAndInsert(source, "@Add@", (i) => $"*(dest + {i}) = *(source + {i}) + *(add + {i});");
+            source = UnrollAndInsert(source, "@AddWeights@", (i) => $"*(accuPtr + {i}) += *(featurePtr + {i});");
+            source = UnrollAndInsert(source, "@ForwardCReLU@", (i) => $"        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(*(usAcc + {i}), Ceil), Floor), *(featureWeightsPtr + {i})) + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(*(themAcc + {i}), Ceil), Floor), *(themWeightsPtr + {i}));");
+            source = UnrollAndInsert(source, "@SubAdd@", (i) => $" *(dest + {i}) = *(source + {i}) - *(sub1 + {i}) + *(add1 + {i});");
+            source = UnrollAndInsert(source, "@SubSubAdd@", (i) => $"*(dest + {i}) = *(source + {i}) - *(sub1 + {i}) + *(add1 + {i}) - *(sub2 + {i});");
+            source = UnrollAndInsert(source, "@SubSubAddAdd@", (i) => $"*(dest + { i}) = *(source + { i}) -*(sub1 + { i}) + *(add1 + { i}) - *(sub2 + { i}) + *(add2 + {i});");
 
-                            break;
-                        }
 
-                        openingMovesBuilder.Append(" ");
-                        openingMovesBuilder.Append(mv.ToUciMoveName());
-                        gameState.Apply(mv);
-                    }
-
-                    if (!gameHashes.Contains(gameState.Board.Data.Hash) && gameOk)
-                    {
-                        gameHashes.Add(gameState.Board.Data.Hash);
-                        validFirstMoves[firstMove.ToUciMoveName()]++;
-                        openingBookBulder.AppendLine(openingMovesBuilder.ToString());
-                    }
-                }
-
-            var total = 0;
-            foreach (var (move, count) in validFirstMoves)
-            {
-                total += count;
-                Console.WriteLine($"move: {move} count: {count}");
-            }
-
-            Console.WriteLine($"Total games: {total}");
-
-            File.WriteAllText("./book.csv",openingBookBulder.ToString());
-            Console.WriteLine("Fin");
+            File.WriteAllText("./unrolled.cs", source.ToString());
         }
     }
 }

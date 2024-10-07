@@ -1,7 +1,5 @@
-﻿using System.Drawing;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.Search;
@@ -18,7 +16,7 @@ public unsafe class ParallelSearcher
     public ParallelSearcher(int ttSize)
     {
         TTSize = ttSize;
-        Transpositions = AllocateTranspositions((nuint)ttSize);
+        Transpositions = MemoryHelpers.Allocate<Transposition>(ttSize);
 
         // Default to one thread
         Searchers.Add(new Searcher(Transpositions, ttSize));
@@ -28,22 +26,11 @@ public unsafe class ParallelSearcher
     {
         NativeMemory.AlignedFree(Transpositions);
     }
-    public static unsafe Transposition* AllocateTranspositions(nuint items)
-    {
-        const nuint alignment = 64;
-
-        nuint bytes = ((nuint)sizeof(Transposition) * (nuint)items);
-        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
-        NativeMemory.Clear(block, bytes);
-
-        return (Transposition*)block;
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int MoveFromToIndex(uint move)
     {
-        return MoveExtensions.BitFieldExtract(move, 4, 6) * 64 +
-               MoveExtensions.BitFieldExtract(move, 10, 6);
+        return (int)(((move >> 4) & 0x3F) * 64 + (move >> 10) & 0x3F);
     }
 
     public static int ThreadValue(int score, int worstScore, int depth)
@@ -113,37 +100,53 @@ public unsafe class ParallelSearcher
         Span<int> voteMap = stackalloc int[64 * 64];
         var worstScore = int.MaxValue;
         var nodes = 0;
+
+        var resultList =
+            new List<(List<uint> move, int depthSearched, int score, int nodes)>();
+
         // First pass: Initialize the worst score and reset vote map
         foreach (var result in results.Values)
         {
+            if (result.move.Count == 0)
+            {
+                continue;
+            }
             worstScore = Math.Min(worstScore, result.score);
             nodes += result.nodes;
+            resultList.Add(result);
+        }
+
+        if (resultList.Count == 0)
+        {
+            var searchResult = Searchers[0].Search(state, depthLimit:0, writeInfo: true);
+            return (searchResult.pv, searchResult.depthSearched, searchResult.score,
+                searchResult.nodes, DateTime.Now - start);
         }
 
         // Second pass: Accumulate votes
-        foreach (var result in results.Values)
+        foreach (var result in resultList)
         {
             voteMap[MoveFromToIndex(result.move[0])] += ThreadValue(result.score, worstScore, result.depthSearched);
         }
 
         // Initialize best thread and best scores
-        var bestMove = results.Values[0].move;
-        var bestScore = results.Values[0].score;
-        var bestDepth = results.Values[0].depthSearched;
-        var bestVoteScore = voteMap[MoveFromToIndex(results.Values[0].move[0])];
+        var bestMove = resultList[0].move;
+        var bestScore = resultList[0].score;
+        var bestDepth = resultList[0].depthSearched;
+        var bestVoteScore = voteMap[MoveFromToIndex(resultList[0].move[0])];
 
         // Find the best thread
-        for (var i = 1; i < results.Values.Count; i++)
+        for (var i = 1; i < resultList.Count; i++)
         {
-            var currentVoteScore = voteMap[MoveFromToIndex(results.Values[i].move[0])];
+            var currentVoteScore = voteMap[MoveFromToIndex(resultList[i].move[0])];
             if (currentVoteScore <= bestVoteScore)
             {
                 continue;
             }
 
-            bestMove = results.Values[i].move;
-            bestScore = results.Values[i].score;
-            bestDepth = results.Values[i].depthSearched;
+            bestMove = resultList[i].move;
+            bestScore = resultList[i].score;
+            bestDepth = resultList[i].depthSearched;
             bestVoteScore = currentVoteScore;
         }
 

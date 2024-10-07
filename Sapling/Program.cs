@@ -1,14 +1,32 @@
 ﻿using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Intrinsics.X86;
+using System.Text;
+using Sapling.Engine;
 using Sapling.Engine.DataGen;
+using Sapling.Engine.Evaluation;
+using Sapling.Engine.MoveGen;
+using Sapling.Engine.Search;
 
 namespace Sapling;
 
+public static class UciOptions
+{
+    public static bool IsDebug = false;
+}
 internal class Program
 {
-    private static void Main(string[] args)
+    private static readonly ConcurrentQueue<string> CommandQueue = new();
+    private static readonly ManualResetEventSlim CommandAvailable = new(false);
+    private static bool hasQuit = false;
+
+    private static FileStream _fileStream;
+    private static StreamWriter _logWriter;
+
+private static void Main(string[] args)
     {
+        Console.SetIn(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8, false, 2048 * 4));
+
         if (args.Length > 0 && args[0] == "--version")
         {
             // Get the version from the assembly information
@@ -54,19 +72,6 @@ internal class Program
             Console.WriteLine("[Error] Sse is not supported on this system");
             return;
         }
-
-        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
-        {
-            // Log the exception or take appropriate action
-            Console.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
-        };
-
-        if (args.Contains("bench"))
-        {
-            Bench.Run();
-            return;
-        }
-
         var logDirectory = Path.Combine(Environment.CurrentDirectory, "logs");
         if (!Directory.Exists(logDirectory))
         {
@@ -76,60 +81,117 @@ internal class Program
         var fileName = (DateTime.Now.ToString("g") + Guid.NewGuid()).Replace("/", "-").Replace(" ", "_")
             .Replace(":", "-");
         var logFilePath = Path.Combine(logDirectory, $"{fileName}.txt");
-        using var fileStream = new FileStream(logFilePath, FileMode.Append, FileAccess.Write);
-        using var logWriter = new StreamWriter(fileStream);
-        
+        _fileStream = new FileStream(logFilePath, FileMode.Append, FileAccess.Write);
+        _logWriter = new StreamWriter(_fileStream);
+
+
+        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+        {
+            // Log the exception or take appropriate action
+            Console.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
+            _logWriter.WriteLine("Unhandled Exception: " + ((Exception)e.ExceptionObject).Message);
+            _logWriter.Flush();
+            _logWriter.Close();
+
+        };
+
+        // Force the static constructors to be called
+        var tasks = new[]
+        {
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NnueWeights).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(NnueExtensions).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(AttackTables).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(PieceValues).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(RepetitionDetector).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(HistoryHeuristicExtensions).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(PVTable).TypeHandle)),
+            Task.Run(() => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Zobrist).TypeHandle))
+        };
+
+        // Wait for all tasks to complete
+        Task.WaitAll(tasks);
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
+        GC.WaitForPendingFinalizers();
+
+        if (args.Contains("bench"))
+        {
+            Bench.Run();
+            return;
+        }
+
+        UciOptions.IsDebug = args.Contains("debug");
+
+      
         try
         {
-            UciEngine engine = new(logWriter);
+            UciEngine engine = new(_logWriter);
 
-            var commandQueue = new ConcurrentQueue<string>();
-
-            var hasQuit = false;
+            // Start the command reading task
             _ = Task.Run(() =>
             {
-                while (true)
-                {
-                    var command = Console.ReadLine();
-                    if (string.IsNullOrEmpty(command))
-                    {
-                        continue;
-                    }
-
-                    if (command.Contains("quit"))
-                    {
-                        hasQuit = true;
-                        break;
-                    }
-
-                    if (command.Contains("stop"))
-                    {
-                        engine.ReceiveCommand(command);
-                        continue;
-                    }
-
-                    commandQueue.Enqueue(command);
-                }
+                ReadCommands(engine);
             });
 
-            while (!hasQuit)
-            {
-                if (commandQueue.TryDequeue(out var command))
-                {
-                    engine.ReceiveCommand(command);
-                }
-            }
+            // Process commands in the main loop
+            ProcessCommands(engine);
         }
         catch (Exception ex)
         {
-            logWriter.WriteLine("[FATAL ERROR]");
-            logWriter.WriteLine("----------");
-            logWriter.WriteLine(ex.ToString());
-            logWriter.WriteLine("----------");
+            _logWriter.WriteLine("[FATAL ERROR]");
+            _logWriter.WriteLine("----------");
+            _logWriter.WriteLine(ex.ToString());
+            _logWriter.WriteLine("----------");
         }
         finally
         {
-            logWriter.Flush();
+            _logWriter.Flush();
+            _logWriter.Flush();
+            _logWriter.Close();
+        }
+    }
+
+    private static void ReadCommands(UciEngine engine)
+    {
+        while (true)
+        {
+            var command = Console.ReadLine();
+            if (string.IsNullOrEmpty(command))
+            {
+                continue; // Skip empty commands
+            }
+
+            if (command.Contains("quit", StringComparison.OrdinalIgnoreCase))
+            {
+                hasQuit = true;
+                engine.ReceiveCommand("stop");
+                Environment.Exit(0);
+                break;
+            }
+
+            if (command.Contains("stop", StringComparison.OrdinalIgnoreCase))
+            {
+                // Process the stop command immediately
+                engine.ReceiveCommand(command);
+                continue;
+            }
+
+            CommandQueue.Enqueue(command);
+            CommandAvailable.Set(); // Signal that a command is available
+        }
+    }
+
+    private static void ProcessCommands(UciEngine engine)
+    {
+        while (!hasQuit)
+        {
+            CommandAvailable.Wait(); // Wait until a command is available
+            CommandAvailable.Reset(); // Reset the event for the next wait
+
+            while (CommandQueue.TryDequeue(out var command))
+            {
+                engine.ReceiveCommand(command);
+            }
         }
     }
 }

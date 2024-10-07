@@ -1,134 +1,127 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics.X86;
 
 namespace Sapling.Engine.MoveGen;
 
 public static class MoveExtensions
 {
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Deconstruct(
-        this uint move, out byte movedPiece, out byte fromSquare, out byte toSquare, out byte capturedSquare, out byte moveType)
-    {
-        movedPiece = BitFieldExtract(move, 0, 4);
-        fromSquare = BitFieldExtract(move, 4, 6);
-        toSquare = BitFieldExtract(move, 10, 6);
-        capturedSquare = BitFieldExtract(move, 16, 4);
-        moveType = BitFieldExtract(move, 20, 4);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte BitFieldExtract(uint bits, byte start, byte length)
-    {
-        return (byte)Bmi1.X64.BitFieldExtract(bits, start, length);
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte GetMovedPiece(this uint move)
     {
-        return BitFieldExtract(move, 0, 4);
+        return (byte)(move & 0x0F);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint GetCounterMoveIndex(this uint move)
+    {
+        return ((move & 0x0F) << 6) + ((move >> 10) & 0x3F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsPawn(this uint move)
     {
-        return move.GetMovedPiece() is Constants.WhitePawn or Constants.BlackPawn;
+        uint piece = move & 0x0F; // 0x0F masks the lower 4 bits
+        return piece == Constants.WhitePawn || piece == Constants.BlackPawn;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsRook(this uint move)
     {
-        return move.GetMovedPiece() is Constants.WhiteRook or Constants.BlackRook;
+        uint piece = move & 0x0F; // 0x0F masks the lower 4 bits
+        return piece == Constants.WhiteRook || piece == Constants.BlackRook;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsKnight(this uint move)
     {
-        return move.GetMovedPiece() is Constants.WhiteKnight or Constants.BlackKnight;
+        uint piece = move & 0x0F; // 0x0F masks the lower 4 bits
+        return piece == Constants.WhiteKnight || piece == Constants.BlackKnight;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsBishop(this uint move)
     {
-        return move.GetMovedPiece() is Constants.WhiteBishop or Constants.BlackBishop;
+        uint piece = move & 0x0F; // 0x0F masks the lower 4 bits
+        return piece == Constants.WhiteBishop || piece == Constants.BlackBishop;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsQueen(this uint move)
     {
-        return move.GetMovedPiece() is Constants.WhiteQueen or Constants.BlackQueen;
+        uint piece = move & 0x0F; // 0x0F masks the lower 4 bits
+        return piece == Constants.WhiteQueen || piece == Constants.BlackQueen;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsKing(this uint move)
     {
-        return move.GetMovedPiece() is Constants.WhiteKing or Constants.BlackKing;
+        uint piece = move & 0x0F; // 0x0F masks the lower 4 bits
+        return piece == Constants.WhiteKing || piece == Constants.BlackKing;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsEnPassant(this uint move)
     {
-        return BitFieldExtract(move, 20, 4) == Constants.EnPassant;
+        return ((move >> 20) & 0x0F) == Constants.EnPassant;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsCastle(this uint move)
     {
-        return BitFieldExtract(move, 20, 4) == Constants.Castle;
+        return ((move >> 20) & 0x0F) == Constants.Castle;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsPromotion(this uint move)
     {
-        return BitFieldExtract(move, 20, 4) >= 4;
+        return ((move >> 20) & 0x0F) >= 4;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsRookPromotion(this uint move)
     {
-        return BitFieldExtract(move, 20, 4) == Constants.PawnRookPromotion;
+        return ((move >> 20) & 0x0F) == Constants.PawnRookPromotion;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsKnightPromotion(this uint move)
     {
-        return BitFieldExtract(move, 20, 4) == Constants.PawnKnightPromotion;
+        return ((move >> 20) & 0x0F) == Constants.PawnKnightPromotion;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsBishopPromotion(this uint move)
     {
-        return BitFieldExtract(move, 20, 4) == Constants.PawnBishopPromotion;
+        return ((move >> 20) & 0x0F) == Constants.PawnBishopPromotion;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsQueenPromotion(this uint move)
     {
-        return BitFieldExtract(move, 20, 4) == Constants.PawnQueenPromotion;
+        return ((move >> 20) & 0x0F) == Constants.PawnQueenPromotion;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte GetFromSquare(this uint move)
     {
-        return BitFieldExtract(move, 4, 6);
+        return (byte)((move >> 4) & 0x3F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte GetToSquare(this uint move)
     {
-        return BitFieldExtract(move, 10, 6);
+        return (byte)((move >> 10) & 0x3F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte GetCapturedPiece(this uint move)
     {
-        return BitFieldExtract(move, 16, 4);
+        return (byte)((move >> 16) & 0x0F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte GetMoveType(this uint move)
     {
-        return BitFieldExtract(move, 20, 4);
+        return (byte)((move >> 20) & 0x0F);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -224,6 +217,7 @@ public static class MoveExtensions
                       (moveType << 20));
     }
 
+    private const int whiteEnpassantOffset = 5 * 8;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint EncodeWhiteEnpassantMove(
         byte fromSquare,
@@ -231,10 +225,12 @@ public static class MoveExtensions
     {
         return (uint)(Constants.WhitePawn |
                       (fromSquare << 4) |
-                      ((5 * 8 + enpassantFile) << 10) |
+                      ((whiteEnpassantOffset + enpassantFile) << 10) |
                       (Constants.BlackPawn << 16) |
                       (Constants.EnPassant << 20));
     }
+
+    private const int blackEnpassantOffset = 2 * 8;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint EncodeBlackEnpassantMove(
@@ -243,7 +239,7 @@ public static class MoveExtensions
     {
         return (uint)(Constants.BlackPawn |
                       (fromSquare << 4) |
-                      ((2 * 8 + enpassantFile) << 10) |
+                      ((blackEnpassantOffset + enpassantFile) << 10) |
                       (Constants.WhitePawn << 16) |
                       (Constants.EnPassant << 20));
     }
@@ -262,18 +258,19 @@ public static class MoveExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsReset(this uint move)
     {
-        return move.IsCapture() || move.GetMovedPiece() is Constants.WhitePawn or Constants.BlackPawn;
+        return move.IsCapture() || move.IsPawn();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsCapture(this uint move)
     {
-        return move.GetCapturedPiece() != Constants.None;
+        return ((move >> 16) & 0x0F) != Constants.None;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsQuiet(this uint move)
     {
-        return move.GetCapturedPiece() == Constants.None && BitFieldExtract(move, 20, 4) < 4;
+        // Not a capture or promotion
+        return ((move >> 16) & 0x0F) == Constants.None && ((move >> 20) & 0x0F) < 4;
     }
 }

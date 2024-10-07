@@ -28,28 +28,18 @@ public static unsafe class AttackTables
 
     public static readonly ulong* LineBitBoards;
 
-    public static ulong* AllocateULong(int count)
-    {
-        const nuint alignment = 64;
-
-        var block = NativeMemory.AlignedAlloc(sizeof(ulong) * (nuint)count, alignment);
-        NativeMemory.Clear(block, sizeof(ulong) * (nuint)count);
-
-        return (ulong*)block;
-    }
-
     static AttackTables()
     {
-        PextAttacks = AllocateULong(5248 + 102400);
-        BishopPextOffset = AllocateULong(64);
-        RookPextOffset = AllocateULong(64);
-        KnightAttackTable = AllocateULong(64);
-        KingAttackTable = AllocateULong(64);
-        WhitePawnAttackTable = AllocateULong(64);
-        BlackPawnAttackTable = AllocateULong(64);
-        RookAttackMasks = AllocateULong(64);
-        BishopAttackMasks = AllocateULong(64);
-        LineBitBoards = AllocateULong(64 * 64);
+        PextAttacks = MemoryHelpers.Allocate<ulong>(5248 + 102400);
+        BishopPextOffset = MemoryHelpers.Allocate<ulong>(64);
+        RookPextOffset = MemoryHelpers.Allocate<ulong>(64);
+        KnightAttackTable = MemoryHelpers.Allocate<ulong>(64);
+        KingAttackTable = MemoryHelpers.Allocate<ulong>(64);
+        WhitePawnAttackTable = MemoryHelpers.Allocate<ulong>(64);
+        BlackPawnAttackTable = MemoryHelpers.Allocate<ulong>(64);
+        RookAttackMasks = MemoryHelpers.Allocate<ulong>(64);
+        BishopAttackMasks = MemoryHelpers.Allocate<ulong>(64);
+        LineBitBoards = MemoryHelpers.Allocate<ulong>(64 * 64);
         var rand = Random.Shared;
         for (var i = 0; i < 64; i++)
         {
@@ -661,14 +651,15 @@ public static unsafe class AttackTables
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong PextRookAttacks(ulong occupation, int square)
     {
-        return PextAttacks[RookPextOffset[square] + Bmi2.X64.ParallelBitExtract(occupation, RookAttackMasks[square])];
+        return *(PextAttacks +
+                 *(RookPextOffset + square) + Bmi2.X64.ParallelBitExtract(occupation, *(RookAttackMasks + square)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong PextBishopAttacks(ulong occupation, int square)
     {
-        return PextAttacks[
-            BishopPextOffset[square] + Bmi2.X64.ParallelBitExtract(occupation, BishopAttackMasks[square])];
+        return *(PextAttacks +
+                 *(BishopPextOffset + square) + Bmi2.X64.ParallelBitExtract(occupation, *(BishopAttackMasks + square)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -678,9 +669,9 @@ public static unsafe class AttackTables
                 (board.Occupancy[Constants.WhiteBishop] | board.Occupancy[Constants.WhiteQueen])) != 0 ||
                (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.WhiteRook] | board.Occupancy[Constants.WhiteQueen])) !=
                0 ||
-               (KnightAttackTable[index] & board.Occupancy[Constants.WhiteKnight]) != 0 ||
-               (BlackPawnAttackTable[index] & board.Occupancy[Constants.WhitePawn]) != 0 ||
-               (KingAttackTable[index] & board.Occupancy[Constants.WhiteKing]) != 0;
+               (*(KnightAttackTable + index) & board.Occupancy[Constants.WhiteKnight]) != 0 ||
+               (*(BlackPawnAttackTable + index) & board.Occupancy[Constants.WhitePawn]) != 0 ||
+               (*(KingAttackTable+index) & board.Occupancy[Constants.WhiteKing]) != 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -690,8 +681,8 @@ public static unsafe class AttackTables
                 (board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.BlackQueen])) != 0 ||
                (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.BlackQueen])) !=
                0 ||
-               (KnightAttackTable[index] & board.Occupancy[Constants.BlackKnight]) != 0 ||
-               (WhitePawnAttackTable[index] & board.Occupancy[Constants.BlackPawn]) != 0 ||
-               (KingAttackTable[index] & board.Occupancy[Constants.BlackKing]) != 0;
+               (*(KnightAttackTable + index) & board.Occupancy[Constants.BlackKnight]) != 0 ||
+               (*(WhitePawnAttackTable + index) & board.Occupancy[Constants.BlackPawn]) != 0 ||
+               (*(KingAttackTable + index) & board.Occupancy[Constants.BlackKing]) != 0;
     }
 }

@@ -23,6 +23,13 @@ public static class SquareHelpers
     {
         // File is the last 3 bits of the square index
         return (byte)(square & 7); // Equivalent to square % 8
+    }   
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint GetFileIndex(this uint square)
+    {
+        // File is the last 3 bits of the square index
+        return (square & 7); // Equivalent to square % 8
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -37,6 +44,20 @@ public static class SquareHelpers
         // Rank is obtained by shifting right by 3 bits
         return (byte)(square >> 3); // Equivalent to square / 8
     }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint GetRankIndex(this uint square)
+    {
+        // Rank is obtained by shifting right by 3 bits
+        return square >> 3; // Equivalent to square / 8
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ushort GetRankIndex(this ushort square)
+    {
+        // Rank is obtained by shifting right by 3 bits
+        return (ushort)(square >> 3); // Equivalent to square / 8
+    }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsSecondRank(this byte rankIndex)

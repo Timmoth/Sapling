@@ -23,25 +23,25 @@ public class StaticExchangeTests
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
 
         var moves = new List<uint>();
-        board.Data.GenerateLegalMoves(moves, true);
+        board.GenerateLegalMoves(moves, true);
         var move = Assert.Single(moves.Where(m => m.ToUciMoveName() == uciMove));
 
         var occupancyBitBoards = stackalloc ulong[8]
         {
-            board.Data.Occupancy[Constants.WhitePieces],
-            board.Data.Occupancy[Constants.BlackPieces],
-            board.Data.Occupancy[Constants.BlackPawn] | board.Data.Occupancy[Constants.WhitePawn],
-            board.Data.Occupancy[Constants.BlackKnight] | board.Data.Occupancy[Constants.WhiteKnight],
-            board.Data.Occupancy[Constants.BlackBishop] | board.Data.Occupancy[Constants.WhiteBishop],
-            board.Data.Occupancy[Constants.BlackRook] | board.Data.Occupancy[Constants.WhiteRook],
-            board.Data.Occupancy[Constants.BlackQueen] | board.Data.Occupancy[Constants.WhiteQueen],
-            board.Data.Occupancy[Constants.BlackKing] | board.Data.Occupancy[Constants.WhiteKing]
+            board.Occupancy[Constants.WhitePieces],
+            board.Occupancy[Constants.BlackPieces],
+            board.Occupancy[Constants.BlackPawn] | board.Occupancy[Constants.WhitePawn],
+            board.Occupancy[Constants.BlackKnight] | board.Occupancy[Constants.WhiteKnight],
+            board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.WhiteBishop],
+            board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.WhiteRook],
+            board.Occupancy[Constants.BlackQueen] | board.Occupancy[Constants.WhiteQueen],
+            board.Occupancy[Constants.BlackKing] | board.Occupancy[Constants.WhiteKing]
         };
 
         var captures = stackalloc short[32];
 
         // When
-        var seeScore = board.Data.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
+        var seeScore = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
 
         // Then
 
