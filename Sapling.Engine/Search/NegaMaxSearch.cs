@@ -139,11 +139,6 @@ public partial class Searcher
                     if (nullMoveScore >= beta)
                     {
                         // Beta cutoff
-
-                        // Cache in Transposition table
-                        //ttEntry.Set(pHash, (byte)depth,
-                        //    depthFromRoot,
-                        //    beta, TranspositionTableFlag.Beta);
                         return beta;
                     }
                 }
