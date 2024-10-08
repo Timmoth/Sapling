@@ -6,67 +6,23 @@ using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.DataGen;
 
-public class DataGenerator
+public class DataGeneratorStats
 {
-    public const int Iterations = 10000;
-    public const int MaxGames = 20;
-    public const int MaxTurnCount = 500;
-    public static BoardStateData InitialBoard = default;
-    private static readonly object OutputLock = new();
+    public BoardStateData InitialBoard = default;
+    public readonly object OutputLock = new();
     public int Draws;
     public int Looses;
     public ulong Positions;
     public int Wins;
-
-    public void Start()
+    public Stopwatch Stopwatch = Stopwatch.StartNew();
+    public BinaryWriter Writer;
+    public DataGeneratorStats(BinaryWriter writer)
     {
-#if AVX512
-            Console.WriteLine("Using Avx-512");
-#else
-        Console.WriteLine("Using Avx-256");
-#endif
-
-        using var fileStream = new FileStream("./out.bullet", FileMode.Append, FileAccess.Write);
-        using var writer = new BinaryWriter(fileStream);
-
-        var searchers = new List<ParallelSearcher>();
-        var threads = Environment.ProcessorCount;
-        var transpositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
-
-        for (var i = 0; i < threads; i++)
-        {
-            searchers.Add(new ParallelSearcher(transpositionSize));
-        }
-
+        Writer = writer;
         InitialBoard.ResetToFen(Constants.InitialState);
-
-        var stopwatch = Stopwatch.StartNew();
-
-        Parallel.For(0, searchers.Count,
-            j =>
-            {
-                for (var i = 0; i < Iterations; i++)
-                {
-                    RunIteration(writer, searchers[j]);
-
-                    if (j != 0)
-                    {
-                        continue;
-                    }
-
-                    Console.WriteLine(
-                        $"Wins: {Wins} Draws: {Draws} Loses: {Looses} Games: {Wins + Draws + Looses} duration: {stopwatch.Elapsed} Positions: {Positions.FormatBigNumber()} {(Positions / stopwatch.Elapsed.TotalSeconds).FormatBigNumber()}/s");
-
-                    lock (OutputLock)
-                    {
-                        writer.Flush();
-                        fileStream.Flush(true);
-                    }
-                }
-            });
     }
 
-    private unsafe void Output(BinaryWriter writer, Span<BulletFormat> positions, int positionCount, byte result)
+    public unsafe void Output(Span<BulletFormat> positions, int positionCount, byte result)
     {
         // Calculate the total size needed to store all BulletFormat structures
         var totalSize = positionCount * BulletFormat.Size;
@@ -97,8 +53,54 @@ public class DataGenerator
             }
 
             // Write the entire buffer to the writer
-            writer.Write(buffer);
+            Writer.Write(buffer);
         }
+    }
+
+
+    public void Output()
+    {
+        lock (OutputLock)
+        {
+            Writer.Flush();
+        }
+
+        var games = Wins + Draws + Looses;
+        Console.Clear();
+        Console.WriteLine(
+            $"{DateTime.Now:t} duration: {(int)Stopwatch.Elapsed.TotalHours:D2}:{Stopwatch.Elapsed.Minutes:D2} Wins: {(Wins * 100 / (float)games).RoundToSignificantFigures(3)}% Draws: {(Draws * 100 / (float)games).RoundToSignificantFigures(3)}% Loses: {(Looses * 100 / (float)games).RoundToSignificantFigures(3)}% Games: {games.FormatBigNumber()} Positions: {Positions.FormatBigNumber()} {(Positions / (float)Stopwatch.Elapsed.TotalSeconds).RoundToSignificantFigures(3).FormatBigNumber()}/s");
+    }
+}
+public class DataGenerator
+{
+    public const int MaxTurnCount = 500;
+
+    public bool Cancelled = false;
+    public void Start()
+    {
+        Cancelled = false;
+#if AVX512
+            Console.WriteLine("Using Avx-512");
+#else
+        Console.WriteLine("Using Avx-256");
+#endif
+
+        using var fileStream = new FileStream("./out.bullet", FileMode.Append, FileAccess.Write);
+        using var writer = new BinaryWriter(fileStream);
+        var stats = new DataGeneratorStats(writer);
+
+        var threads = Environment.ProcessorCount;
+        Parallel.For(0, threads, new ParallelOptions()
+        {
+            MaxDegreeOfParallelism = threads
+        },
+        j =>
+        {
+            RunWorker(stats, j == 0);
+        });
+
+        stats.Output();
+        Console.WriteLine("Datagen finished");
     }
 
     static bool IsAdjudicatedDraw(GameState gameState, int drawScoreCount)
@@ -106,99 +108,123 @@ public class DataGenerator
         return gameState.Board.TurnCount >= 60 && gameState.Board.HalfMoveClock >= 20 && drawScoreCount >= 4;
     }
 
-    private void RunIteration(BinaryWriter writer, ParallelSearcher searcher)
+    private unsafe void RunWorker(DataGeneratorStats stats, bool mainThread)
     {
-        try
+        var ttSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
+        var transpositionTable = MemoryHelpers.Allocate<Transposition>(ttSize);
+        var searcher = new Searcher(transpositionTable, ttSize);
+
+        BoardStateData boardState = default;
+        stats.InitialBoard.CloneTo(ref boardState);
+
+        Span<bool> turns = stackalloc bool[MaxTurnCount];
+        Span<BulletFormat> dataGenPositions = stackalloc BulletFormat[MaxTurnCount];
+        var gameState = new GameState(boardState);
+        var initialLegalMoves = gameState.LegalMoves.ToArray();
+        var gameNumber = 0;
+        while (!Cancelled)
         {
-
-            BoardStateData boardState = default;
-            InitialBoard.CloneTo(ref boardState);
-
-            Span<bool> turns = stackalloc bool[MaxTurnCount];
-            Span<BulletFormat> dataGenPositions = stackalloc BulletFormat[MaxTurnCount];
-            var gameState = new GameState(boardState);
-            var initialLegalMoves = gameState.LegalMoves.ToArray();
-
-            for (var i = 0; i < MaxGames; i++)
+            try
             {
-                var randomMoveCount = 0;
-                var positions = 0;
-                var adjudicationCounter = 0;
-                var score = 0;
-                var drawScoreCount = 0;
-                while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount && !IsAdjudicatedDraw(gameState, drawScoreCount))
-                {
-                    uint move = default;
-                    if (randomMoveCount <= 8)
-                    {
-                        move = gameState.LegalMoves[Random.Shared.Next(0, gameState.LegalMoves.Count)];
-                        randomMoveCount++;
-                    }
-                    else
-                    {
-                        var (pv, _, s, _, _) = searcher.NodeBoundSearch(gameState, 6500, 60);
-                        move = pv[0];
-                        score = s;
-
-                        if (score == 0)
-                        {
-                            drawScoreCount++;
-                        }
-                        else
-                        {
-                            drawScoreCount = 0;
-                        }
-
-                        if (move.IsQuiet() && !gameState.Board.InCheck)
-                        {
-                            turns[positions] = gameState.Board.WhiteToMove;
-                            dataGenPositions[positions] = BulletFormat.Pack(ref gameState.Board, (short)score, 0);
-                            positions++;
-                        }
-                    }
-
-                    gameState.Apply(move);
-
-                    if (Math.Abs(score) >= 2000)
-                    {
-                        if (++adjudicationCounter > 4 && score > 0)
-                        {
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        adjudicationCounter = 0;
-                    }
-                }
-
-                byte result;
-                if (adjudicationCounter > 4)
-                {
-                    result = boardState.WhiteToMove ? (byte)1 : (byte)2;
-                }
-                else if (IsAdjudicatedDraw(gameState, drawScoreCount))
-                {
-                    result = 0;
-                }
-                else
-                {
-                    result = gameState.WinDrawLoose();
-                }
-
+                var (result, positions) = RunGame(gameState, searcher, turns, dataGenPositions);
                 for (var index = 0; index < positions; index++)
                 {
                     dataGenPositions[index].UpdateWdl(turns[index], result);
                 }
 
-                Output(writer, dataGenPositions, positions, result);
+                stats.Output(dataGenPositions, positions, result);
 
-                gameState.ResetTo(ref InitialBoard, initialLegalMoves);
+                gameState.ResetTo(ref stats.InitialBoard, initialLegalMoves);
+
+                if (mainThread && (gameNumber % 10 == 0 || Cancelled))
+                {
+                    stats.Output();
+                }
+
+                gameNumber++;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
             }
         }
-        catch (Exception ex)
+
+    }
+
+    public (byte result, int positions) RunGame(GameState gameState, Searcher searcher, Span<bool> turns, Span<BulletFormat> dataGenPositions)
+    {
+        var randomMoveCount = 0;
+        var positions = 0;
+        var adjudicationCounter = 0;
+        var score = 0;
+        var drawScoreCount = 0;
+        while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount && !IsAdjudicatedDraw(gameState, drawScoreCount))
         {
-            Console.WriteLine(ex);
+            uint move;
+            if (randomMoveCount <= 8)
+            {
+                move = gameState.LegalMoves[Random.Shared.Next(0, gameState.LegalMoves.Count)];
+                randomMoveCount++;
+            }
+            else
+            {
+                var (pv, _, s, _) = searcher.Search(gameState, nodeLimit: 6500, depthLimit: 60, writeInfo: false);
+                move = pv[0];
+                score = s;
+
+                if (score == 0)
+                {
+                    drawScoreCount++;
+                }
+                else
+                {
+                    drawScoreCount = 0;
+                }
+
+                if (move.IsQuiet() && !gameState.Board.InCheck)
+                {
+                    turns[positions] = gameState.Board.WhiteToMove;
+                    dataGenPositions[positions] = BulletFormat.Pack(ref gameState.Board, (short)score, 0);
+                    positions++;
+                }
+            }
+
+            gameState.Apply(move);
+
+            if (Math.Abs(score) >= 2500)
+            {
+                if (++adjudicationCounter > 4)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                adjudicationCounter = 0;
+            }
         }
+
+        byte result;
+        if (adjudicationCounter > 4)
+        {
+            if (gameState.Board.WhiteToMove)
+            {
+                result = score > 0 ? (byte)1 : (byte)2;
+            }
+            else
+            {
+                result = score > 0 ? (byte)2 : (byte)1;
+            }
+        }
+        else if (IsAdjudicatedDraw(gameState, drawScoreCount))
+        {
+            result = 0;
+        }
+        else
+        {
+            result = gameState.WinDrawLoose();
+        }
+
+        return (result, positions);
     }
 }
