@@ -5,7 +5,7 @@ ifndef EXE
 endif
 
 # Set a default output directory if not already defined
-OUTPUT_DIR ?= ./
+OUTPUT_DIR ?= ./artifacts
 
 # Detect OS and Architecture
 UNAME_S := $(shell uname -s)
