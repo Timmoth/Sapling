@@ -1,0 +1,9 @@
+git clone https://github.com/AndyGrant/OpenBench.git
+cd OpenBench
+python -m pip install --upgrade pip
+python -m pip install virtualenv
+python -m venv venv
+python -m pip install -r Client/requirements.txt
+venv/Scripts/activate
+cd ./Client
+python client.py -U <username> -P <password> -S <url> -T <threads> -N 1 -I <workername>
