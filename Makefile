@@ -4,6 +4,9 @@ ifndef EXE
 	EXE = Sapling
 endif
 
+# Set a default output directory if not already defined
+OUTPUT_DIR ?= ./
+
 # Detect OS and Architecture
 UNAME_S := $(shell uname -s)
 UNAME_P := $(shell uname -p)
@@ -28,9 +31,6 @@ else
 	SHELL := /bin/sh
 	MKDIR_CMD := mkdir -p $(OUTPUT_DIR)
 endif
-
-# Default output directory
-OUTPUT_DIR := ./
 
 # Publish target
 publish:
