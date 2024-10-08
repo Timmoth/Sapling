@@ -20,6 +20,8 @@ public class UciEngine
     private ParallelSearcher _parallelSearcher;
     private DateTime _dt = DateTime.Now;
     private GameState _gameState = GameState.InitialState();
+    private readonly DataGenerator _dataGen = new();
+
     private bool _ponderEnabled = false;
     private int _threadCount = 1;
     private readonly string _version;
@@ -48,13 +50,13 @@ public class UciEngine
         switch (tokens[2].ToLower())
         {
             case "ponder":
-            {
-                if (tokens[3] == "value" && bool.TryParse(tokens[4], out var value))
                 {
-                    _ponderEnabled = value;
+                    if (tokens[3] == "value" && bool.TryParse(tokens[4], out var value))
+                    {
+                        _ponderEnabled = value;
+                    }
+                    break;
                 }
-                break;
-            }
 
             case "threads":
                 if (tokens[3] == "value" && int.TryParse(tokens[4], out var searchThreads))
@@ -66,16 +68,16 @@ public class UciEngine
 
                 break;
             case "hash":
-            {
-                if (tokens[3] == "value" && int.TryParse(tokens[4], out var transpositionSize))
                 {
-                    TranspositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
-                    _parallelSearcher = new(TranspositionSize);
-                    _parallelSearcher.SetThreads(_threadCount);
-                    LogToFile($"[Debug] Set Transposition Size '{TranspositionSize}'");
+                    if (tokens[3] == "value" && int.TryParse(tokens[4], out var transpositionSize))
+                    {
+                        TranspositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
+                        _parallelSearcher = new(TranspositionSize);
+                        _parallelSearcher.SetThreads(_threadCount);
+                        LogToFile($"[Debug] Set Transposition Size '{TranspositionSize}'");
+                    }
+                    break;
                 }
-                break;
-            }
         }
     }
 
@@ -118,6 +120,7 @@ public class UciEngine
                 break;
             case "stop":
                 _parallelSearcher.Stop();
+                _dataGen.Cancelled = true;
                 break;
             case "setoption":
                 SetOption(tokens);
@@ -128,8 +131,7 @@ public class UciEngine
                 Console.WriteLine(_gameState.CreateDiagram());
                 break;
             case "datagen":
-                var dataGen = new DataGenerator();
-                dataGen.Start();
+                _dataGen.Start();
                 break;
             case "bench":
                 Bench.Run();

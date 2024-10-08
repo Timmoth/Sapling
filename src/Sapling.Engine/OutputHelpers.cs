@@ -523,7 +523,37 @@ public static class OutputHelpers
         return number.ToString();
     }
 
+    public static string FormatBigNumber(this float number)
+    {
+        if (number >= 1000000000)
+        {
+            return (number / 1000000000D).ToString("0.#") + "b";
+        }
+
+        if (number >= 1000000)
+        {
+            return (number / 1000000D).ToString("0.#") + "m";
+        }
+
+        if (number >= 1000)
+        {
+            return (number / 1000D).ToString("0.#") + "k";
+        }
+
+        return number.ToString();
+    }
     public static float RoundToSignificantFigures(this double number, int significantFigures)
+    {
+        if (number == 0)
+        {
+            return 0;
+        }
+
+        var scale = Math.Pow(10, Math.Floor(Math.Log10(Math.Abs(number))) + 1);
+        return (float)(scale * Math.Round(number / scale, significantFigures));
+    }
+
+    public static float RoundToSignificantFigures(this float number, int significantFigures)
     {
         if (number == 0)
         {
