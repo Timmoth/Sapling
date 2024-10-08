@@ -100,7 +100,14 @@ public class UciEngine
 #if OpenBench
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)
                 {
-                    Respond($"option name {spsaParameters.Name} type spin default {spsaParameters.DefaultValue} min {spsaParameters.MinValue} max {spsaParameters.MaxValue}");
+                    if (spsaParameters.Type == "int")
+                    {
+                        Respond($"option name {spsaParameters.Name} type spin default {spsaParameters.DefaultValue} min {spsaParameters.MinValue} max {spsaParameters.MaxValue}");
+                    }
+                    else
+                    {
+                        Respond($"option name {spsaParameters.Name} type string default {spsaParameters.DefaultValue}");
+                    }
 
                 }
 #endif

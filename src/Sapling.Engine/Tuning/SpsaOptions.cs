@@ -11,6 +11,7 @@ namespace Sapling.Engine.Tuning
         public string MaxValue;
         public FieldInfo FieldHandle;
     }
+
     [AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
     public sealed class SpsaMinValueAttribute : Attribute
     {
@@ -56,75 +57,93 @@ namespace Sapling.Engine.Tuning
         [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int NullMovePruningReductionB = 6;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int NullMovePruningReductionC = 5;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("400")]
+        [SpsaMinValue("0"), SpsaMaxValue("400")]
         public static int RazorMarginA = 83;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("400")]
+        [SpsaMinValue("0"), SpsaMaxValue("400")]
         public static int RazorMarginB = 386;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")] 
         public static int InternalIterativeDeepeningDepth = 5;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int LateMovePruningConstant = 8;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValue("0"), SpsaMaxValue("10"), SpsaIgnore()]
         public static int LateMoveReductionMinDepth = 3;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10")]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int LateMoveReductionMinMoves = 2;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static float LateMoveReductionInterestingA = 0.2f;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static float LateMoveReductionInterestingB = 3.3f;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static float LateMoveReductionA = 1.35f;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("10"), SpsaIgnore()]
+        [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static float LateMoveReductionB = 2.75f;
 
-        [SpsaMinValueAttribute("7000"), SpsaMaxValue("10000")]
+        [SpsaMinValue("7000"), SpsaMaxValue("10000")]
         public static int HistoryHeuristicMaxHistory = 9290;
 
-        [SpsaMinValueAttribute("500"), SpsaMaxValue("1000")]
+        [SpsaMinValue("500"), SpsaMaxValue("1000")]
         public static int HistoryHeuristicBonusMax = 532;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("100")]
+        [SpsaMinValue("0"), SpsaMaxValue("100")]
         public static int HistoryHeuristicBonusCoeff = 84;
 
-        [SpsaMinValueAttribute("500000"), SpsaMaxValue("10000000"), SpsaIgnore()]
-        public static int MoveOrderingWinningCaptureBias = 10_000_000;
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
+        public static int MoveOrderingBestMoveBias = 200_000;
 
-        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000"), SpsaIgnore()]
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
+        public static int MoveOrderingWinningCaptureBias = 100_000;
+
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
         public static int MoveOrderingLosingCaptureBias = 16_000;
 
-        [SpsaMinValueAttribute("70000"), SpsaMaxValue("700000"), SpsaIgnore()]
-        public static int MoveOrderingPromoteBias = 600_000;
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
+        public static int MoveOrderingPromoteBias = 60_000;
 
-        [SpsaMinValueAttribute("70000"), SpsaMaxValue("600000"), SpsaIgnore()]
-        public static int MoveOrderingKillerABias = 500_000;
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
+        public static int MoveOrderingKillerABias = 50_000;
 
-        [SpsaMinValueAttribute("20000"), SpsaMaxValue("80000"), SpsaIgnore()]
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
         public static int MoveOrderingCounterMoveBias = 65_000;
 
-        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000"), SpsaIgnore()]
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
         public static int InterestingNegaMaxMoveScore = 16_000;
 
-        [SpsaMinValueAttribute("10000"), SpsaMaxValue("30000"), SpsaIgnore()]
+        [SpsaMinValue("10000"), SpsaMaxValue("300000")]
         public static int InterestingQuiescenceMoveScore = 16_000;
 
-
-        [SpsaMinValueAttribute("100"), SpsaMaxValue("400")]
+        [SpsaMinValue("100"), SpsaMaxValue("400")]
         public static int ProbCutBetaMargin = 239;
 
-        [SpsaMinValueAttribute("0"), SpsaMaxValue("6")]
+        [SpsaMinValue("0"), SpsaMaxValue("6")]
         public static int ProbCutMinDepth = 5;
+
+        [SpsaMinValue("0"), SpsaMaxValue("100")]
+        public static int AsperationWindowA = 40;
+
+        [SpsaMinValue("50"), SpsaMaxValue("200")]
+        public static int AsperationWindowB = 100;
+
+        [SpsaMinValue("200"), SpsaMaxValue("500")]
+        public static int AsperationWindowC = 300;
+
+        [SpsaMinValue("500"), SpsaMaxValue("1500")]
+        public static int AsperationWindowD = 900;
+
+        [SpsaMinValue("2000"), SpsaMaxValue("3000")]
+        public static int AsperationWindowE = 2700;
+
     }
 
     public static class SpsaTuner
@@ -159,7 +178,7 @@ namespace Sapling.Engine.Tuning
                 var lr = double.Round(Math.Max(normalLearningRate, normalLearningRate * (0.50 / ss)), 4);
 
                 return
-                    $"{parameter.Name}, {parameter.Type}, {parameter.DefaultValue}, {parameter.MinValue}, {parameter.MaxValue}, {ss}, {lr}";
+                    $"{parameter.Name}, {parameter.Type}, {parameter.DefaultValue}, {ss}, {lr}";
             }
         }
 
@@ -188,7 +207,7 @@ namespace Sapling.Engine.Tuning
                 {
                     Name = field.Name,
                     DefaultValue = defaultValue,
-                    Type = field.FieldType.Name == nameof(Int32) ? "int" : "float",
+                    Type = field.FieldType.Name == nameof(Int32) ? "int" : "string",
                     MinValue = minValue,
                     MaxValue = maxValue,
                     FieldHandle = field

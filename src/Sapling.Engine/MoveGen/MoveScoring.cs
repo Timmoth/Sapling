@@ -57,7 +57,7 @@ public static class MoveScoring
 
         if (bestMove == move)
         {
-            return 100_000_000;
+            return SpsaOptions.MoveOrderingBestMoveBias;
         }
 
         // Prioritize high value capture with low value piece
@@ -106,7 +106,7 @@ public static class MoveScoring
 
         if (bestMove == move)
         {
-            return 100_000_000;
+            return SpsaOptions.MoveOrderingBestMoveBias;
         }
 
         // Prioritize high value capture with low value piece

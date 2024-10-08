@@ -7,3 +7,9 @@ python -m pip install -r Client/requirements.txt
 venv/Scripts/activate
 cd ./Client
 python client.py -U <username> -P <password> -S <url> -T <threads> -N 1 -I <workername>
+
+sudo apt-get install -y dotnet-sdk-8.0
+apt-get install git
+apt-get install python3-pip
+apt-get install python3-venv
+source ./venv/bin/activate

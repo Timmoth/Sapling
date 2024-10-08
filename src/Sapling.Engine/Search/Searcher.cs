@@ -4,6 +4,7 @@ using System.Text;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
+using Sapling.Engine.Tuning;
 
 namespace Sapling.Engine.Search;
 
@@ -11,7 +12,6 @@ public unsafe partial class Searcher
 {
     private const int _pvTableLength = Constants.MaxSearchDepth * (Constants.MaxSearchDepth + 1) / 2;
     private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
-    private static readonly int[] AsperationWindows = { 40, 100, 300, 900, 2700, Constants.MaxScore };
     private readonly uint* _pVTable;
     public readonly Transposition* Transpositions;
     public readonly uint TtMask;
@@ -194,6 +194,19 @@ public unsafe partial class Searcher
         return moveList;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetAsperationWindow(int index)
+    {
+        return index switch
+        {
+            0 => SpsaOptions.AsperationWindowA,
+            1 => SpsaOptions.AsperationWindowB,
+            2 => SpsaOptions.AsperationWindowC,
+            3 => SpsaOptions.AsperationWindowD,
+            4 => SpsaOptions.AsperationWindowE,
+            _ => Constants.MaxScore
+        };
+    }
 
     public (List<uint> pv, int depthSearched, int score, int nodes) Search(GameState inputBoard, int nodeLimit = 0,
         int depthLimit = 0, bool writeInfo = false)
@@ -243,12 +256,8 @@ public unsafe partial class Searcher
             var betaWindowIndex = 0;
             do
             {
-                alpha = alphaWindowIndex >= 5
-                    ? Constants.MinScore
-                    : lastIterationEval - AsperationWindows[alphaWindowIndex];
-                beta = betaWindowIndex >= 5
-                    ? Constants.MaxScore
-                    : lastIterationEval + AsperationWindows[betaWindowIndex];
+                alpha = lastIterationEval - GetAsperationWindow(alphaWindowIndex);
+                beta = lastIterationEval + GetAsperationWindow(betaWindowIndex);
 
                 var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
 
