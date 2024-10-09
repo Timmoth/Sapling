@@ -60,21 +60,23 @@ public unsafe class ParallelSearcher
     {
         var newSearchId = Guid.NewGuid();
         _prevSearchId = newSearchId;
-
-        _ = Task.Delay(thinkTime).ContinueWith(t =>
+        if (thinkTime > 0)
         {
-            if (_prevSearchId != newSearchId)
+            _ = Task.Delay(thinkTime).ContinueWith(t =>
             {
-                // Prevent a previous searches timeout cancelling a new search
-                return;
-            }
+                if (_prevSearchId != newSearchId)
+                {
+                    // Prevent a previous searches timeout cancelling a new search
+                    return;
+                }
 
-            // Stop all searchers once think time has been reached
-            foreach (var searcher in Searchers)
-            {
-                searcher.Stop();
-            }
-        });
+                // Stop all searchers once think time has been reached
+                foreach (var searcher in Searchers)
+                {
+                    searcher.Stop();
+                }
+            });
+        }
 
         var start = DateTime.Now;
 

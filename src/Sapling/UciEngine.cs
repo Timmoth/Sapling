@@ -269,10 +269,9 @@ public class UciEngine
                 incrementBlackMs, 30);
         }
 
-        if (thinkTime is <= 0 or >= 30_000)
+        if (thinkTime is <= 0)
         {
-            // Limit think time to 30 seconds
-            thinkTime = 30_000;
+            thinkTime = 0;
         }
 
         OnMoveChosen(_parallelSearcher.TimeBoundSearch(_gameState, thinkTime));
