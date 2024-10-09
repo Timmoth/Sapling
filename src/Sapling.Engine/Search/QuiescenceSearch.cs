@@ -18,7 +18,7 @@ public partial class Searcher
             // Search was cancelled
             return 0;
         }
- 
+
 
         if (depthFromRoot >= Constants.MaxSearchDepth)
         {
@@ -123,7 +123,7 @@ public partial class Searcher
 
         for (var i = 0; i < psuedoMoveCount; ++i)
         {
-            *(scores + i) = boardState->ScoreMoveQuiescence(occupancyBitBoards, captures, *(moves + i), ttBestMove);
+            *(scores + i) = boardState->ScoreMoveQuiescence(History, occupancyBitBoards, captures, *(moves + i), ttBestMove);
         }
 
         var evaluationBound = TranspositionTableFlag.Alpha;
@@ -264,7 +264,7 @@ public partial class Searcher
             NativeMemory.Clear(_pVTable + target, bytesToClear);
             return;
         }
-        
+
         Unsafe.CopyBlock(_pVTable + target, _pVTable + source, (uint)(moveCountToCopy * sizeof(uint)));
     }
 }

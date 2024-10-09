@@ -65,13 +65,13 @@ public static class MoveScoring
         {
             if (move.IsEnPassant())
             {
-                return SpsaOptions.MoveOrderingWinningCaptureBias;
+                return SpsaOptions.MoveOrderingEnPassantMoveBias;
             }
 
             var captureDelta = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
 
             return (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
-                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingPromoteBias : 0);
+                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
         }
 
         if (move.IsPromotion())
@@ -93,7 +93,7 @@ public static class MoveScoring
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe int ScoreMoveQuiescence(this ref BoardStateData board, ulong* occupancyBitBoards, short* captures,
+    public static unsafe int ScoreMoveQuiescence(this ref BoardStateData board, int* history, ulong* occupancyBitBoards, short* captures,
         uint move,
         uint bestMove)
     {
@@ -114,13 +114,13 @@ public static class MoveScoring
         {
             if (move.IsEnPassant())
             {
-                return SpsaOptions.MoveOrderingWinningCaptureBias;
+                return SpsaOptions.MoveOrderingEnPassantMoveBias;
             }
 
             var captureDelta = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
 
             return (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
-                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingPromoteBias : 0);
+                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
         }
 
         if (move.IsPromotion())
@@ -128,6 +128,6 @@ public static class MoveScoring
             return SpsaOptions.MoveOrderingPromoteBias;
         }
 
-        return 0;
+        return *(history + move.GetCounterMoveIndex());
     }
 }

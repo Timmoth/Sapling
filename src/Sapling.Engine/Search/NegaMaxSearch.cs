@@ -54,8 +54,8 @@ public partial class Searcher
                 return alpha;
             }
 
-            if (currentBoardState->HalfMoveClock >= 100 || 
-                currentBoardState->InsufficientMatingMaterial() || 
+            if (currentBoardState->HalfMoveClock >= 100 ||
+                currentBoardState->InsufficientMatingMaterial() ||
                 RepetitionDetector.IsThreefoldRepetition(currentBoardState->TurnCount, currentBoardState->HalfMoveClock, HashHistory))
             {
                 // Detect draw by Fifty move counter or repetition
@@ -123,7 +123,7 @@ public partial class Searcher
                     (transpositionType != TranspositionTableFlag.Alpha || transpositionEvaluation >= beta) &&
                     depth > SpsaOptions.NullMovePruningDepth && currentBoardState->HasMajorPieces())
                 {
-                    var reduction = Math.Max(0, (depth - SpsaOptions.NullMovePruningReductionA) / SpsaOptions.NullMovePruningReductionB + SpsaOptions.NullMovePruningReductionC);
+                    var reduction = (int)Math.Max(0, (depth - SpsaOptions.NullMovePruningReductionA) / SpsaOptions.NullMovePruningReductionB + SpsaOptions.NullMovePruningReductionC);
 
                     Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
 
@@ -185,7 +185,7 @@ public partial class Searcher
         }
 
         var whiteToMove = currentBoardState->WhiteToMove;
- 
+
         var moves = stackalloc uint[218];
 
         // Generate pseudo legal moves from this position
