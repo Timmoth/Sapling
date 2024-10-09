@@ -79,16 +79,16 @@ namespace Sapling.Engine.Tuning
         public static int LateMoveReductionMinMoves = 2;
 
         [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
-        public static float LateMoveReductionInterestingA = 0.2f;
+        public static float LateMoveReductionInterestingA = 0.188786f;
 
         [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
-        public static float LateMoveReductionInterestingB = 3.3f;
+        public static float LateMoveReductionInterestingB = 2.4956496f;
 
         [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
-        public static float LateMoveReductionA = 1.35f;
+        public static float LateMoveReductionA = 1.315961f;
 
         [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
-        public static float LateMoveReductionB = 2.75f;
+        public static float LateMoveReductionB = 2.7831153f;
 
         [SpsaMinValue("7000"), SpsaMaxValue("10000")]
         public static int HistoryHeuristicMaxHistory = 9550;
