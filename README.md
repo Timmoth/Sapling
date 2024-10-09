@@ -21,7 +21,19 @@ You can browse all windows, linux or mac releases [here](https://github.com/Timm
 
 ## Running from source
 ```bash
-dotnet run --project .\Sapling\Sapling.csproj --configuration Release
+cd ./scripts
+
+// Windows
+./build_windows_avx256.bat
+./build_windows_avx512.bat
+
+// Linux
+./build_linux_avx256.sh
+./build_linux_avx512.sh
+
+// Osx
+./build_osx_avx256.sh
+./build_osx_avx512.sh
 ```
 
 ## Commands

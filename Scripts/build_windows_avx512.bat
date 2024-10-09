@@ -1,0 +1,1 @@
+dotnet publish ../src/Sapling/Sapling.csproj -c Release --runtime win-x64 --self-contained -p:PublishSingleFile=true -p:DeterministicBuild=true -o ./ -p:ExecutableName=Sapling_win_avx512 -p:DefineConstants="AVX512"
