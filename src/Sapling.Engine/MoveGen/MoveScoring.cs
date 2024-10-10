@@ -1,6 +1,4 @@
 ﻿using System.Runtime.CompilerServices;
-using Sapling.Engine.Evaluation;
-using Sapling.Engine.Tuning;
 
 namespace Sapling.Engine.MoveGen;
 
@@ -34,100 +32,5 @@ public static class MoveScoring
     public static int GetMateDistance(int score)
     {
         return (Constants.ImmediateMateScore - Math.Abs(score) + 1) / 2;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe int ScoreMove(this ref BoardStateData board, int* history, ulong* occupancyBitBoards,
-        short* captures,
-        uint move,
-        uint killerA,
-        uint bestMove,
-        uint counterMove)
-    {
-        // Order:
-        // Best move - 100m
-        // Promotion capture - 10m + material gain + 600k
-        // Good capture - 10m + material gain
-        // Promotion - 600k
-        // KillerA - 500k
-        // KillerB - 250k
-        // Counter - 65k
-        // History - 0-8k
-        // Bad capture - 6k
-
-        if (bestMove == move)
-        {
-            return SpsaOptions.MoveOrderingBestMoveBias;
-        }
-
-        // Prioritize high value capture with low value piece
-        if (move.IsCapture())
-        {
-            if (move.IsEnPassant())
-            {
-                return SpsaOptions.MoveOrderingEnPassantMoveBias;
-            }
-
-            var captureDelta = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
-
-            return (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
-                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
-        }
-
-        if (move.IsPromotion())
-        {
-            return SpsaOptions.MoveOrderingPromoteBias;
-        }
-
-        if (killerA == move)
-        {
-            return SpsaOptions.MoveOrderingKillerABias;
-        }
-
-        if (counterMove == move)
-        {
-            return SpsaOptions.MoveOrderingCounterMoveBias;
-        }
-
-        return *(history + move.GetCounterMoveIndex());
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe int ScoreMoveQuiescence(this ref BoardStateData board, int* history, ulong* occupancyBitBoards, short* captures,
-        uint move,
-        uint bestMove)
-    {
-        // Order:
-        // Best move - 100m
-        // Promotion capture - 10m + material gain + 600k
-        // Good capture - 10m + material gain
-        // Promotion - 600k
-        // Bad capture - 6k
-
-        if (bestMove == move)
-        {
-            return SpsaOptions.MoveOrderingBestMoveBias;
-        }
-
-        // Prioritize high value capture with low value piece
-        if (move.IsCapture())
-        {
-            if (move.IsEnPassant())
-            {
-                return SpsaOptions.MoveOrderingEnPassantMoveBias;
-            }
-
-            var captureDelta = board.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
-
-            return (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
-                   captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
-        }
-
-        if (move.IsPromotion())
-        {
-            return SpsaOptions.MoveOrderingPromoteBias;
-        }
-
-        return *(history + move.GetCounterMoveIndex());
     }
 }

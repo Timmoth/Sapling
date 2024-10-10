@@ -3,6 +3,7 @@ using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 using Sapling.Engine.Tuning;
+using Sapling.Engine.Evaluation;
 
 namespace Sapling.Engine.Search;
 
@@ -239,10 +240,47 @@ public partial class Searcher
 
         for (var i = 0; i < psuedoMoveCount; i++)
         {
-            // Estimate each moves score for move ordering
-            *(scores + i) = currentBoardState->ScoreMove(History, occupancyBitBoards, captures, *(moves + i), killerA,
-                moveOrderingBestMove,
-                counterMove);
+            var move = *(moves + i);
+            if (moveOrderingBestMove == move)
+            {
+                *(scores + i) = SpsaOptions.MoveOrderingBestMoveBias;
+                continue;
+            }
+
+            if (move.IsCapture())
+            {
+                if (move.IsEnPassant())
+                {
+                    *(scores + i) = SpsaOptions.MoveOrderingEnPassantMoveBias;
+                    continue;
+                }
+
+                var captureDelta = currentBoardState->StaticExchangeEvaluation(occupancyBitBoards, captures, move);
+
+                *(scores + i) = (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
+                                captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
+                continue;
+            }
+
+            if (move.IsPromotion())
+            {
+                *(scores + i) = SpsaOptions.MoveOrderingPromoteBias;
+                continue;
+            }
+
+            if (killerA == move)
+            {
+                *(scores + i) = SpsaOptions.MoveOrderingKillerABias;
+                continue;
+            }
+
+            if (counterMove == move)
+            {
+                *(scores + i) = SpsaOptions.MoveOrderingCounterMoveBias;
+                continue;
+            }
+
+            *(scores + i) = *(History + move.GetCounterMoveIndex());
         }
 
         var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;

@@ -4,6 +4,7 @@ using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 using Sapling.Engine.Tuning;
+using Sapling.Engine.Evaluation;
 
 namespace Sapling.Engine.Search;
 
@@ -123,7 +124,34 @@ public partial class Searcher
 
         for (var i = 0; i < psuedoMoveCount; ++i)
         {
-            *(scores + i) = boardState->ScoreMoveQuiescence(History, occupancyBitBoards, captures, *(moves + i), ttBestMove);
+            var move = *(moves + i);
+            if (ttBestMove == move)
+            {
+                *(scores + i) = SpsaOptions.MoveOrderingBestMoveBias;
+            }
+
+            if (move.IsCapture())
+            {
+                if (move.IsEnPassant())
+                {
+                    *(scores + i) = SpsaOptions.MoveOrderingEnPassantMoveBias;
+                    continue;
+                }
+
+                var captureDelta = boardState->StaticExchangeEvaluation(occupancyBitBoards, captures, move);
+
+                *(scores + i) = (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
+                                captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
+                continue;
+            }
+
+            if (move.IsPromotion())
+            {
+                *(scores + i) = SpsaOptions.MoveOrderingPromoteBias;
+                continue;
+            }
+
+            *(scores + i) = *(History + move.GetCounterMoveIndex());
         }
 
         var evaluationBound = TranspositionTableFlag.Alpha;

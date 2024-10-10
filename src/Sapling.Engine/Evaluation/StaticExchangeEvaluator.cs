@@ -19,9 +19,9 @@ public static class StaticExchangeEvaluator
             return *captures - lastPieceValue;
         }
 
-        var targetSquare = (int)move.GetToSquare();
+        var targetSquare = move.GetToSquare();
         // all pieces except the two involved in the initial move
-        var occupancy = board.Occupancy[Constants.Occupancy] & ~((1UL << (int)move.GetFromSquare()) | (1UL << targetSquare));
+        var occupancy = board.Occupancy[Constants.Occupancy] & ~((1UL << move.GetFromSquare()) | (1UL << targetSquare));
 
         // Bit boards by piece type
         var pawns = *(occupancyBitBoards + 2);

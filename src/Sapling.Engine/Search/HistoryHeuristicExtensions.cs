@@ -10,6 +10,11 @@ public static unsafe class HistoryHeuristicExtensions
     static HistoryHeuristicExtensions()
     {
         BonusTable = MemoryHelpers.Allocate<short>(Constants.MaxSearchDepth);
+        UpdateBonusTable();
+    }
+
+    public static void UpdateBonusTable()
+    {
         for (var i = 0; i < Constants.MaxSearchDepth; i++)
         {
             BonusTable[i] = Math.Min((short)SpsaOptions.HistoryHeuristicBonusMax, (short)(SpsaOptions.HistoryHeuristicBonusCoeff * (i - 1)));
