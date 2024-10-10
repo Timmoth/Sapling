@@ -89,9 +89,9 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
-            ${{ github.workspace }}/output/Sapling_win_x64_avx512.exe
-            ${{ github.workspace }}/output/Sapling_win_x64.exe
-            ${{ github.workspace }}/output/Sapling_linux_x64_avx512
-            ${{ github.workspace }}/output/Sapling_linux_x64
-            ${{ github.workspace }}/output/Sapling_osx_x64_avx512
-            ${{ github.workspace }}/output/Sapling_osx_x64
+            ${{ github.workspace }}/src/output/Sapling_win_x64_avx512.exe
+            ${{ github.workspace }}/src/output/Sapling_win_x64.exe
+            ${{ github.workspace }}/src/output/Sapling_linux_x64_avx512
+            ${{ github.workspace }}/src/output/Sapling_linux_x64
+            ${{ github.workspace }}/src/output/Sapling_osx_x64_avx512
+            ${{ github.workspace }}/src/output/Sapling_osx_x64
