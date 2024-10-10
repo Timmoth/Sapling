@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: Sapling/src
+        working-directory: Sapling
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -22,7 +22,7 @@ jobs:
 
       # Get the version from the .csproj file
       - name: Get .NET application version
-        working-directory: Sapling
+        working-directory: src/Sapling
         id: get_version
         run: |
           VERSION=1.2.0
