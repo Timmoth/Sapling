@@ -5,45 +5,50 @@ using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine;
 
-[StructLayout(LayoutKind.Explicit, Size = 164)]  // Updated size to fit alignment
+[StructLayout(LayoutKind.Explicit, Size = 168)]  // Adjusted size to fit more efficiently
 public unsafe struct BoardStateData
 {
-    public const uint BoardStateSize = 164;
+    public const uint BoardStateSize = 168;
 
-    // 15 * 8 = 120 bytes (no padding needed)
-    [FieldOffset(0)] public fixed ulong Occupancy[15];  // 15 ulong values
+    // 15 * 8 = 120 bytes (occupancy array)
+    [FieldOffset(0)] public fixed ulong Occupancy[15];  // 15 ulong values, no padding needed.
 
     // 8 bytes, aligned at 120
-    [FieldOffset(120)] public ulong Hash;  // 64-bit, aligned at 120
+    [FieldOffset(120)] public ulong Hash;  // 64-bit aligned naturally.
 
-    // 2 bytes, aligned at 128 (needs no padding since Hash is 64-bit)
+    // Combine all 1-byte fields (byte and bool) together to avoid unnecessary padding.
+    // 8 bytes in total (TurnCount + HalfMoveClock + WhiteToMove + InCheck + CastleRights + WhiteKingSquare + BlackKingSquare + EnPassantFile)
     [FieldOffset(128)] public ushort TurnCount;  // 16-bit
-
-    // 1 byte, follows TurnCount (16-bit aligned, so no padding needed)
     [FieldOffset(130)] public byte HalfMoveClock;  // 8-bit
-
-    // 1 byte, no special alignment
     [FieldOffset(131)] public bool WhiteToMove;  // 8-bit
-
-    // 1 byte, no special alignment
     [FieldOffset(132)] public bool InCheck;  // 8-bit
+    [FieldOffset(133)] public CastleRights CastleRights;  // 8-bit enum
+    [FieldOffset(134)] public byte WhiteKingSquare;  // 8-bit
+    [FieldOffset(135)] public byte BlackKingSquare;  // 8-bit
+    [FieldOffset(136)] public byte EnPassantFile;  // 8-bit
+    [FieldOffset(137)] public byte PieceCount;  // 8-bit
 
-    // 1 byte, no special alignment, still on byte boundary
-    [FieldOffset(133)] public CastleRights CastleRights;  // Enum type, typically 1 byte
+    // Group additional fields that fit in the next available space:
+    // 8 bytes for PawnHash, aligned at 138.
+    [FieldOffset(138)] public ulong PawnHash;  // 64-bit aligned naturally.
 
-    // Now grouping the remaining 1-byte fields together
-    [FieldOffset(134)] public byte WhiteKingSquare;  // 1 byte
-    [FieldOffset(135)] public byte BlackKingSquare;  // 1 byte
-    [FieldOffset(136)] public byte EnPassantFile;  // 1 byte
-    [FieldOffset(137)] public byte PieceCount;  // 1 byte
+    // 8 bytes for WhiteMaterialHash, aligned at 146.
+    [FieldOffset(146)] public ulong WhiteMaterialHash;  // 64-bit
 
-    // Add padding for alignment (2 bytes of padding at the end to make the size a multiple of 8)
-    [FieldOffset(138)] private fixed byte _padding[2];  // Padding to align total size to 8-byte boundary
-    [FieldOffset(140)] public ulong PawnHash;
-    [FieldOffset(148)] public ulong WhiteMaterialHash;
-    [FieldOffset(156)] public ulong BlackMaterialHash;
+    // 8 bytes for BlackMaterialHash, aligned at 154.
+    [FieldOffset(154)] public ulong BlackMaterialHash;  // 64-bit
 
+    // Group remaining small fields together (total 4 bytes):
+    [FieldOffset(162)] public byte WhiteKingSideTargetSquare;  // 1 byte
+    [FieldOffset(163)] public byte WhiteQueenSideTargetSquare;  // 1 byte
+    [FieldOffset(164)] public byte BlackKingSideTargetSquare;  // 1 byte
+    [FieldOffset(165)] public byte BlackQueenSideTargetSquare;  // 1 byte
+    [FieldOffset(166)] public bool Is960;  // 1 byte
+
+    // Add padding if necessary to make the total size a multiple of 8 bytes.
+    [FieldOffset(167)] private fixed byte _padding[1];  // Padding to align total size to 168 bytes.
 }
+
 
 public static unsafe class AccumulatorStateExtensions
 {

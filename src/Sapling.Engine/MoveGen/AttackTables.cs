@@ -27,6 +27,7 @@ public static unsafe class AttackTables
     private static readonly ulong* RookPextOffset;
 
     public static readonly ulong* LineBitBoards;
+    public static readonly ulong* LineBitBoardsInclusive;
 
     static AttackTables()
     {
@@ -40,6 +41,7 @@ public static unsafe class AttackTables
         RookAttackMasks = MemoryHelpers.Allocate<ulong>(64);
         BishopAttackMasks = MemoryHelpers.Allocate<ulong>(64);
         LineBitBoards = MemoryHelpers.Allocate<ulong>(64 * 64);
+        LineBitBoardsInclusive = MemoryHelpers.Allocate<ulong>(64 * 64);
         var rand = Random.Shared;
         for (var i = 0; i < 64; i++)
         {
@@ -154,9 +156,73 @@ public static unsafe class AttackTables
             for (var j = 0; j < 64; j++)
             {
                 CalculateLineBitBoard(i, j);
+                CalculateLineBitBoardInclusive(i, j);
             }
         }
     }
+
+    private static void CalculateLineBitBoardInclusive(int i, int j)
+    {
+        // Convert squares i and j to (rank, file) coordinates
+        int rank1 = i / 8, file1 = i % 8;
+        int rank2 = j / 8, file2 = j % 8;
+
+        // If i and j are the same, return a bitboard with just that square
+        if (i == j)
+        {
+            LineBitBoards[i * 64 + j] = 1UL << i;
+            return;
+        }
+
+        ulong bitboard = 0UL;
+
+        // Same rank (horizontal line)
+        if (rank1 == rank2)
+        {
+            int minFile = Math.Min(file1, file2);
+            int maxFile = Math.Max(file1, file2);
+            for (int file = minFile; file <= maxFile; file++)
+            {
+                bitboard |= 1UL << (rank1 * 8 + file);
+            }
+        }
+        // Same file (vertical line)
+        else if (file1 == file2)
+        {
+            int minRank = Math.Min(rank1, rank2);
+            int maxRank = Math.Max(rank1, rank2);
+            for (int rank = minRank; rank <= maxRank; rank++)
+            {
+                bitboard |= 1UL << (rank * 8 + file1);
+            }
+        }
+        // Same diagonal (positive slope)
+        else if (rank1 - file1 == rank2 - file2)
+        {
+            int minRank = Math.Min(rank1, rank2);
+            int maxRank = Math.Max(rank1, rank2);
+            for (int rank = minRank; rank <= maxRank; rank++)
+            {
+                int file = rank - (rank1 - file1); // file along the same diagonal
+                bitboard |= 1UL << (rank * 8 + file);
+            }
+        }
+        // Same anti-diagonal (negative slope)
+        else if (rank1 + file1 == rank2 + file2)
+        {
+            int minRank = Math.Min(rank1, rank2);
+            int maxRank = Math.Max(rank1, rank2);
+            for (int rank = minRank; rank <= maxRank; rank++)
+            {
+                int file = (rank1 + file1) - rank; // file along the same anti-diagonal
+                bitboard |= 1UL << (rank * 8 + file);
+            }
+        }
+
+        // No longer clearing the i and j squares, keeping them as part of the bitboard
+        LineBitBoardsInclusive[i * 64 + j] = bitboard;
+    }
+
 
     private static void CalculateLineBitBoard(int i, int j)
     {

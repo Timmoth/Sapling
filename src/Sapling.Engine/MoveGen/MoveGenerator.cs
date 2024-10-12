@@ -613,7 +613,6 @@ public static class MoveGenerator
 
     #region King
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-
     public static unsafe void GenerateWhiteKingPseudoLegalMoves(this ref BoardStateData board, uint* moves,
         ref byte moveIndex,
         byte index, bool captureOnly)
@@ -640,32 +639,71 @@ public static class MoveGenerator
                 emptyMoves.PopLSB());
         }
 
-        if (index != 4 || board.InCheck)
+        if (board.InCheck)
         {
             // Can't castle if king is attacked or not on the starting position
             return;
         }
 
         // King Side Castle
-        if ((board.CastleRights & CastleRights.WhiteKingSide) != 0 &&
-            (board.Occupancy[Constants.WhiteRook] & WhiteKingSideCastleRookPosition) > 0 &&
-            board.IsEmptySquare(WhiteKingSideCastleEmptyPositions) &&
-            !board.IsAttackedByBlack(6) &&
-            !board.IsAttackedByBlack(5))
+        if ((board.CastleRights & CastleRights.WhiteKingSide) != 0)
         {
-            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
-                6);
+            var rookSquare = board.Is960 ? board.WhiteKingSideTargetSquare : 7;
+
+            var startSquare = Math.Min(board.WhiteKingSquare, Math.Min(rookSquare, 5));
+            var endSquare = Math.Max(board.WhiteKingSquare, Math.Max(rookSquare, 6));
+
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.WhiteKingSquare));
+            if (path == 0)
+            {
+                var canCastle = true;
+                var kingStart = Math.Min((int)board.WhiteKingSquare, 6);
+                var kingEnd = Math.Max((int)board.WhiteKingSquare, 6);
+                for (var i = kingStart; i <= kingEnd; i++)
+                {
+                    if (board.IsAttackedByBlack(i))
+                    {
+                        canCastle = false;
+                        break;
+                    }
+                }
+
+                if (canCastle)
+                {
+                    *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
+                        board.WhiteKingSideTargetSquare);
+                }
+            }
         }
 
         // Queen Side Castle
-        if ((board.CastleRights & CastleRights.WhiteQueenSide) != 0 &&
-            (board.Occupancy[Constants.WhiteRook] & WhiteQueenSideCastleRookPosition) > 0 &&
-            board.IsEmptySquare(WhiteQueenSideCastleEmptyPositions) &&
-            !board.IsAttackedByBlack(2) &&
-            !board.IsAttackedByBlack(3))
+        if ((board.CastleRights & CastleRights.WhiteQueenSide) != 0)
         {
-            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
-                2);
+            var rookSquare = board.Is960 ? board.WhiteQueenSideTargetSquare : 0;
+            var startSquare = Math.Min(board.WhiteKingSquare, Math.Min(rookSquare, 2));
+            var endSquare = Math.Max(board.WhiteKingSquare, Math.Max(rookSquare, 3));
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.WhiteKingSquare));
+
+            if (path == 0)
+            {
+                bool canCastle = true;
+                var kingStart = Math.Min((int)board.WhiteKingSquare, 2);
+                var kingEnd = Math.Max((int)board.WhiteKingSquare, 2);
+                for (var i = kingStart; i <= kingEnd; i++)
+                {
+                    if (board.IsAttackedByBlack(i))
+                    {
+                        canCastle = false;
+                        break;
+                    }
+                }
+
+                if (canCastle)
+                {
+                    *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, index,
+                        board.WhiteQueenSideTargetSquare);
+                }
+            }
         }
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -695,31 +733,74 @@ public static class MoveGenerator
                 emptyMoves.PopLSB());
         }
 
-        if (index != 60 || board.InCheck)
+        if (board.InCheck)
         {
             // Can't castle if king is attacked or not on the starting position
             return;
         }
-
+        
         // King Side Castle
-        if ((board.CastleRights & CastleRights.BlackKingSide) != 0 &&
-            (board.Occupancy[Constants.BlackRook] & BlackKingSideCastleRookPosition) > 0 &&
-            board.IsEmptySquare(BlackKingSideCastleEmptyPositions) &&
-            !board.IsAttackedByWhite(61) &&
-            !board.IsAttackedByWhite(62))
+        if ((board.CastleRights & CastleRights.BlackKingSide) != 0)
         {
-            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index,
-                62);
+            var rookSquare = board.Is960 ? board.BlackKingSideTargetSquare : 63;
+
+            var startSquare = Math.Min(board.BlackKingSquare, Math.Min(rookSquare, 61));
+            var endSquare = Math.Max(board.BlackKingSquare, Math.Max(rookSquare, 62));
+
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.BlackKingSquare));
+
+            if (path == 0)
+            {
+                bool canCastle = true;
+                var kingStart = Math.Min((int)board.BlackKingSquare, 62);
+                var kingEnd = Math.Max((int)board.BlackKingSquare, 62);
+
+                for (var i = kingStart; i <= kingEnd; i++)
+                {
+                    if (board.IsAttackedByWhite(i))
+                    {
+                        canCastle = false;
+                        break;
+                    }
+                }
+
+                if (canCastle)
+                {
+                    *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index,
+                        board.BlackKingSideTargetSquare);
+                }
+            }
         }
 
         // Queen Side Castle
-        if ((board.CastleRights & CastleRights.BlackQueenSide) != 0 &&
-            (board.Occupancy[Constants.BlackRook] & BlackQueenSideCastleRookPosition) > 0 &&
-            board.IsEmptySquare(BlackQueenSideCastleEmptyPositions) &&
-            !board.IsAttackedByWhite(58) &&
-            !board.IsAttackedByWhite(59))
+        if ((board.CastleRights & CastleRights.BlackQueenSide) != 0)
         {
-            *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index, 58);
+            var rookSquare = board.Is960 ? board.BlackQueenSideTargetSquare : 56;
+            var startSquare = Math.Min(board.BlackKingSquare, Math.Min(rookSquare, 58));
+            var endSquare = Math.Max(board.BlackKingSquare, Math.Max(rookSquare, 59));
+
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.BlackKingSquare));
+
+            if (path == 0)
+            {
+                bool canCastle = true;
+                var kingStart = Math.Min((int)board.BlackKingSquare, 58);
+                var kingEnd = Math.Max((int)board.BlackKingSquare, 58);
+                for (var i = kingStart; i <= kingEnd; i++)
+                {
+                    if (board.IsAttackedByWhite(i))
+                    {
+                        canCastle = false;
+                        break;
+                    }
+                }
+
+                if (canCastle)
+                {
+                    *(moves + moveIndex++) = MoveExtensions.EncodeCastleMove(Constants.BlackKing, index,
+                        board.BlackQueenSideTargetSquare);
+                }
+            }
         }
     }
 

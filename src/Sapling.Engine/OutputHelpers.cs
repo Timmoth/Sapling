@@ -38,7 +38,7 @@ public static class OutputHelpers
         return stringBuilder.ToString();
     }
 
-    public static unsafe string ToFen(this ref BoardStateData board)
+    public static string ToFen(this ref BoardStateData board)
     {
         var fen = new StringBuilder();
 
@@ -88,22 +88,50 @@ public static class OutputHelpers
         {
             if (board.CastleRights.HasFlag(CastleRights.WhiteKingSide))
             {
-                fen.Append("K");
+                if (board.Is960)
+                {
+                    fen.Append((char)('A' + board.WhiteKingSideTargetSquare));
+                }
+                else
+                {
+                    fen.Append("K");
+                }
             }
 
             if (board.CastleRights.HasFlag(CastleRights.WhiteQueenSide))
             {
-                fen.Append("Q");
+                if (board.Is960)
+                {
+                    fen.Append((char)('A' + board.WhiteQueenSideTargetSquare));
+                }
+                else
+                {
+                    fen.Append("Q");
+                }
             }
 
             if (board.CastleRights.HasFlag(CastleRights.BlackKingSide))
             {
-                fen.Append("k");
+                if (board.Is960)
+                {
+                    fen.Append((char)('a' + board.BlackKingSideTargetSquare - 56));
+                }
+                else
+                {
+                    fen.Append("k");
+                }
             }
 
             if (board.CastleRights.HasFlag(CastleRights.BlackQueenSide))
             {
-                fen.Append("q");
+                if (board.Is960)
+                {
+                    fen.Append((char)('a' + board.BlackQueenSideTargetSquare - 56));
+                }
+                else
+                {
+                    fen.Append("q");
+                }
             }
         }
 
@@ -225,7 +253,7 @@ public static class OutputHelpers
         };
     }
 
-    public static unsafe string CreateDiagram(this GameState gameState, bool blackAtTop = true, bool includeFen = true,
+    public static string CreateDiagram(this GameState gameState, bool blackAtTop = true, bool includeFen = true,
         bool includeZobristKey = true)
     {
         StringBuilder output = new();
@@ -284,62 +312,6 @@ public static class OutputHelpers
             if (includeZobristKey)
             {
                 output.AppendLine($"Zobrist Key : {gameState.Board.Hash.ToString("X")}");
-            }
-        }
-
-        return output.ToString();
-    }
-
-    public static unsafe string CreateDiagram(this ref BoardStateData board, bool blackAtTop = true, bool includeFen = true,
-        bool includeZobristKey = true)
-    {
-        StringBuilder output = new();
-
-        for (var y = 0; y < 8; y++)
-        {
-            var rankIndex = blackAtTop ? 7 - y : y;
-            output.AppendLine("+---+---+---+---+---+---+---+---+");
-
-            for (var x = 0; x < 8; x++)
-            {
-                var fileIndex = blackAtTop ? x : 7 - x;
-                var squareIndex = rankIndex * 8 + fileIndex;
-                var piece = board.GetPiece(squareIndex);
-                if (piece == 0)
-                {
-                    output.Append("|   ");
-                }
-                else
-                {
-                    output.Append($"| {((Piece)piece).PieceToChar()} ");
-                }
-
-                if (x == 7)
-                {
-                    output.AppendLine($"| {rankIndex + 1}");
-                }
-            }
-
-            if (y != 7)
-            {
-                continue;
-            }
-
-            // Show file names
-            output.AppendLine("+---+---+---+---+---+---+---+---+");
-            const string fileNames = "  a   b   c   d   e   f   g   h  ";
-            const string fileNamesRev = "  h   g   f   e   d   c   b   a  ";
-            output.AppendLine(blackAtTop ? fileNames : fileNamesRev);
-            output.AppendLine();
-
-            if (includeFen)
-            {
-                output.AppendLine($"Fen         : {board.ToFen()}");
-            }
-
-            if (includeZobristKey)
-            {
-                output.AppendLine($"Zobrist Key : {board.Hash}");
             }
         }
 
