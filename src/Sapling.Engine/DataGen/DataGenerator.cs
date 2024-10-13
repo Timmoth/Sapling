@@ -6,6 +6,8 @@ using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.DataGen;
 
+using System;
+
 public class DataGeneratorStats
 {
     public BoardStateData InitialBoard = default;
@@ -73,6 +75,9 @@ public class DataGeneratorStats
 }
 public class DataGenerator
 {
+    public const bool Is960 = true;
+    public const int RandomMoves = 8;
+
     public const int MaxTurnCount = 500;
 
     public bool Cancelled = false;
@@ -140,8 +145,14 @@ public class DataGenerator
                 }
 
                 stats.Output(dataGenPositions, positions, result);
-
-                gameState.ResetTo(ref stats.InitialBoard, initialLegalMoves);
+                if (Is960)
+                {
+                    gameState.ResetToFen(Chess960.Fens[Random.Shared.Next(0, 960)]);
+                }
+                else
+                {
+                    gameState.ResetTo(ref stats.InitialBoard, initialLegalMoves);
+                }
             }
             catch (Exception ex)
             {
@@ -161,7 +172,7 @@ public class DataGenerator
         while (!gameState.GameOver() && gameState.Board.TurnCount < MaxTurnCount && !IsAdjudicatedDraw(gameState, drawScoreCount))
         {
             uint move;
-            if (randomMoveCount <= 8)
+            if (randomMoveCount <= RandomMoves)
             {
                 move = gameState.LegalMoves[Random.Shared.Next(0, gameState.LegalMoves.Count)];
                 randomMoveCount++;

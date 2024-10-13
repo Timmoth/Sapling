@@ -25,7 +25,7 @@ internal class Program
     private static StreamWriter _logWriter;
 
 private static void Main(string[] args)
-    {
+{
         Console.SetIn(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8, false, 2048 * 4));
 
         if (args.Length > 0 && args[0] == "--version")

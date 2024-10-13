@@ -653,13 +653,13 @@ public static class MoveGenerator
             var startSquare = Math.Min(board.WhiteKingSquare, Math.Min(rookSquare, 5));
             var endSquare = Math.Max(board.WhiteKingSquare, Math.Max(rookSquare, 6));
 
-            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.WhiteKingSquare));
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + (startSquare << 6) + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.WhiteKingSquare));
             if (path == 0)
             {
                 var canCastle = true;
                 var kingStart = Math.Min((int)board.WhiteKingSquare, 6);
                 var kingEnd = Math.Max((int)board.WhiteKingSquare, 6);
-                for (var i = kingStart; i <= kingEnd; i++)
+                for (var i = kingEnd; i >= kingStart; i--)
                 {
                     if (board.IsAttackedByBlack(i))
                     {
@@ -682,14 +682,14 @@ public static class MoveGenerator
             var rookSquare = board.Is960 ? board.WhiteQueenSideTargetSquare : 0;
             var startSquare = Math.Min(board.WhiteKingSquare, Math.Min(rookSquare, 2));
             var endSquare = Math.Max(board.WhiteKingSquare, Math.Max(rookSquare, 3));
-            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.WhiteKingSquare));
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + (startSquare << 6) + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.WhiteKingSquare));
 
             if (path == 0)
             {
                 bool canCastle = true;
                 var kingStart = Math.Min((int)board.WhiteKingSquare, 2);
                 var kingEnd = Math.Max((int)board.WhiteKingSquare, 2);
-                for (var i = kingStart; i <= kingEnd; i++)
+                for (var i = kingEnd; i >= kingStart; i--)
                 {
                     if (board.IsAttackedByBlack(i))
                     {
@@ -747,7 +747,7 @@ public static class MoveGenerator
             var startSquare = Math.Min(board.BlackKingSquare, Math.Min(rookSquare, 61));
             var endSquare = Math.Max(board.BlackKingSquare, Math.Max(rookSquare, 62));
 
-            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.BlackKingSquare));
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + (startSquare << 6) + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.BlackKingSquare));
 
             if (path == 0)
             {
@@ -755,7 +755,7 @@ public static class MoveGenerator
                 var kingStart = Math.Min((int)board.BlackKingSquare, 62);
                 var kingEnd = Math.Max((int)board.BlackKingSquare, 62);
 
-                for (var i = kingStart; i <= kingEnd; i++)
+                for (var i = kingEnd; i >= kingStart; i--)
                 {
                     if (board.IsAttackedByWhite(i))
                     {
@@ -779,14 +779,14 @@ public static class MoveGenerator
             var startSquare = Math.Min(board.BlackKingSquare, Math.Min(rookSquare, 58));
             var endSquare = Math.Max(board.BlackKingSquare, Math.Max(rookSquare, 59));
 
-            ulong path = (*(AttackTables.LineBitBoardsInclusive + startSquare * 64 + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.BlackKingSquare));
+            ulong path = (*(AttackTables.LineBitBoardsInclusive + (startSquare << 6) + endSquare) & board.Occupancy[Constants.Occupancy]) & ~((1UL << rookSquare) | (1UL << board.BlackKingSquare));
 
             if (path == 0)
             {
                 bool canCastle = true;
                 var kingStart = Math.Min((int)board.BlackKingSquare, 58);
                 var kingEnd = Math.Max((int)board.BlackKingSquare, 58);
-                for (var i = kingStart; i <= kingEnd; i++)
+                for (var i = kingEnd; i >= kingStart; i--)
                 {
                     if (board.IsAttackedByWhite(i))
                     {
