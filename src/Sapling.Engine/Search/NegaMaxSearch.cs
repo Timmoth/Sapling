@@ -11,7 +11,7 @@ public partial class Searcher
 {
     public unsafe int
         NegaMaxSearch(BoardStateData* currentBoardState, AccumulatorState* currentAccumulatorState, int depthFromRoot, int depth,
-            int alpha, int beta)
+            int alpha, int beta, bool cutNode)
     {
         NodesVisited++;
 
@@ -99,8 +99,19 @@ public partial class Searcher
         var whiteMaterialChIndex = CorrectionIndex(currentBoardState->WhiteMaterialHash, currentBoardState->WhiteToMove);
         var blackMaterialChIndex = CorrectionIndex(currentBoardState->BlackMaterialHash, currentBoardState->WhiteToMove);
 
-        var staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex,
-            Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
+        int staticEval;
+        if (parentInCheck)
+        {
+            staticEval = 0;
+        }else if (transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
+        {
+            staticEval = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+        }
+        else
+        {
+            staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex,
+                Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
+        }
 
         if (depthFromRoot > 0)
         {
@@ -135,7 +146,7 @@ public partial class Searcher
 
                     var nullMoveScore = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1,
                         Math.Max(depth - reduction - 1, 0), -beta,
-                        -beta + 1);
+                        -beta + 1, !cutNode);
 
                     if (nullMoveScore >= beta)
                     {
@@ -179,7 +190,9 @@ public partial class Searcher
             return QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
         }
 
-        if (transpositionType == default && depth > SpsaOptions.InternalIterativeDeepeningDepth)
+        if (transpositionType == default && 
+            depth > SpsaOptions.InternalIterativeDeepeningDepth
+            && cutNode)
         {
             // Internal iterative deepening
             depth--;
@@ -362,7 +375,7 @@ public partial class Searcher
                 if (score >= probBeta)
                 {
                     score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - SpsaOptions.ProbCutMinDepth,
-                        -probBeta, -probBeta + 1);
+                        -probBeta, -probBeta + 1, !cutNode);
 
                 }
 
@@ -472,10 +485,12 @@ public partial class Searcher
                         ? *(SpsaOptions.LateMovePruningInterestingReductionTable + depth * 218 + searchedMoves)
                         : *(SpsaOptions.LateMovePruningReductionTable + depth * 218 + searchedMoves);
 
+                    reduction += cutNode ? 1 : 0;
+
                     if (reduction > 0)
                     {
                         score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - reduction - 1,
-                            -alpha - 1, -alpha);
+                            -alpha - 1, -alpha, true);
                         needsFullSearch = score > alpha;
                     }
                 }
@@ -483,7 +498,7 @@ public partial class Searcher
                 if (needsFullSearch)
                 {
                     // PVS
-                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha);
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha, !cutNode);
                     needsFullSearch = score > alpha && score < beta;
                 }
             }
@@ -491,7 +506,7 @@ public partial class Searcher
             if (needsFullSearch)
             {
                 // Full search
-                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -beta, -alpha);
+                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -beta, -alpha, false);
             }
 
             // Revert the move

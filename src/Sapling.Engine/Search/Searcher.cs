@@ -242,7 +242,7 @@ public unsafe partial class Searcher
         inputBoard.Board.CloneTo(ref rootBoard);
         FillInitialAccumulators(Boards, Accumulators);
 
-        var bestEval = lastIterationEval = NegaMaxSearch(Boards, Accumulators, 0, 0, alpha, beta);
+        var bestEval = lastIterationEval = NegaMaxSearch(Boards, Accumulators, 0, 0, alpha, beta, false);
 
         BestSoFar = _pVTable[0];
         var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
@@ -259,7 +259,7 @@ public unsafe partial class Searcher
                 alpha = lastIterationEval - GetAsperationWindow(alphaWindowIndex);
                 beta = lastIterationEval + GetAsperationWindow(betaWindowIndex);
 
-                var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
+                var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta, false);
 
                 if (eval <= alpha)
                 {
