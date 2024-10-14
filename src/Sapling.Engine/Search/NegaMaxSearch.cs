@@ -119,11 +119,11 @@ public partial class Searcher
         if (parentInCheck)
         {
             improving = false;
-        }else if (depth >= 2 && (currentAccumulatorState - 2)->Eval != 0)
+        }else if (depthFromRoot >= 2 && (currentAccumulatorState - 2)->Eval != 0)
         {
             improving = staticEval > (currentAccumulatorState - 2)->Eval;
         }
-        else if (depth >= 4 && (currentAccumulatorState - 4)->Eval != 0)
+        else if (depthFromRoot >= 4 && (currentAccumulatorState - 4)->Eval != 0)
         {
             improving = staticEval > (currentAccumulatorState - 4)->Eval;
         }
