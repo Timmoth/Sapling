@@ -134,6 +134,9 @@ namespace Sapling.Engine.Tuning
         [SpsaMinValue("200"), SpsaMaxValue("300")]
         public static int ProbCutBetaMargin = 220;
 
+        [SpsaMinValue("200"), SpsaMaxValue("300")]
+        public static int ImprovingProbCutBetaMargin = 210;
+
         [SpsaMinValue("0"), SpsaMaxValue("6")]
         public static int ProbCutMinDepth = 3;
 
@@ -166,6 +169,7 @@ namespace Sapling.Engine.Tuning
 
         [SpsaMinValue("0"), SpsaMaxValue("100")]
         public static int ImprovingNmpMargin = 73;
+
 
 #else
         public const int ReverseFutilityPruningMargin = 67;
