@@ -76,6 +76,7 @@ public static unsafe class AccumulatorStateExtensions
         state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = false;
         state.ChangeType = AccumulatorChangeType.None;
         state.Move = default;
+        state.Eval = 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -93,6 +94,7 @@ public static unsafe class AccumulatorStateExtensions
         state.WhiteNeedsRefresh = other->WhiteMirrored != state.WhiteMirrored || other->WhiteInputBucket != state.WhiteInputBucket;
         state.BlackNeedsRefresh = other->BlackMirrored != state.BlackMirrored || other->BlackInputBucket != state.BlackInputBucket;
         state.Move = default;
+        state.Eval = 0;
     }
 }
 
@@ -136,4 +138,5 @@ public unsafe struct AccumulatorState
 
     // 32-bit unsigned int (4 bytes)
     [FieldOffset(48)] public uint Move;       // 32-bit aligned correctly at 48 bytes
+    [FieldOffset(52)] public int Eval;       // 32-bit aligned correctly at 48 bytes
 }

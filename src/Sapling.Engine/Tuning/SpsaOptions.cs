@@ -151,6 +151,22 @@ namespace Sapling.Engine.Tuning
 
         [SpsaMinValue("1400"), SpsaMaxValue("3000")]
         public static int AsperationWindowE = 2662;
+        
+        [SpsaMinValue("10"), SpsaMaxValue("100")]
+        public static int ReverseFutilityPruningImprovingMargin = 45;
+
+        [SpsaMinValue("0.1"), SpsaMaxValue("1.0")]
+        public static float CutNodeReduction = 0.5f;
+
+        [SpsaMinValue("0.1"), SpsaMaxValue("1.0")]
+        public static float ImprovingNodeReduction = 0.5f;
+
+        [SpsaMinValue("0"), SpsaMaxValue("100")]
+        public static int NmpMargin = 0;
+
+        [SpsaMinValue("0"), SpsaMaxValue("100")]
+        public static int ImprovingNmpMargin = 73;
+
 #else
         public const int ReverseFutilityPruningMargin = 67;
         public const int ReverseFutilityPruningDepth = 7;
@@ -182,22 +198,31 @@ namespace Sapling.Engine.Tuning
         public const int InterestingNegaMaxMoveScore = 40775;
         public const int InterestingQuiescenceMoveScore = 35432;
         public const int ProbCutBetaMargin = 220;
+        public const int ImprovingProbCutBetaMargin = 210;
         public const int ProbCutMinDepth = 3;
         public const int AsperationWindowA = 37;
         public const int AsperationWindowB = 59;
         public const int AsperationWindowC = 279;
         public const int AsperationWindowD = 847;
         public const int AsperationWindowE = 2785;
+
+
+        public const int ReverseFutilityPruningImprovingMargin = 45;
+        public const float CutNodeReduction = 0.5f;
+        public const float ImprovingNodeReduction = 0.5f;
+        public const int NmpMargin = 0;
+        public const int ImprovingNmpMargin = 73;
+
 #endif
 
-        public static int* LateMovePruningInterestingReductionTable;
-        public static int* LateMovePruningReductionTable;
+        public static float* LateMovePruningInterestingReductionTable;
+        public static float* LateMovePruningReductionTable;
         public static int* NullMovePruningReductionTable;
         static SpsaOptions()
         {
             NullMovePruningReductionTable = MemoryHelpers.Allocate<int>(Constants.MaxSearchDepth);
-            LateMovePruningReductionTable = MemoryHelpers.Allocate<int>(Constants.MaxSearchDepth * 218);
-            LateMovePruningInterestingReductionTable = MemoryHelpers.Allocate<int>(Constants.MaxSearchDepth * 218);
+            LateMovePruningReductionTable = MemoryHelpers.Allocate<float>(Constants.MaxSearchDepth * 218);
+            LateMovePruningInterestingReductionTable = MemoryHelpers.Allocate<float>(Constants.MaxSearchDepth * 218);
             UpdateNullMovePruningReductionTable();
             UpdateLateMovePruningReductionTable();
         }
@@ -216,8 +241,8 @@ namespace Sapling.Engine.Tuning
             {
                 for (var j = 0; j < 218; j++)
                 {
-                    LateMovePruningInterestingReductionTable[i*218 +j] = (int)Math.Round(LateMoveReductionInterestingA + (Math.Log(i) * Math.Log(j)) / LateMoveReductionInterestingB);
-                    LateMovePruningReductionTable[i * 218 + j] = (int)Math.Round(LateMoveReductionA + (Math.Log(i) * Math.Log(j)) / LateMoveReductionB);
+                    LateMovePruningInterestingReductionTable[i*218 +j] = (float)Math.Round(LateMoveReductionInterestingA + (Math.Log(i) * Math.Log(j)) / LateMoveReductionInterestingB);
+                    LateMovePruningReductionTable[i * 218 + j] = (float)Math.Round(LateMoveReductionA + (Math.Log(i) * Math.Log(j)) / LateMoveReductionB);
                 }
             }
         }

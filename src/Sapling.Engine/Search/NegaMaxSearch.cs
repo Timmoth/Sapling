@@ -113,6 +113,26 @@ public partial class Searcher
                 Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
         }
 
+
+        currentAccumulatorState->Eval = staticEval;
+
+        var improving = false;
+        if (parentInCheck)
+        {
+            improving = false;
+        }else if (depth >= 2 && (currentAccumulatorState - 2)->Eval != 0)
+        {
+            improving = staticEval > (currentAccumulatorState - 2)->Eval;
+        }
+        else if (depth >= 4 && (currentAccumulatorState - 4)->Eval != 0)
+        {
+            improving = staticEval > (currentAccumulatorState - 4)->Eval;
+        }
+        else
+        {
+            improving = false;
+        }
+
         if (depthFromRoot > 0)
         {
             if (parentInCheck)
@@ -123,14 +143,16 @@ public partial class Searcher
             else if (!pvNode)
             {
                 // Reverse futility pruning
-                var margin = depth * SpsaOptions.ReverseFutilityPruningMargin;
+
+                var margin = depth * SpsaOptions.ReverseFutilityPruningMargin - (improving ? SpsaOptions.ReverseFutilityPruningImprovingMargin : 0);
                 if (depth <= SpsaOptions.ReverseFutilityPruningDepth && staticEval >= beta + margin)
                 {
                     return staticEval - margin;
                 }
 
+                var nmpMargin = improving ? SpsaOptions.ImprovingNmpMargin : SpsaOptions.NmpMargin;
                 // Null move pruning
-                if (staticEval >= beta &&
+                if (staticEval + nmpMargin >= beta &&
                     currentAccumulatorState->Move != default &&
                     (transpositionType != TranspositionTableFlag.Alpha || transpositionEvaluation >= beta) &&
                     depth > SpsaOptions.NullMovePruningDepth && currentBoardState->HasMajorPieces())
@@ -300,7 +322,7 @@ public partial class Searcher
         var probCutSortedUpTo = 0;
 
         // Probcut
-        int probBeta = beta + SpsaOptions.ProbCutBetaMargin;
+        int probBeta = beta + (improving ? SpsaOptions.ImprovingProbCutBetaMargin : SpsaOptions.ProbCutBetaMargin);
         if (!pvNode && !parentInCheck
             && currentAccumulatorState->Move != default
             && depth >= SpsaOptions.ProbCutMinDepth
@@ -485,11 +507,12 @@ public partial class Searcher
                         ? *(SpsaOptions.LateMovePruningInterestingReductionTable + depth * 218 + searchedMoves)
                         : *(SpsaOptions.LateMovePruningReductionTable + depth * 218 + searchedMoves);
 
-                    reduction += cutNode ? 1 : 0;
+                    reduction += cutNode ? SpsaOptions.CutNodeReduction : 0;
+                    reduction += improving ? 0 : SpsaOptions.ImprovingNodeReduction;
 
                     if (reduction > 0)
                     {
-                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - reduction - 1,
+                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - (int)reduction - 1,
                             -alpha - 1, -alpha, true);
                         needsFullSearch = score > alpha;
                     }
