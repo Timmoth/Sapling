@@ -113,7 +113,6 @@ public partial class Searcher
                 Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
         }
 
-
         currentAccumulatorState->Eval = staticEval;
 
         var improving = false;
