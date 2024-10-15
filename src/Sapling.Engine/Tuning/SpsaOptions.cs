@@ -162,7 +162,13 @@ namespace Sapling.Engine.Tuning
         public static float CutNodeReduction = 0.5f;
 
         [SpsaMinValue("0.1"), SpsaMaxValue("1.0")]
-        public static float ImprovingNodeReduction = 0.5f;
+        public static float ImprovingNodeReduction = 0.4f;
+
+        [SpsaMinValue("0.1"), SpsaMaxValue("1.0")]
+        public static float PvNodeReduction = 0.3f;
+
+        [SpsaMinValue("0.1"), SpsaMaxValue("1.0")]
+        public static float KillerNodeReduction = 0.2f;
 
         [SpsaMinValue("0"), SpsaMaxValue("100")]
         public static int NmpMargin = 0;
@@ -202,7 +208,7 @@ namespace Sapling.Engine.Tuning
         public const int InterestingNegaMaxMoveScore = 40775;
         public const int InterestingQuiescenceMoveScore = 35432;
         public const int ProbCutBetaMargin = 220;
-        public const int ImprovingProbCutBetaMargin = 210;
+        public const int ImprovingProbCutBetaMargin =210;
         public const int ProbCutMinDepth = 3;
         public const int AsperationWindowA = 37;
         public const int AsperationWindowB = 59;
@@ -213,7 +219,9 @@ namespace Sapling.Engine.Tuning
 
         public const int ReverseFutilityPruningImprovingMargin = 45;
         public const float CutNodeReduction = 0.5f;
-        public const float ImprovingNodeReduction = 0.5f;
+        public const float ImprovingNodeReduction = 0.4f;
+        public const float PvNodeReduction = 0.3f;
+        public const float KillerNodeReduction = 0.2f;
         public const int NmpMargin = 0;
         public const int ImprovingNmpMargin = 73;
 

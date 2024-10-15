@@ -23,7 +23,7 @@ public partial class Searcher
 
         var newAccumulatorState = currentAccumulatorState + 1;
         var newBoardState = currentBoardState + 1;
-
+        var newDepth = depth;
         var pvIndex = *(PVTable.Indexes + depthFromRoot);
         var nextPvIndex = *(PVTable.Indexes + depthFromRoot + 1);
         _pVTable[pvIndex] = 0;
@@ -69,30 +69,38 @@ public partial class Searcher
                 if (alpha >= beta)
                     return alpha;
             }
+        }
 
-            if (pHash == ttEntry.FullHash)
+        if (pHash == ttEntry.FullHash)
+        {
+            transpositionBestMove = ttEntry.Move;
+            transpositionType = ttEntry.Flag;
+            if (ttEntry.Depth >= depth)
             {
-                transpositionBestMove = ttEntry.Move;
-                transpositionType = ttEntry.Flag;
-                if (ttEntry.Depth >= depth)
+                var score = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+
+                transpositionEvaluation = ttEntry.Flag switch
                 {
-                    var score = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+                    TranspositionTableFlag.Exact => score,
+                    TranspositionTableFlag.Alpha when score <= alpha => alpha,
+                    TranspositionTableFlag.Beta when score >= beta => beta,
+                    _ => TranspositionTableExtensions.NoHashEntry
+                };
 
-                    transpositionEvaluation = ttEntry.Flag switch
-                    {
-                        TranspositionTableFlag.Exact => score,
-                        TranspositionTableFlag.Alpha when score <= alpha => alpha,
-                        TranspositionTableFlag.Beta when score >= beta => beta,
-                        _ => TranspositionTableExtensions.NoHashEntry
-                    };
-
-                    if (!pvNode && transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
-                    {
-                        // Transposition table hit
-                        return transpositionEvaluation;
-                    }
+                if (depthFromRoot > 0 && !pvNode && transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
+                {
+                    // Transposition table hit
+                    return transpositionEvaluation;
                 }
             }
+        }
+
+
+        if (depth <= 0)
+        {
+            // Max depth reached, return evaluation of quiet position
+            NodesVisited--;
+            return QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
         }
 
         var pawnChIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
@@ -100,6 +108,7 @@ public partial class Searcher
         var blackMaterialChIndex = CorrectionIndex(currentBoardState->BlackMaterialHash, currentBoardState->WhiteToMove);
 
         int staticEval;
+
         if (parentInCheck)
         {
             staticEval = 0;
@@ -119,17 +128,17 @@ public partial class Searcher
         if (parentInCheck)
         {
             improving = false;
-        }else if (depthFromRoot >= 2 && (currentAccumulatorState - 2)->Eval != 0)
+        }else if (depthFromRoot >= 2 && (currentAccumulatorState - 2)->Eval != TranspositionTableExtensions.NoHashEntry)
         {
             improving = staticEval > (currentAccumulatorState - 2)->Eval;
         }
-        else if (depthFromRoot >= 4 && (currentAccumulatorState - 4)->Eval != 0)
+        else if (depthFromRoot >= 4 && (currentAccumulatorState - 4)->Eval != TranspositionTableExtensions.NoHashEntry)
         {
             improving = staticEval > (currentAccumulatorState - 4)->Eval;
         }
         else
         {
-            improving = false;
+            improving = true;
         }
 
         if (depthFromRoot > 0)
@@ -137,7 +146,7 @@ public partial class Searcher
             if (parentInCheck)
             {
                 // Extend searches when in check
-                depth++;
+                newDepth++;
             }
             else if (!pvNode)
             {
@@ -147,6 +156,32 @@ public partial class Searcher
                 if (depth <= SpsaOptions.ReverseFutilityPruningDepth && staticEval >= beta + margin)
                 {
                     return staticEval - margin;
+                }
+
+                // Razoring
+                if (depth is > 0 and <= 3)
+                {
+                    var score = staticEval + SpsaOptions.RazorMarginA;
+                    if (depth == 1 && score < beta)
+                    {
+                        NodesVisited--;
+                        var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
+
+                        return int.Max(qScore, score);
+                    }
+
+                    score = staticEval + SpsaOptions.RazorMarginB;
+                    if (score < beta)
+                    {
+                        NodesVisited--;
+                        var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
+                        if (qScore < beta)
+                        {
+                            return int.Max(qScore, score);
+                        }
+                    }
+
+                    canPrune = true;
                 }
 
                 var nmpMargin = improving ? SpsaOptions.ImprovingNmpMargin : SpsaOptions.NmpMargin;
@@ -175,48 +210,24 @@ public partial class Searcher
                         return beta;
                     }
                 }
-
-                // Razoring
-                if (depth is > 0 and <= 3)
-                {
-                    var score = staticEval + SpsaOptions.RazorMarginA;
-                    if (depth == 1 && score < beta)
-                    {
-                        NodesVisited--;
-                        var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
-
-                        return int.Max(qScore, score);
-                    }
-
-                    score = staticEval + SpsaOptions.RazorMarginB;
-                    if (score < beta)
-                    {
-                        NodesVisited--;
-                        var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
-                        if (qScore < beta)
-                        {
-                            return int.Max(qScore, score);
-                        }
-                    }
-
-                    canPrune = true;
-                }
             }
         }
 
-        if (depth <= 0)
+        if (!pvNode && transpositionType == default &&
+            newDepth > SpsaOptions.InternalIterativeDeepeningDepth)
         {
-            // Max depth reached, return evaluation of quiet position
-            NodesVisited--;
-            return QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
+            // Internal iterative deepening
+            depth--;
+            newDepth--;
         }
 
-        if (transpositionType == default && 
-            depth > SpsaOptions.InternalIterativeDeepeningDepth
+        if (transpositionType == default &&
+            newDepth > SpsaOptions.InternalIterativeDeepeningDepth
             && cutNode)
         {
             // Internal iterative deepening
             depth--;
+            newDepth--;
         }
 
         var whiteToMove = currentBoardState->WhiteToMove;
@@ -499,7 +510,9 @@ public partial class Searcher
 
             if (searchedMoves > 0)
             {
-                if (depth >= SpsaOptions.LateMoveReductionMinDepth && searchedMoves >= SpsaOptions.LateMoveReductionMinMoves)
+                if (newDepth >= SpsaOptions.LateMoveReductionMinDepth && 
+                    searchedMoves >= SpsaOptions.LateMoveReductionMinMoves &&
+                    !(pvNode && m.IsCapture()))
                 {
                     // LMR: Move ordering should ensure a better move has already been found by now so do a shallow search
                     var reduction = isInteresting
@@ -508,10 +521,13 @@ public partial class Searcher
 
                     reduction += cutNode ? SpsaOptions.CutNodeReduction : 0;
                     reduction += improving ? 0 : SpsaOptions.ImprovingNodeReduction;
+                    reduction += pvNode ? 0 : SpsaOptions.PvNodeReduction;
+                    reduction += killerA == m ? 0 : SpsaOptions.KillerNodeReduction;
 
-                    if (reduction > 0)
+                    var r = (int)Math.Round(reduction);
+                    if (r > 0)
                     {
-                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - (int)reduction - 1,
+                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth - r - 1,
                             -alpha - 1, -alpha, true);
                         needsFullSearch = score > alpha;
                     }
@@ -520,7 +536,7 @@ public partial class Searcher
                 if (needsFullSearch)
                 {
                     // PVS
-                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha, !cutNode);
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth - 1, -alpha - 1, -alpha, !cutNode);
                     needsFullSearch = score > alpha && score < beta;
                 }
             }
@@ -528,7 +544,7 @@ public partial class Searcher
             if (needsFullSearch)
             {
                 // Full search
-                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -beta, -alpha, false);
+                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth - 1, -beta, -alpha, false);
             }
 
             // Revert the move

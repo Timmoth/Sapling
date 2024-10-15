@@ -76,7 +76,7 @@ public static unsafe class AccumulatorStateExtensions
         state.WhiteAccumulatorUpToDate = state.BlackAccumulatorUpToDate = false;
         state.ChangeType = AccumulatorChangeType.None;
         state.Move = default;
-        state.Eval = 0;
+        state.Eval = TranspositionTableExtensions.NoHashEntry;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -94,7 +94,7 @@ public static unsafe class AccumulatorStateExtensions
         state.WhiteNeedsRefresh = other->WhiteMirrored != state.WhiteMirrored || other->WhiteInputBucket != state.WhiteInputBucket;
         state.BlackNeedsRefresh = other->BlackMirrored != state.BlackMirrored || other->BlackInputBucket != state.BlackInputBucket;
         state.Move = default;
-        state.Eval = 0;
+        state.Eval = TranspositionTableExtensions.NoHashEntry;
     }
 }
 
