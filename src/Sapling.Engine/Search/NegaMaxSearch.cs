@@ -4,6 +4,7 @@ using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
 using Sapling.Engine.Tuning;
 using Sapling.Engine.Evaluation;
+using System.Text.RegularExpressions;
 
 namespace Sapling.Engine.Search;
 
@@ -11,7 +12,7 @@ public partial class Searcher
 {
     public unsafe int
         NegaMaxSearch(BoardStateData* currentBoardState, AccumulatorState* currentAccumulatorState, int depthFromRoot, int depth,
-            int alpha, int beta, bool cutNode)
+            int alpha, int beta, bool cutNode, uint exclude = default)
     {
         NodesVisited++;
 
@@ -32,13 +33,14 @@ public partial class Searcher
         var parentInCheck = currentBoardState->InCheck;
         var pHash = currentBoardState->Hash;
 
+        var doSkip = exclude != default;
         var canPrune = false;
         uint transpositionBestMove = default;
         TranspositionTableFlag transpositionType = default;
         var transpositionEvaluation = TranspositionTableExtensions.NoHashEntry;
         ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
-
-        if (depthFromRoot > 0)
+        var ttScore = TranspositionTableExtensions.NoHashEntry;
+        if (depthFromRoot > 0 && !doSkip)
         {
             if (_searchCancelled)
             {
@@ -75,15 +77,15 @@ public partial class Searcher
         {
             transpositionBestMove = ttEntry.Move;
             transpositionType = ttEntry.Flag;
+            ttScore = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+
             if (ttEntry.Depth >= depth)
             {
-                var score = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
-
                 transpositionEvaluation = ttEntry.Flag switch
                 {
-                    TranspositionTableFlag.Exact => score,
-                    TranspositionTableFlag.Alpha when score <= alpha => alpha,
-                    TranspositionTableFlag.Beta when score >= beta => beta,
+                    TranspositionTableFlag.Exact => ttScore,
+                    TranspositionTableFlag.Alpha when ttScore <= alpha => alpha,
+                    TranspositionTableFlag.Beta when ttScore >= beta => beta,
                     _ => TranspositionTableExtensions.NoHashEntry
                 };
 
@@ -109,20 +111,29 @@ public partial class Searcher
 
         int staticEval;
 
-        if (parentInCheck)
+        if (doSkip)
         {
-            staticEval = 0;
-        }else if (transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
-        {
-            staticEval = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+            staticEval = currentAccumulatorState->Eval;
         }
         else
         {
-            staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex,
-                Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
+            if (parentInCheck)
+            {
+                staticEval = 0;
+            }
+            else if (transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
+            {
+                staticEval = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+            }
+            else
+            {
+                staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex,
+                    Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
+            }
+
+            currentAccumulatorState->Eval = staticEval;
         }
 
-        currentAccumulatorState->Eval = staticEval;
 
         var improving = false;
         if (parentInCheck)
@@ -141,14 +152,13 @@ public partial class Searcher
             improving = true;
         }
 
-        if (depthFromRoot > 0)
+        if (parentInCheck)
         {
-            if (parentInCheck)
-            {
-                // Extend searches when in check
-                newDepth++;
-            }
-            else if (!pvNode)
+            // Extend searches when in check
+            newDepth++;
+        }
+
+        if (depthFromRoot > 0 && !doSkip && !pvNode && !parentInCheck)
             {
                 // Reverse futility pruning
 
@@ -211,7 +221,6 @@ public partial class Searcher
                     }
                 }
             }
-        }
 
         if (!pvNode && transpositionType == default &&
             newDepth > SpsaOptions.InternalIterativeDeepeningDepth)
@@ -333,7 +342,7 @@ public partial class Searcher
 
         // Probcut
         int probBeta = beta + (improving ? SpsaOptions.ImprovingProbCutBetaMargin : SpsaOptions.ProbCutBetaMargin);
-        if (!pvNode && !parentInCheck
+        if (!pvNode && !parentInCheck && !doSkip
             && currentAccumulatorState->Move != default
             && depth >= SpsaOptions.ProbCutMinDepth
             && Math.Abs(beta) < TranspositionTableExtensions.PositiveCheckmateDetectionLimit
@@ -389,6 +398,7 @@ public partial class Searcher
 
                 newBoardState->UpdateCheckStatus();
                 newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
+
                 if (whiteToMove)
                 {
                     newBoardState->FinishApplyWhite(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
@@ -463,7 +473,7 @@ public partial class Searcher
 
             var m = *currentMovePtr;
 
-            if (m == default)
+            if (m == default || m == exclude)
             {
                 continue;
             }
@@ -491,6 +501,51 @@ public partial class Searcher
                 // Late move pruning
                 continue;
             }
+
+            var extension = 0;
+            if (//depthFromRoot < CurrentSearchDepth  &&
+                depthFromRoot >= 1 && !doSkip &&
+                m == transpositionBestMove &&
+                ttScore != TranspositionTableExtensions.NoHashEntry
+                && depth >= 7
+                && ttEntry.Depth >= depth - 3
+                && Math.Abs(ttScore) < Constants.ImmediateMateScore
+                && transpositionType != TranspositionTableFlag.Beta)
+            {
+                BoardStateData bs = default;
+                bs = *newBoardState;
+
+                int singleBeta = ttScore - (11 * newDepth / 10);//(ttScore - (depth * 3 / 4));//
+                int singleDepth = (newDepth - 1) / 2;
+
+                var s = NegaMaxSearch(currentBoardState, currentAccumulatorState, depthFromRoot, singleDepth,
+                    singleBeta - 1, singleBeta, cutNode, m);
+
+
+                if (s < singleBeta)
+                {
+                    extension += !pvNode && (s < singleBeta - 24) ? 2 : 1;
+                }
+                else if (singleBeta >= beta)
+                {
+                    return singleBeta;
+                }
+                else if (ttScore >= beta)
+                {
+                    extension -= 2 + (pvNode ? 1 : 0);
+                }
+                else if (cutNode)
+                {
+                    extension -= 2;
+                }
+                else if (ttScore <= alpha)
+                {
+                    extension -= 1;
+                }
+
+                *newBoardState = bs;
+            }
+
 
             newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
             if (whiteToMove)
@@ -522,12 +577,11 @@ public partial class Searcher
                     reduction += cutNode ? SpsaOptions.CutNodeReduction : 0;
                     reduction += improving ? 0 : SpsaOptions.ImprovingNodeReduction;
                     reduction += pvNode ? 0 : SpsaOptions.PvNodeReduction;
-                    reduction += killerA == m ? 0 : SpsaOptions.KillerNodeReduction;
 
                     var r = (int)Math.Round(reduction);
                     if (r > 0)
                     {
-                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth - r - 1,
+                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth + extension - r - 1,
                             -alpha - 1, -alpha, true);
                         needsFullSearch = score > alpha;
                     }
@@ -536,7 +590,7 @@ public partial class Searcher
                 if (needsFullSearch)
                 {
                     // PVS
-                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth - 1, -alpha - 1, -alpha, !cutNode);
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth + extension - 1, -alpha - 1, -alpha, !cutNode);
                     needsFullSearch = score > alpha && score < beta;
                 }
             }
@@ -544,7 +598,7 @@ public partial class Searcher
             if (needsFullSearch)
             {
                 // Full search
-                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth - 1, -beta, -alpha, false);
+                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, newDepth + extension - 1, -beta, -alpha, false);
             }
 
             // Revert the move
@@ -575,6 +629,11 @@ public partial class Searcher
 
             if (score >= beta)
             {
+                if (doSkip)
+                {
+                    return score;
+                }
+
                 if (!parentInCheck && (bestMove == default || bestMove.IsQuiet())
                                    && (score > staticEval))
                 {
@@ -607,6 +666,11 @@ public partial class Searcher
                 return score;
             }
 
+            if (doSkip)
+            {
+                continue;
+            }
+
             if (!_searchCancelled || depthFromRoot > 0)
             {
                 // update pv table
@@ -626,6 +690,11 @@ public partial class Searcher
             // No available moves, either stalemate or checkmate
             var eval = MoveScoring.EvaluateFinalPosition(depthFromRoot, parentInCheck);
 
+            if (doSkip)
+            {
+                return eval;
+            }
+
             if (!parentInCheck)
             {
                 var diff = eval - staticEval;
@@ -638,6 +707,11 @@ public partial class Searcher
             return eval;
         }
 
+
+        if (doSkip)
+        {
+            return alpha;
+        }
 
         if (!parentInCheck
                             && (bestMove == default || bestMove.IsQuiet())

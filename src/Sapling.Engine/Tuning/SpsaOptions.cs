@@ -135,7 +135,7 @@ namespace Sapling.Engine.Tuning
         public static int ProbCutBetaMargin = 220;
 
         [SpsaMinValue("200"), SpsaMaxValue("300")]
-        public static int ImprovingProbCutBetaMargin = 210;
+        public static int ImprovingProbCutBetaMargin = 220;
 
         [SpsaMinValue("0"), SpsaMaxValue("6")]
         public static int ProbCutMinDepth = 3;
@@ -208,7 +208,7 @@ namespace Sapling.Engine.Tuning
         public const int InterestingNegaMaxMoveScore = 40775;
         public const int InterestingQuiescenceMoveScore = 35432;
         public const int ProbCutBetaMargin = 220;
-        public const int ImprovingProbCutBetaMargin =210;
+        public const int ImprovingProbCutBetaMargin =220;
         public const int ProbCutMinDepth = 3;
         public const int AsperationWindowA = 37;
         public const int AsperationWindowB = 59;

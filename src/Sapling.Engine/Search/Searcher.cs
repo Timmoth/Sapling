@@ -208,6 +208,7 @@ public unsafe partial class Searcher
         };
     }
 
+    public int CurrentSearchDepth = 0;
     public (List<uint> pv, int depthSearched, int score, int nodes) Search(GameState inputBoard, int nodeLimit = 0,
         int depthLimit = 0, bool writeInfo = false)
     {
@@ -242,6 +243,7 @@ public unsafe partial class Searcher
         inputBoard.Board.CloneTo(ref rootBoard);
         FillInitialAccumulators(Boards, Accumulators);
 
+        CurrentSearchDepth = 0;
         var bestEval = lastIterationEval = NegaMaxSearch(Boards, Accumulators, 0, 0, alpha, beta, false);
 
         BestSoFar = _pVTable[0];
@@ -252,6 +254,7 @@ public unsafe partial class Searcher
         var startTime = DateTime.Now;
         for (var j = 1; j < maxDepth; j++)
         {
+            CurrentSearchDepth = j;
             var alphaWindowIndex = 0;
             var betaWindowIndex = 0;
             do

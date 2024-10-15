@@ -45,20 +45,21 @@ public partial class Searcher
         var pHash = boardState->Hash;
         ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
         uint ttBestMove = default;
-
+        var pvNode = beta - alpha > 1;
+        int transpositionEvaluation = TranspositionTableExtensions.NoHashEntry;
         if (pHash == ttEntry.FullHash)
         {
             ttBestMove = ttEntry.Move;
             var score = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
 
-            var transpositionEvaluation = ttEntry.Flag switch
+            transpositionEvaluation = ttEntry.Flag switch
             {
                 TranspositionTableFlag.Exact => score,
                 TranspositionTableFlag.Alpha when score <= alpha => alpha,
                 TranspositionTableFlag.Beta when score >= beta => beta,
                 _ => TranspositionTableExtensions.NoHashEntry
             };
-            if (transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
+            if (!pvNode && transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
             {
                 // Transposition table hit
                 return transpositionEvaluation;
@@ -66,21 +67,32 @@ public partial class Searcher
         }
 
         var inCheck = boardState->InCheck;
-        if (!inCheck)
-        {
-            var pawnChIndex = CorrectionIndex(boardState->PawnHash, boardState->WhiteToMove);
-            var whiteMaterialChIndex = CorrectionIndex(boardState->WhiteMaterialHash, boardState->WhiteToMove);
-            var blackMaterialChIndex = CorrectionIndex(boardState->BlackMaterialHash, boardState->WhiteToMove);
 
-            // Evaluate current position
-            var val = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, Evaluate(boardState, accumulatorState, depthFromRoot));
-            if (val >= beta)
+        if(!inCheck)
+        {
+            int staticEval;
+
+            if (transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
             {
-                // Beta cut off
-                return val;
+                staticEval = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+            }
+            else
+            {
+                var pawnChIndex = CorrectionIndex(boardState->PawnHash, boardState->WhiteToMove);
+                var whiteMaterialChIndex = CorrectionIndex(boardState->WhiteMaterialHash, boardState->WhiteToMove);
+                var blackMaterialChIndex = CorrectionIndex(boardState->BlackMaterialHash, boardState->WhiteToMove);
+
+
+                staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex,
+                    Evaluate(boardState, accumulatorState, depthFromRoot));
+                if (staticEval >= beta)
+                {
+                    // Beta cut off
+                    return staticEval;
+                }
             }
 
-            alpha = int.Max(alpha, val);
+            alpha = int.Max(alpha, staticEval);
         }
 
         // Get all capturing moves
@@ -121,13 +133,16 @@ public partial class Searcher
         };
 
         var captures = stackalloc short[boardState->PieceCount];
+        int prevSquare = accumulatorState->Move == default ? 64 : accumulatorState->Move.GetToSquare();
 
         for (var i = 0; i < psuedoMoveCount; ++i)
         {
             var move = *(moves + i);
+
             if (ttBestMove == move)
             {
                 *(scores + i) = SpsaOptions.MoveOrderingBestMoveBias;
+                continue;
             }
 
             if (move.IsCapture())
@@ -157,7 +172,7 @@ public partial class Searcher
         var evaluationBound = TranspositionTableFlag.Alpha;
 
         uint bestMove = default;
-        var hasValidMove = false;
+        var validMoves = 0;
 
         var nextAccumulatorState = accumulatorState + 1;
         var nextBoardState = boardState + 1;
@@ -166,6 +181,8 @@ public partial class Searcher
         var prevEnpassant = boardState->EnPassantFile;
         var prevCastleRights = boardState->CastleRights;
         var whiteToMove = boardState->WhiteToMove;
+
+        var checkEvasions = 0;
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
             // Incremental move sorting
@@ -203,15 +220,28 @@ public partial class Searcher
                 // illegal move
                 continue;
             }
+            validMoves++;
 
             nextBoardState->UpdateCheckStatus();
-
-            hasValidMove = true;
-
-            if (!inCheck && !nextBoardState->InCheck && (*currentScorePtr) < SpsaOptions.InterestingQuiescenceMoveScore)
+            
+            if (prevSquare != m.GetToSquare() && 
+                !(nextBoardState->InCheck || m.IsPromotion()))
             {
-                //skip playing bad captures when not in check
-                continue;
+                if (validMoves > 3 && !inCheck)
+                {
+                    continue;
+                }
+
+                if(validMoves > 1 && (*currentScorePtr) < SpsaOptions.InterestingQuiescenceMoveScore && (!inCheck || checkEvasions >= 2))
+                {
+                    //skip playing bad captures when not in check
+                    continue;
+                }
+            }
+            
+            if (inCheck && !m.IsCapture())
+            {
+                checkEvasions++;
             }
 
             nextAccumulatorState->UpdateToParent(accumulatorState, nextBoardState);
@@ -262,7 +292,7 @@ public partial class Searcher
             return 0;
         }
 
-        if (!hasValidMove && inCheck)
+        if (validMoves == 0 && inCheck)
         {
             // No move could be played, either stalemate or checkmate
             var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
