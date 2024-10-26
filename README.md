@@ -13,7 +13,7 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 
 | Rating pool                                                                   | Version | ELO  |
 |-------------------------------------------------------------------------------|---------|------|
-| [CCRL 40/15](https://www.computerchess.org.uk/ccrl/4040/rating_list_all.html) | 1.1.8   | 3340 |
+| [CCRL 40/15](https://www.computerchess.org.uk/ccrl/4040/rating_list_all.html) | 1.1.2   | 3378 |
 | [Lichess Bullet](https://lichess.org/@/Sapling-Bot/perf/bullet)               | 1.2.2   | 2890 |
 | [Lichess Blitz](https://lichess.org/@/Sapling-Bot/perf/blitz)                 | 1.2.2   | 2786 |
 | [Lichess Rapid](https://lichess.org/@/Sapling-Bot/perf/rapid)                 | 1.2.2   | 2797 |
@@ -22,7 +22,8 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 | Tournament                                                                                         | Version | Result           |
 |----------------------------------------------------------------------------------------------------|---------|------------------|
 | [CCRL 112th Amateur Series Division 5](https://talkchess.com/viewtopic.php?p=969661&hilit=sapling) | 1.1.8   | drawed 3rd place |
-| [Blitz Tournament 3'+2" (48th Edition)](https://talkchess.com/viewtopic.php?t=84301&hilit=sapling) | 1.2.0   | TBD              |
+| [Blitz Tournament 3'+2" (48th Edition)](https://talkchess.com/viewtopic.php?t=84301&hilit=sapling) | 1.2.0   | Division 4 6th place              |
+| [FRC Tournament (35th Edition)](https://talkchess.com/viewtopic.php?p=970724&hilit=sapling#p970724) | 1.2.2   | TBD              |
 
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
