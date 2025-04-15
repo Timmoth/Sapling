@@ -83,18 +83,32 @@ public static class TranspositionTableExtensions
         entry.Flag = nodeType;
         entry.Move = move != 0 ? move : entry.Move; //Don't clear TT move if no best move is provided: keep old one
     }
-
+    public static unsafe int GetMaxTranspositionTableSizeInMb()
+    {
+        return (int)((long)int.MaxValue * sizeof(Transposition) / (1024 * 1024));
+    }
     public static unsafe uint CalculateTranspositionTableSize(int sizeInMb)
     {
-        var transpositionCount = (ulong)sizeInMb * 1024ul * 1024ul / (ulong)sizeof(Transposition);
+        int maxAllowedSizeInMb = (int)((long)int.MaxValue * sizeof(Transposition) / (1024 * 1024));
+
+        // Cap to the maximum if necessary
+        if (sizeInMb > maxAllowedSizeInMb)
+        {
+            sizeInMb = maxAllowedSizeInMb;
+        }
+
+        ulong transpositionCount = (ulong)sizeInMb * 1024 * 1024 / (ulong)sizeof(Transposition);
+
+        // Round to nearest lower power of two (adjust if needed)
         if (!BitOperations.IsPow2(transpositionCount))
         {
             transpositionCount = BitOperations.RoundUpToPowerOf2(transpositionCount) >> 1;
         }
 
+        // If still too large, clamp to int.MaxValue
         if (transpositionCount > int.MaxValue)
         {
-            throw new ArgumentException("Transposition table too large");
+            transpositionCount = (uint)(1u << 31); // 2^31 (still fits in uint)
         }
 
         return (uint)transpositionCount;

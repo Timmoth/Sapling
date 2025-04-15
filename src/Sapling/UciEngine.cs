@@ -96,7 +96,7 @@ public class UciEngine
                 Respond("id author Tim Jones");
                 Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                 Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
-                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max 2046");
+                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max 22000");
                 Respond($"option name UCI_Chess960 type check default false");
 #if OpenBench
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)

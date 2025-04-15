@@ -18,14 +18,14 @@ jobs:
       - name: Setup .NET Core
         uses: actions/setup-dotnet@v1
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 9.0.x
 
       # Get the version from the .csproj file
       - name: Get .NET application version
         working-directory: src/Sapling
         id: get_version
         run: |
-          VERSION=1.2.2
+          VERSION=1.2.3
           echo "Application version: $VERSION"
           echo "::set-output name=version::$VERSION"
 
