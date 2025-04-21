@@ -28,7 +28,7 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-### Latest Release [v1.2.3 15/04/2025](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.2.3)
+### Latest Release [v1.2.4 21/04/2025](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.2.4)
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
