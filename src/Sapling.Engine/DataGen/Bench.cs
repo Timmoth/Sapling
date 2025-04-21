@@ -91,7 +91,6 @@ namespace Sapling.Engine.DataGen
 
             var gameState = GameState.InitialState();
             var searcher = new Searcher(transpositions, transpositionSize);
-
             var stopwatch = new Stopwatch();
             long totalNodes = 0;
             long totalTime = 0;

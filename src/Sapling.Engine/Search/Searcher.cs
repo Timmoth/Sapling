@@ -19,7 +19,7 @@ public unsafe partial class Searcher
 
     private bool _searchCancelled;
     public uint BestSoFar;
-    public int NodesVisited;
+    public long NodesVisited;
     private const int KillersLength = Constants.MaxSearchDepth * 2;
 
     private const int HistoryLength = 13 * 64;
@@ -208,7 +208,7 @@ public unsafe partial class Searcher
         };
     }
 
-    public (List<uint> pv, int depthSearched, int score, int nodes) Search(GameState inputBoard, int nodeLimit = 0,
+    public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, List<Searcher>? searchers = null, int nodeLimit = 0,
         int depthLimit = 0, bool writeInfo = false)
     {
         NodesVisited = 0;
@@ -252,6 +252,11 @@ public unsafe partial class Searcher
         var startTime = DateTime.Now;
         for (var j = 1; j < maxDepth; j++)
         {
+            if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
+            {
+                break;
+            }
+
             var alphaWindowIndex = 0;
             var betaWindowIndex = 0;
             do
@@ -294,8 +299,10 @@ public unsafe partial class Searcher
 
             if (writeInfo)
             {
+                var nodes = searchers?.Sum(s =>s.NodesVisited) ?? NodesVisited;
+
                 var dt = DateTime.Now - startTime;
-                var nps = (int)(NodesVisited / dt.TotalSeconds);
+                var nps = (long)(nodes / dt.TotalSeconds);
                 var sb = new StringBuilder();
                 for (var i = 0; i <= j; i++)
                 {
@@ -309,7 +316,7 @@ public unsafe partial class Searcher
                 }
 
                 Console.WriteLine(
-                    $"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {NodesVisited} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
+                    $"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {nodes} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
             }
 
             if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))

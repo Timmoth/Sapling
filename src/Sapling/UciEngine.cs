@@ -266,8 +266,9 @@ public class UciEngine
             var incrementWhiteMs = TryGetLabelledValueInt(message, "winc", GoLabels);
             var incrementBlackMs = TryGetLabelledValueInt(message, "binc", GoLabels);
 
-            thinkTime = ChooseThinkTime(timeRemainingWhiteMs, timeRemainingBlackMs, incrementWhiteMs,
-                incrementBlackMs, 30);
+            int movesToGo = TryGetLabelledValueInt(message, "movestogo", GoLabels);
+            thinkTime = CalculateThinkTime(timeRemainingWhiteMs, timeRemainingBlackMs, incrementWhiteMs,
+                incrementBlackMs, movesToGo, _gameState.History.Count, _gameState.Board.WhiteToMove);
         }
 
         if (thinkTime is <= 0)
@@ -277,9 +278,67 @@ public class UciEngine
 
         OnMoveChosen(_parallelSearcher.TimeBoundSearch(_gameState, thinkTime));
     }
+    private const float MinSearchTimeMs = 10f;
+    private const float OverheadBufferMs = 50f;
+    private const float IncrementUsageFactorLong = 0.6f;
+    private const float SoftLimitFactorLong = 0.75f;
+    private const float HardLimitFactorLong = 0.90f;
 
+    // Fallback simple allocator constants for short TCs
+    private const float ShortTcThresholdMs = 120_000f; // under 2 minutes remaining
+    private const float IncrementUsageFactorShort = 0.8f;
+    private const float MinThinkRatioShort = 0.25f;
+    private const float MinThinkAbsoluteShort = 50f;
+    public static int CalculateThinkTime(
+            int whiteTimeMs, int blackTimeMs,
+            int whiteIncMs, int blackIncMs,
+            int movesToGo, int plyCount,
+            bool whiteToMove)
+    {
+        // 1) Select appropriate clock and subtract overhead
+        float timeRemaining = (whiteToMove ? whiteTimeMs : blackTimeMs) - OverheadBufferMs;
+        float inc = whiteToMove ? whiteIncMs : blackIncMs;
+        timeRemaining = Math.Max(timeRemaining, MinSearchTimeMs);
+
+        // 2) Estimate movesToGo if unknown
+        if (movesToGo <= 0)
+        {
+            movesToGo = plyCount < 40 ? 30 : plyCount < 80 ? 20 : 10;
+        }
+
+        // 3) If we're in a short TC scenario, use simple formula
+        if (timeRemaining < ShortTcThresholdMs)
+        {
+            // Basic per-move division
+            float baseTime = timeRemaining / movesToGo;
+            // Add a generous fraction of increment if affordably available
+            if (timeRemaining > inc * 2)
+                baseTime += inc * IncrementUsageFactorShort;
+
+            // Guarantee a minimum think time
+            float minThink = Math.Min(MinThinkAbsoluteShort, timeRemaining * MinThinkRatioShort);
+            float thinkTime = Math.Max(minThink, baseTime);
+            return (int)Math.Ceiling(thinkTime);
+        }
+
+        // 4) Otherwise, use the long-TC soft/hard limit allocator
+        float baseAlloc = timeRemaining / (movesToGo + 2);
+        float rawAlloc = baseAlloc + inc * IncrementUsageFactorLong;
+
+        // Soft limit encourages iterative deepening
+        float softLimit = rawAlloc * SoftLimitFactorLong;
+        // Hard limit prevents flagging
+        float hardLimit = timeRemaining * HardLimitFactorLong;
+
+        // 5) Final think time is bounded by raw, soft, and hard limits
+        float think = Math.Min(rawAlloc, softLimit);
+        think = Math.Min(think, hardLimit);
+
+        // 6) Enforce absolute minimum
+        return (int)Math.Max(MinSearchTimeMs, Math.Ceiling(think));
+    }
     private void OnMoveChosen(
-        (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) result)
+        (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) result)
     {
         if (result == default)
         {
@@ -313,29 +372,11 @@ public class UciEngine
         }
     }
 
-    public void Info((List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) result)
+    public void Info((List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) result)
     {
         var nps = (int)(result.nodes / result.duration.TotalSeconds);
         Respond(
             $"info depth {result.depthSearched} score {ScoreToString(result.score)} nodes {result.nodes} nps {nps} time {(int)result.duration.TotalMilliseconds} pv {(string.Join(" ", result.move.Select(m => m.ToUciMoveName())))}");
-    }
-
-    public int ChooseThinkTime(int timeRemainingWhiteMs, int timeRemainingBlackMs, int incrementWhiteMs,
-        int incrementBlackMs, int movesToGo)
-    {
-        var myTimeRemainingMs = _gameState.Board.WhiteToMove ? timeRemainingWhiteMs : timeRemainingBlackMs;
-        var myIncrementMs = _gameState.Board.WhiteToMove ? incrementWhiteMs : incrementBlackMs;
-        // Get a fraction of remaining time to use for current move
-        var thinkTimeMs = myTimeRemainingMs / (float)movesToGo;
-
-        // Add increment
-        if (myTimeRemainingMs > myIncrementMs * 2)
-        {
-            thinkTimeMs += myIncrementMs * 0.8f;
-        }
-
-        var minThinkTime = Math.Min(50, myTimeRemainingMs * 0.25);
-        return (int)Math.Ceiling(Math.Max(minThinkTime, thinkTimeMs));
     }
 
     public static List<string> SplitSpan(ReadOnlySpan<char> span, char delimiter)

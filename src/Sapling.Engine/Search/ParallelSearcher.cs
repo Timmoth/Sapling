@@ -46,16 +46,16 @@ public unsafe class ParallelSearcher
         }
     }
 
-    public (List<uint> pv, int depthSearched, int score, int nodes, TimeSpan duration) NodeBoundSearch(
+    public (List<uint> pv, int depthSearched, int score, long nodes, TimeSpan duration) NodeBoundSearch(
         GameState state, int nodeLimit = 0, int maxDepth = 0)
     {
         var start = DateTime.Now;
-        var searchResult = Searchers[0].Search(state, nodeLimit, maxDepth);
+        var searchResult = Searchers[0].Search(state, nodeLimit: nodeLimit, depthLimit: maxDepth);
         return (searchResult.pv, searchResult.depthSearched, searchResult.score,
             searchResult.nodes, DateTime.Now - start);
     }
 
-    public (List<uint> pv, int depthSearched, int score, int nodes, TimeSpan duration) TimeBoundSearch(
+    public (List<uint> pv, int depthSearched, int score, long nodes, TimeSpan duration) TimeBoundSearch(
         GameState state, int thinkTime)
     {
         var newSearchId = Guid.NewGuid();
@@ -89,22 +89,22 @@ public unsafe class ParallelSearcher
 
         // Thread-local storage for best move in each thread
         var results =
-            new ThreadLocal<(List<uint> move, int depthSearched, int score, int nodes)>(
+            new ThreadLocal<(List<uint> move, int depthSearched, int score, long nodes)>(
                 () => (new List<uint>(), 0, int.MinValue, 0), true);
 
 
         // Parallel search, with thread-local best move
         Parallel.For(0, Searchers.Count,
-            i => { results.Value = Searchers[i].Search(state, writeInfo: i == 0); });
+            i => { results.Value = Searchers[i].Search(state, searchers: Searchers, writeInfo: i == 0); });
 
         var dt = DateTime.Now - start;
 
         Span<int> voteMap = stackalloc int[64 * 64];
         var worstScore = int.MaxValue;
-        var nodes = 0;
+        long nodes = 0;
 
         var resultList =
-            new List<(List<uint> move, int depthSearched, int score, int nodes)>();
+            new List<(List<uint> move, int depthSearched, int score, long nodes)>();
 
         // First pass: Initialize the worst score and reset vote map
         foreach (var result in results.Values)
@@ -155,7 +155,7 @@ public unsafe class ParallelSearcher
         return (bestMove, bestDepth, bestScore, nodes, dt);
     }
 
-    public (List<uint> move, int depthSearched, int score, int nodes, TimeSpan duration) DepthBoundSearch(
+    public (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) DepthBoundSearch(
         GameState state, int depth)
     {
         var searchId = Guid.NewGuid();
@@ -164,7 +164,7 @@ public unsafe class ParallelSearcher
 
         // Thread-local storage for best move in each thread
         var results =
-            new ThreadLocal<(List<uint> move, int depthSearched, int score, int nodes)>(
+            new ThreadLocal<(List<uint> move, int depthSearched, int score, long nodes)>(
                 () => (new List<uint>(), 0, int.MinValue, 0), true);
 
         var start = DateTime.Now;
@@ -176,7 +176,7 @@ public unsafe class ParallelSearcher
 
         Span<int> voteMap = stackalloc int[64 * 64];
         var worstScore = int.MaxValue;
-        var nodes = 0;
+        long nodes = 0;
         // First pass: Initialize the worst score and reset vote map
         foreach (var result in results.Values)
         {
