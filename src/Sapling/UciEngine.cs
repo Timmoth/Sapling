@@ -61,8 +61,8 @@ public class UciEngine
             case "threads":
                 if (tokens[3] == "value" && int.TryParse(tokens[4], out var searchThreads))
                 {
-                    _threadCount = searchThreads;
-                    _parallelSearcher.SetThreads(searchThreads);
+                    _threadCount = Math.Clamp(searchThreads, 1, Environment.ProcessorCount);
+                    _parallelSearcher.SetThreads(_threadCount);
                     LogToFile($"[Debug] Set Threads '{searchThreads}'");
                 }
 

@@ -179,7 +179,8 @@ public class DataGenerator
             }
             else
             {
-                var (pv, _, s, _) = searcher.Search(gameState, nodeLimit: 6500, depthLimit: 60, writeInfo: false);
+                searcher.Reset(gameState);
+                var (pv, _, s, _) = searcher.Search(gameState, searcher.Stop, nodeLimit: 6500, depthLimit: 60);
                 move = pv[0];
                 score = s;
 

@@ -46,11 +46,20 @@ public unsafe class ParallelSearcher
         }
     }
 
+    public void CancelSearch()
+    {
+        foreach (var searcher in Searchers)
+        {
+            searcher.Stop();
+        }
+    }
+
     public (List<uint> pv, int depthSearched, int score, long nodes, TimeSpan duration) NodeBoundSearch(
         GameState state, int nodeLimit = 0, int maxDepth = 0)
     {
         var start = DateTime.Now;
-        var searchResult = Searchers[0].Search(state, nodeLimit: nodeLimit, depthLimit: maxDepth);
+        Searchers[0].Reset(state);
+        var searchResult = Searchers[0].Search(state, CancelSearch, nodeLimit: nodeLimit, depthLimit: maxDepth);
         return (searchResult.pv, searchResult.depthSearched, searchResult.score,
             searchResult.nodes, DateTime.Now - start);
     }
@@ -69,7 +78,6 @@ public unsafe class ParallelSearcher
                     // Prevent a previous searches timeout cancelling a new search
                     return;
                 }
-
                 // Stop all searchers once think time has been reached
                 foreach (var searcher in Searchers)
                 {
@@ -79,10 +87,12 @@ public unsafe class ParallelSearcher
         }
 
         var start = DateTime.Now;
+        DateTime? end = thinkTime > 0 ? DateTime.Now.AddMilliseconds(thinkTime) : null;
 
         if (Searchers.Count == 1)
         {
-            var searchResult = Searchers[0].Search(state, writeInfo: true);
+            Searchers[0].Reset(state);
+            var searchResult = Searchers[0].Search(state, CancelSearch, timeLimit: end, threadId: 0);
             return (searchResult.pv, searchResult.depthSearched, searchResult.score,
                 searchResult.nodes, DateTime.Now - start);
         }
@@ -92,10 +102,28 @@ public unsafe class ParallelSearcher
             new ThreadLocal<(List<uint> move, int depthSearched, int score, long nodes)>(
                 () => (new List<uint>(), 0, int.MinValue, 0), true);
 
+        foreach (var searcher in Searchers)
+        {
+            searcher.Reset(state);
+        }
 
         // Parallel search, with thread-local best move
-        Parallel.For(0, Searchers.Count,
-            i => { results.Value = Searchers[i].Search(state, searchers: Searchers, writeInfo: i == 0); });
+        var threads = new Thread[Searchers.Count];
+        for (int i = 0; i < Searchers.Count; i++)
+        {
+            int threadId = i;
+            threads[i] = new Thread(() =>
+            {
+                results.Value = Searchers[threadId].Search(state, CancelSearch, timeLimit: end, threadId: threadId);
+            });
+            threads[i].Start();
+        }
+
+        // Wait for all to complete
+        foreach (var thread in threads)
+        {
+            thread.Join();
+        }
 
         var dt = DateTime.Now - start;
 
@@ -120,7 +148,8 @@ public unsafe class ParallelSearcher
 
         if (resultList.Count == 0)
         {
-            var searchResult = Searchers[0].Search(state, depthLimit:0, writeInfo: true);
+            Searchers[0].Reset(state);
+            var searchResult = Searchers[0].Search(state, CancelSearch, depthLimit:0, threadId: 0);
             return (searchResult.pv, searchResult.depthSearched, searchResult.score,
                 searchResult.nodes, DateTime.Now - start);
         }
@@ -161,7 +190,6 @@ public unsafe class ParallelSearcher
         var searchId = Guid.NewGuid();
         _prevSearchId = searchId;
 
-
         // Thread-local storage for best move in each thread
         var results =
             new ThreadLocal<(List<uint> move, int depthSearched, int score, long nodes)>(
@@ -169,9 +197,15 @@ public unsafe class ParallelSearcher
 
         var start = DateTime.Now;
 
+
+        foreach (var searcher in Searchers)
+        {
+            searcher.Reset(state);
+        }
+
         // Parallel search, with thread-local best move
         Parallel.For(0, Searchers.Count,
-            i => { results.Value = Searchers[i].Search(state, depthLimit: depth, writeInfo: i == 0); });
+            i => { results.Value = Searchers[i].Search(state, CancelSearch, depthLimit: depth, threadId: i); });
         var dt = DateTime.Now - start;
 
         Span<int> voteMap = stackalloc int[64 * 64];

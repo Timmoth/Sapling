@@ -99,7 +99,8 @@ namespace Sapling.Engine.DataGen
                 Console.WriteLine(fen);
                 gameState.ResetToFen(fen);
                 stopwatch.Restart();
-                var result = searcher.Search(gameState, depthLimit: depth, writeInfo: true);
+                searcher.Reset(gameState);
+                var result = searcher.Search(gameState, searcher.Stop, depthLimit: depth, threadId: 0);
 
                 totalTime += stopwatch.ElapsedMilliseconds;
                 totalNodes += result.nodes;

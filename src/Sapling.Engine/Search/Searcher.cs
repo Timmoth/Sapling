@@ -208,14 +208,11 @@ public unsafe partial class Searcher
         };
     }
 
-    public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, List<Searcher>? searchers = null, int nodeLimit = 0,
-        int depthLimit = 0, bool writeInfo = false)
+    public void Reset(GameState inputBoard)
     {
+        _searchCancelled = false;
         NodesVisited = 0;
         BestSoFar = 0;
-
-        var depthSearched = 0;
-        _searchCancelled = false;
 
         NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
         NativeMemory.Clear(Counters, (nuint)CountersLength * sizeof(uint));
@@ -230,6 +227,12 @@ public unsafe partial class Searcher
         NativeMemory.Clear(BucketCacheBlackBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
 
         Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * (uint)inputBoard.Board.TurnCount);
+    }
+
+    public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, Action cancellSearch, List<Searcher>? searchers = null, int nodeLimit = 0,
+        int depthLimit = 0, int threadId = -1, DateTime? timeLimit = null)
+    {
+        var depthSearched = 0;
 
         var alpha = Constants.MinScore;
         var beta = Constants.MaxScore;
@@ -252,6 +255,8 @@ public unsafe partial class Searcher
         var startTime = DateTime.Now;
         for (var j = 1; j < maxDepth; j++)
         {
+            var iterationStart = DateTime.Now;
+
             if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
             {
                 break;
@@ -297,7 +302,7 @@ public unsafe partial class Searcher
             depthSearched = j;
             bestEval = lastIterationEval;
 
-            if (writeInfo)
+            if (threadId == 0)
             {
                 var nodes = searchers?.Sum(s =>s.NodesVisited) ?? NodesVisited;
 
@@ -316,15 +321,21 @@ public unsafe partial class Searcher
                 }
 
                 Console.WriteLine(
-                    $"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {nodes} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
+                     $"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {nodes} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
+
+                var iterationDuration = DateTime.Now - iterationStart;
+                var timeRemaining = timeLimit - DateTime.Now;
+                if (timeRemaining.HasValue && timeRemaining.Value.TotalMilliseconds < iterationDuration.TotalMilliseconds * 1.5)
+                {
+                    cancellSearch();
+                    break;
+                }
             }
 
             if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
-            {
                 break;
-            }
         }
-
+        
         return (GetPvMoveList(pvMoves), depthSearched, bestEval, NodesVisited);
     }
 
