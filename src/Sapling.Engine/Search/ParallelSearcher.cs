@@ -92,7 +92,7 @@ public unsafe class ParallelSearcher
         if (Searchers.Count == 1)
         {
             Searchers[0].Reset(state);
-            var searchResult = Searchers[0].Search(state, CancelSearch, timeLimit: end, threadId: 0);
+            var searchResult = Searchers[0].Search(state, CancelSearch, Searchers, timeLimit: end, threadId: 0);
             return (searchResult.pv, searchResult.depthSearched, searchResult.score,
                 searchResult.nodes, DateTime.Now - start);
         }
@@ -114,7 +114,7 @@ public unsafe class ParallelSearcher
             int threadId = i;
             threads[i] = new Thread(() =>
             {
-                results.Value = Searchers[threadId].Search(state, CancelSearch, timeLimit: end, threadId: threadId);
+                results.Value = Searchers[threadId].Search(state, CancelSearch, Searchers, timeLimit: end, threadId: threadId);
             });
             threads[i].Start();
         }
@@ -149,7 +149,7 @@ public unsafe class ParallelSearcher
         if (resultList.Count == 0)
         {
             Searchers[0].Reset(state);
-            var searchResult = Searchers[0].Search(state, CancelSearch, depthLimit:0, threadId: 0);
+            var searchResult = Searchers[0].Search(state, CancelSearch, Searchers, depthLimit:0, threadId: 0);
             return (searchResult.pv, searchResult.depthSearched, searchResult.score,
                 searchResult.nodes, DateTime.Now - start);
         }
