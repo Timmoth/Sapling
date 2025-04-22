@@ -11,7 +11,7 @@ namespace Sapling;
 
 public class UciEngine
 {
-    public int TranspositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
+    public long TranspositionSize = (long)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
 
     private static readonly string[] PositionLabels = { "position", "fen", "moves" };
     private static readonly string[] GoLabels = { "go", "movetime", "wtime", "btime", "winc", "binc", "movestogo" };
@@ -28,7 +28,7 @@ public class UciEngine
     public UciEngine(StreamWriter logWriter)
     {
         var version = typeof(Program).Assembly.GetName().Version;
-        _version = $"{version.Major}-{version.Minor}-{version.Build}";
+        _version = $"{version.Major}.{version.Minor}.{version.Build}";
 
         _logWriter = logWriter;
         _parallelSearcher = new ParallelSearcher(TranspositionSize);
@@ -71,7 +71,7 @@ public class UciEngine
                 {
                     if (tokens[3] == "value" && int.TryParse(tokens[4], out var transpositionSize))
                     {
-                        TranspositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
+                        TranspositionSize = (long)TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
                         _parallelSearcher = new(TranspositionSize);
                         _parallelSearcher.SetThreads(_threadCount);
                         LogToFile($"[Debug] Set Transposition Size '{TranspositionSize}'");
@@ -96,7 +96,7 @@ public class UciEngine
                 Respond("id author Tim Jones");
                 Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                 Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
-                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max 22000");
+                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max 1000000");
                 Respond($"option name UCI_Chess960 type check default false");
 #if OpenBench
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)

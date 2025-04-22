@@ -8,12 +8,12 @@ public unsafe class ParallelSearcher
 {
     public readonly List<Searcher> Searchers = new();
     public readonly Transposition* Transpositions;
-    public readonly int TTSize;
+    public readonly long TTSize;
 
     // Used to prevent a previous searches timeout cancelling a new search
     private Guid _prevSearchId = Guid.NewGuid();
 
-    public ParallelSearcher(int ttSize)
+    public ParallelSearcher(long ttSize)
     {
         TTSize = ttSize;
         Transpositions = MemoryHelpers.Allocate<Transposition>(ttSize);

@@ -25,7 +25,7 @@ jobs:
         working-directory: src/Sapling
         id: get_version
         run: |
-          VERSION=1.2.5
+          VERSION=1.2.6
           echo "Application version: $VERSION"
           echo "::set-output name=version::$VERSION"
 
@@ -33,32 +33,32 @@ jobs:
       - name: Build and Package AVX512 for Windows
         run: |
           dotnet restore
-          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/win-x64-avx512
+          dotnet publish -c Release -r win-x64 --self-contained /p:Release=true /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/win-x64-avx512
 
       - name: Build and Package Non-AVX512 for Windows
         run: |
           dotnet restore
-          dotnet publish -c Release -r win-x64 --self-contained /p:PublishSingleFile=true -o ../output/win-x64
+          dotnet publish -c Release -r win-x64 --self-contained /p:Release=true /p:PublishSingleFile=true -o ../output/win-x64
 
       - name: Build and Package AVX512 for Linux
         run: |
           dotnet restore
-          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/linux-x64-avx512
+          dotnet publish -c Release -r linux-x64 --self-contained /p:Release=true /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/linux-x64-avx512
 
       - name: Build and Package Non-AVX512 for Linux
         run: |
           dotnet restore
-          dotnet publish -c Release -r linux-x64 --self-contained /p:PublishSingleFile=true -o ../output/linux-x64
+          dotnet publish -c Release -r linux-x64 --self-contained /p:Release=true /p:PublishSingleFile=true -o ../output/linux-x64
 
       - name: Build and Package AVX512 for OSX
         run: |
           dotnet restore
-          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/osx-x64-avx512
+          dotnet publish -c Release -r osx-x64 --self-contained /p:Release=true /p:PublishSingleFile=true -p:DefineConstants="AVX512" -o ../output/osx-x64-avx512
 
       - name: Build and Package Non-AVX512 for OSX
         run: |
           dotnet restore
-          dotnet publish -c Release -r osx-x64 --self-contained /p:PublishSingleFile=true -o ../output/osx-x64
+          dotnet publish -c Release -r osx-x64 --self-contained /p:Release=true /p:PublishSingleFile=true -o ../output/osx-x64
 
       # Rename the output files for consistency
       - name: Rename output files

@@ -7,16 +7,29 @@
     <Nullable>enable</Nullable>
     <ApplicationIcon>logo.ico</ApplicationIcon>
     <Title>Sapling</Title>
-	  <AssemblyVersion>1.2.2.0</AssemblyVersion>
-	  <FileVersion>1.2.2.0</FileVersion>
-	  <Version>1.2.2.0</Version>
+	  <AssemblyVersion>1.2.6.0</AssemblyVersion>
+	  <FileVersion>1.2.6.0</FileVersion>
+	  <Version>1.2.6.0</Version>
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	  <TieredPGO>true</TieredPGO>
+	  <TieredCompilation>true</TieredCompilation>
+	  <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <Content Include="logo.ico" />
   </ItemGroup>
 
+	<PropertyGroup Condition="'$(Release.ToLower())'=='true'">
+		<Configuration>Release</Configuration>
+		<SelfContained>true</SelfContained>
+		<PublishSingleFile>true</PublishSingleFile>
+		<PublishTrimmed>true</PublishTrimmed>
+		<EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+		<CETCompat>false</CETCompat>
+	</PropertyGroup>
+	
   <ItemGroup>
     <ProjectReference Include="..\Sapling.Engine\Sapling.Engine.csproj" />
   </ItemGroup>

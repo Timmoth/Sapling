@@ -83,35 +83,55 @@ public static class TranspositionTableExtensions
         entry.Flag = nodeType;
         entry.Move = move != 0 ? move : entry.Move; //Don't clear TT move if no best move is provided: keep old one
     }
-    public static unsafe int GetMaxTranspositionTableSizeInMb()
+
+    public static unsafe long CalculateTranspositionTableSize(long sizeInMb)
     {
-        return (int)((long)int.MaxValue * sizeof(Transposition) / (1024 * 1024));
-    }
-    public static unsafe uint CalculateTranspositionTableSize(int sizeInMb)
-    {
-        int maxAllowedSizeInMb = (int)((long)int.MaxValue * sizeof(Transposition) / (1024 * 1024));
+        if (sizeInMb <= 0)
+            throw new ArgumentOutOfRangeException(nameof(sizeInMb), "Size must be positive.");
 
-        // Cap to the maximum if necessary
-        if (sizeInMb > maxAllowedSizeInMb)
+        const long EightGB = 8L * 1024;
+        const long TwoGB = 2L * 1024;
+
+        ulong estimatedCount = (ulong)sizeInMb * 1024 * 1024 / (ulong)sizeof(Transposition);
+
+        if (estimatedCount == 0)
+            throw new OverflowException("Requested size is too small to store even one transposition.");
+
+        // Find powers of two above and below the estimated count
+        ulong lower = BitOperations.IsPow2(estimatedCount)
+            ? estimatedCount
+            : BitOperations.RoundUpToPowerOf2(estimatedCount) >> 1;
+
+        ulong upper = lower << 1;
+
+        // Calculate size in MB for the rounded counts
+        long lowerMb = (long)(lower * (ulong)sizeof(Transposition) / (1024 * 1024));
+        long upperMb = (long)(upper * (ulong)sizeof(Transposition) / (1024 * 1024));
+
+        long chosenMb;
+
+        if (sizeInMb <= EightGB)
         {
-            sizeInMb = maxAllowedSizeInMb;
+            // Always round up under 8GB
+            chosenMb = upperMb;
+        }
+        else if ((upperMb - sizeInMb) <= TwoGB)
+        {
+            // Round up if it's within 2GB
+            chosenMb = upperMb;
+        }
+        else
+        {
+            // Otherwise round down
+            chosenMb = lowerMb;
         }
 
-        ulong transpositionCount = (ulong)sizeInMb * 1024 * 1024 / (ulong)sizeof(Transposition);
+        ulong finalCount = (ulong)chosenMb * 1024 * 1024 / (ulong)sizeof(Transposition);
 
-        // Round to nearest lower power of two (adjust if needed)
-        if (!BitOperations.IsPow2(transpositionCount))
-        {
-            transpositionCount = BitOperations.RoundUpToPowerOf2(transpositionCount) >> 1;
-        }
+        if (finalCount == 0 || finalCount > long.MaxValue)
+            throw new OverflowException("Final transposition table size is too large.");
 
-        // If still too large, clamp to int.MaxValue
-        if (transpositionCount > int.MaxValue)
-        {
-            transpositionCount = (uint)(1u << 31); // 2^31 (still fits in uint)
-        }
-
-        return (uint)transpositionCount;
+        return (long)finalCount;
     }
 
     public static unsafe int CalculateSizeInMb(uint transpositionCount)

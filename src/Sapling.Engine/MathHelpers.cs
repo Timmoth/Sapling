@@ -4,25 +4,31 @@ namespace Sapling.Engine
 {
     public static unsafe class MemoryHelpers
     {
-        public static T* Allocate<T>(int count) where T : unmanaged
+        public static unsafe T* Allocate<T>(long count) where T : unmanaged
         {
-            const nuint alignment = 64;
+            if (count <= 0)
+                throw new ArgumentOutOfRangeException(nameof(count), "Count must be positive.");
 
-            // Use ulong to avoid overflow when calculating size
-            ulong totalSize = (ulong)sizeof(T) * (ulong)count;
+            const ulong alignment = 64;
 
-            // Check if allocation would exceed nuint.MaxValue
-            if (totalSize > nuint.MaxValue)
-                throw new ArgumentOutOfRangeException(nameof(count), "Requested allocation is too large");
+            // Use ulong to prevent overflow when calculating size
+            ulong elementSize = (ulong)sizeof(T);
+            ulong totalSize = elementSize * (ulong)count;
 
-            nuint size = (nuint)totalSize;
+            // Basic safety check: 128 TB max (adjust based on your app domain)
+            const ulong maxAllowedSize = 128UL * 1024 * 1024 * 1024 * 1024; // 128 TB
+            if (totalSize > maxAllowedSize)
+                throw new ArgumentOutOfRangeException(nameof(count), $"Requested size exceeds {maxAllowedSize / (1024 * 1024 * 1024)} GB.");
 
-            void* block = NativeMemory.AlignedAlloc(size, alignment);
+            void* block = NativeMemory.AlignedAlloc((nuint)totalSize, (nuint)alignment);
+
             if (block == null)
-                throw new OutOfMemoryException($"Failed to allocate {size / (1024 * 1024)} MB for {typeof(T).Name}");
+                throw new OutOfMemoryException($"Failed to allocate {(totalSize / (1024 * 1024))} MB for {typeof(T).Name}.");
 
-            NativeMemory.Clear(block, size);
+            NativeMemory.Clear(block, (nuint)totalSize);
+
             return (T*)block;
         }
+
     }
 }

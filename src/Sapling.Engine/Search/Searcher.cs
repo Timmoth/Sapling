@@ -14,7 +14,7 @@ public unsafe partial class Searcher
     private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
     private readonly uint* _pVTable;
     public readonly Transposition* Transpositions;
-    public readonly uint TtMask;
+    public readonly ulong TtMask;
     private long _lockedUntil;
 
     private bool _searchCancelled;
@@ -43,12 +43,12 @@ public unsafe partial class Searcher
     public readonly int* WhiteMaterialCorrHist;
     public readonly int* BlackMaterialCorrHist;
 
-    public Searcher(Transposition* transpositions, int ttCount)
+    public Searcher(Transposition* transpositions, long ttCount)
     {
         GC.SuppressFinalize(this);
         Transpositions = transpositions;
 
-        TtMask = (uint)ttCount - 1;
+        TtMask = (ulong)(ttCount - 1);
         _pVTable = MemoryHelpers.Allocate<uint>(_pvTableLength);
 
         WhiteAccumulators = AllocateSearchStack(Constants.MaxSearchDepth + 1);
@@ -229,7 +229,7 @@ public unsafe partial class Searcher
         Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * (uint)inputBoard.Board.TurnCount);
     }
 
-    public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, Action cancellSearch, List<Searcher>? searchers = null, int nodeLimit = 0,
+    public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, Action cancelSearch, List<Searcher>? searchers = null, int nodeLimit = 0,
         int depthLimit = 0, int threadId = -1, DateTime? timeLimit = null)
     {
         var depthSearched = 0;
@@ -327,7 +327,7 @@ public unsafe partial class Searcher
                 var timeRemaining = timeLimit - DateTime.Now;
                 if (timeRemaining.HasValue && timeRemaining.Value.TotalMilliseconds < iterationDuration.TotalMilliseconds * 1.5)
                 {
-                    cancellSearch();
+                    cancelSearch();
                     break;
                 }
             }

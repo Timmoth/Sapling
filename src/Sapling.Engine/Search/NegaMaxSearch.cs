@@ -543,8 +543,6 @@ public partial class Searcher
                     HistoryHeuristicExtensions.UpdateMovesHistory(History, moves, moveIndex, m, depth);
 
                     *(killers + (depthFromRoot << 1)) = m;
-
-
                     if (counterMoveIndex != 0)
                     {
                         *(Counters + counterMoveIndex) = m;
