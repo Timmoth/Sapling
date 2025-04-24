@@ -16,8 +16,7 @@ public unsafe class ParallelSearcher
     public ParallelSearcher(long ttSize)
     {
         TTSize = ttSize;
-        Transpositions = MemoryHelpers.Allocate<Transposition>(ttSize);
-
+        Transpositions = MemoryHelpers.AllocateMultiThreaded<Transposition>(ttSize);
         // Default to one thread
         Searchers.Add(new Searcher(Transpositions, ttSize));
     }
