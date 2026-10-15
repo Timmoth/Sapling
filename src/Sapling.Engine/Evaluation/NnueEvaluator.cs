@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.Transpositions;
 
@@ -15,12 +15,17 @@ public unsafe partial class Searcher
     public const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
 #endif
 
-    public const int AccumulatorSize = NnueWeights.Layer1Size / VectorSize;
+    public const int AccumulatorSize = NnueWeights.Layer1Size;
 
     public const int L1ByteSize = sizeof(short) * NnueWeights.Layer1Size;
     public const int InputBucketWeightCount = NnueWeights.InputSize * AccumulatorSize;
 
     public const int BucketDivisor = (32 + NnueWeights.OutputBuckets - 1) / NnueWeights.OutputBuckets;
+
+    // Narrow test entry point to the generated output kernel for the friend test assembly
+    // (output-parity tests in NnueOracleTests). Never called from production search paths.
+    internal static int ForwardCReLUProbe(short* usData, short* themData, int bucket) =>
+        ForwardCReLU(usData, themData, bucket);
 
     public int Evaluate(BoardStateData* boardState, AccumulatorState* accumulatorState, int depthFromRoot)
     {
@@ -44,8 +49,8 @@ public unsafe partial class Searcher
 
     public void FillInitialAccumulators(BoardStateData* board, AccumulatorState* accumulatorState)
     {
-        VectorShort* whiteAcc = WhiteAccumulators[0];
-        VectorShort* blackAcc = BlackAccumulators[0];
+        short* whiteAcc = WhiteAccumulators[0];
+        short* blackAcc = BlackAccumulators[0];
 
         accumulatorState->UpdateTo(board);
         accumulatorState->WhiteAccumulatorUpToDate = accumulatorState->BlackAccumulatorUpToDate = true;
@@ -151,7 +156,7 @@ public unsafe partial class Searcher
     }
 
     
-    private static void FullRefreshWhite(BoardStateData* board, int mirrored, int bucket, VectorShort* whiteAcc)
+    private static void FullRefreshWhite(BoardStateData* board, int mirrored, int bucket, short* whiteAcc)
     {
         Unsafe.CopyBlock(whiteAcc, NnueWeights.FeatureBiases, L1ByteSize);
 
@@ -226,7 +231,7 @@ public unsafe partial class Searcher
         }
     }
 
-    private static void FullRefreshBlack(BoardStateData* board, int mirrored, int bucket, VectorShort* blackAcc)
+    private static void FullRefreshBlack(BoardStateData* board, int mirrored, int bucket, short* blackAcc)
     {
         Unsafe.CopyBlock(blackAcc, NnueWeights.FeatureBiases, L1ByteSize);
 
@@ -493,7 +498,7 @@ public unsafe partial class Searcher
 
     public void RefreshAccumulatorWhite(BoardStateData* boards, AccumulatorState* accumulators, int depthFromRoot)
     {
-        VectorShort* accumulator = WhiteAccumulators[depthFromRoot];
+        short* accumulator = WhiteAccumulators[depthFromRoot];
 
         accumulators->Evaluation = TranspositionTableExtensions.NoHashEntry;
         accumulators->WhiteNeedsRefresh = false;
@@ -559,7 +564,7 @@ public unsafe partial class Searcher
 
     public void RefreshAccumulatorBlack(BoardStateData* board, AccumulatorState* accumulatorState, int depthFromRoot)
     {
-        VectorShort* accumulator = BlackAccumulators[depthFromRoot];
+        short* accumulator = BlackAccumulators[depthFromRoot];
 
         accumulatorState->Evaluation = TranspositionTableExtensions.NoHashEntry;
         accumulatorState->BlackNeedsRefresh = false;

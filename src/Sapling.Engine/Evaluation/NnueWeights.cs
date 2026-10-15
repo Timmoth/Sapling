@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -10,10 +10,10 @@ public static unsafe class NnueWeights
 
     public const byte InputBuckets = 4;
     public const byte OutputBuckets = 8;
-    public static readonly unsafe VectorShort* FeatureWeights;
-    public static readonly unsafe VectorShort* FeatureBiases;
-    public static readonly unsafe VectorShort* OutputWeights;
-    public static readonly short[] OutputBiases = new short[OutputBuckets];
+    public static readonly unsafe short* FeatureWeights;
+    public static readonly unsafe short* FeatureBiases;
+    public static readonly unsafe short* OutputWeights;
+    public static readonly unsafe short* OutputBiases;
 
     public static readonly byte* BucketLayout;
 
@@ -52,11 +52,12 @@ public static unsafe class NnueWeights
         }
 
 
-        var assembly = Assembly.GetAssembly(typeof(GameState));
+        var assembly = typeof(GameState).Assembly;
         var info = assembly.GetName();
         var name = info.Name;
         using var stream = assembly
-            .GetManifestResourceStream($"{name}.Resources.sapling.nnue")!;
+            .GetManifestResourceStream($"{name}.Resources.sapling.nnue")
+            ?? throw new InvalidOperationException("The embedded sapling.nnue network is missing.");
 
         var featureWeights = new short[InputSize * Layer1Size * InputBuckets];
         var featureBiases = new short[Layer1Size];
@@ -98,9 +99,10 @@ public static unsafe class NnueWeights
 
         outputWeights = transposedWeights;
 
-        for (var i = 0; i < OutputBiases.Length; i++)
+        var outputBiases = new short[OutputBuckets];
+        for (var i = 0; i < outputBiases.Length; i++)
         {
-            OutputBiases[i] = reader.ReadInt16();
+            outputBiases[i] = reader.ReadInt16();
         }
 
         //var result = Encoding.UTF8.GetString(reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position)));
@@ -110,8 +112,15 @@ public static unsafe class NnueWeights
         FeatureWeights = AlignedAllocZeroedShort((nuint)featureWeights.Length);
         FeatureBiases = AlignedAllocZeroedShort((nuint)featureBiases.Length);
         OutputWeights = AlignedAllocZeroedShort((nuint)outputWeights.Length);
+        OutputBiases = AlignedAllocZeroedShort((nuint)outputBiases.Length);
 
         // Copy managed array to unmanaged memory
+        fixed (short* sourcePtr = outputBiases)
+        {
+            Buffer.MemoryCopy(sourcePtr, OutputBiases, outputBiases.Length * sizeof(short),
+                outputBiases.Length * sizeof(short));
+        }
+
         fixed (short* sourcePtr = featureWeights)
         {
             Buffer.MemoryCopy(sourcePtr, FeatureWeights, featureWeights.Length * sizeof(short),
@@ -134,7 +143,7 @@ public static unsafe class NnueWeights
     public static unsafe byte* AlignedAllocZeroedByte(nuint items)
     {
         const nuint alignment = 64;
-        var bytes = sizeof(short) * items;
+        var bytes = items;
         var block = NativeMemory.AlignedAlloc(bytes, alignment);
         if (block == null)
         {
@@ -144,9 +153,14 @@ public static unsafe class NnueWeights
         NativeMemory.Clear(block, bytes);
         return (byte*)block;
     }
-    public static unsafe VectorShort* AlignedAllocZeroedShort(nuint items)
+    public static unsafe short* AlignedAllocZeroedShort(nuint items)
     {
         const nuint alignment = 64;
+        if (items > nuint.MaxValue / sizeof(short))
+        {
+            throw new ArgumentOutOfRangeException(nameof(items), "Element count exceeds addressable byte size.");
+        }
+
         var bytes = sizeof(short) * items;
         var block = NativeMemory.AlignedAlloc(bytes, alignment);
         if (block == null)
@@ -155,24 +169,11 @@ public static unsafe class NnueWeights
         }
 
         NativeMemory.Clear(block, bytes);
-        return (VectorShort*)block;
+        return (short*)block;
     }
 
-    public static unsafe void Dispose()
-    {
-        if (FeatureWeights != null)
-        {
-            Marshal.FreeHGlobal((IntPtr)FeatureWeights);
-        }
-
-        if (FeatureBiases != null)
-        {
-            Marshal.FreeHGlobal((IntPtr)FeatureBiases);
-        }
-
-        if (OutputWeights != null)
-        {
-            Marshal.FreeHGlobal((IntPtr)OutputWeights);
-        }
-    }
+    // Compatibility shim: published pointers are immutable process-wide resources.
+    // They cannot be freed while any session may still use them or reinitialize them later.
+    [Obsolete("Weights are shared for the runtime lifetime. Dispose engine sessions instead.")]
+    public static void Dispose() { }
 }

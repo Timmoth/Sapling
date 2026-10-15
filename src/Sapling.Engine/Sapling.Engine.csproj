@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	  <Platforms>AnyCPU;x64</Platforms>
@@ -27,8 +27,27 @@
 	  <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
+  <!-- Keep the automatic native path; force scalar only for qualification artifacts. -->
+  <PropertyGroup Condition="'$(SaplingBackend)' == 'Scalar'">
+    <DefineConstants>$(DefineConstants);SAPLING_SCALAR</DefineConstants>
+  </PropertyGroup>
+  <Target Name="ValidateSaplingBackend" BeforeTargets="CoreCompile"
+          Condition="'$(SaplingBackend)' != '' And '$(SaplingBackend)' != 'Auto' And '$(SaplingBackend)' != 'Scalar'">
+    <Error Text="SaplingBackend must be Auto or Scalar." />
+  </Target>
+
   <ItemGroup>
     <Content Include="logo.ico" />
+  </ItemGroup>
+
+  <!-- Test lanes may use the internal fault-injection/balance hooks; production API unchanged. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Sapling.Engine.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Sapling.WasmRunner</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 	<ItemGroup>
     <PackageReference Include="FluentResults" Version="3.16.0" />

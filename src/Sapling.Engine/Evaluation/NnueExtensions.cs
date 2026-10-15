@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using Sapling.Engine.Evaluation;
 
 namespace Sapling.Engine.Search;
@@ -11,7 +11,7 @@ public static unsafe class NnueExtensions
     public const int VectorSize = 16; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
 #endif
 
-    public const int AccumulatorSize = NnueWeights.Layer1Size / VectorSize;
+    public const int AccumulatorSize = NnueWeights.Layer1Size;
 
     public const int L1ByteSize = sizeof(short) * NnueWeights.Layer1Size;
     public const int InputBucketWeightCount = NnueWeights.InputSize * AccumulatorSize;
