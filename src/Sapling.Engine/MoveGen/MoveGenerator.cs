@@ -448,7 +448,7 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.PextRookAttacks(board.Occupancy[Constants.Occupancy], index);
+        var potentialMoves = AttackTables.RookAttacks(board.Occupancy[Constants.Occupancy], index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.BlackPieces];
         while (captureMoves != 0)
         {
@@ -474,7 +474,7 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.PextRookAttacks(board.Occupancy[Constants.Occupancy], index);
+        var potentialMoves = AttackTables.RookAttacks(board.Occupancy[Constants.Occupancy], index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.WhitePieces];
         while (captureMoves != 0)
         {
@@ -504,7 +504,7 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.PextBishopAttacks(board.Occupancy[Constants.Occupancy], index);
+        var potentialMoves = AttackTables.BishopAttacks(board.Occupancy[Constants.Occupancy], index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.BlackPieces];
         while (captureMoves != 0)
         {
@@ -530,7 +530,7 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.PextBishopAttacks(board.Occupancy[Constants.Occupancy], index);
+        var potentialMoves = AttackTables.BishopAttacks(board.Occupancy[Constants.Occupancy], index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.WhitePieces];
         while (captureMoves != 0)
         {
@@ -560,8 +560,8 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.PextBishopAttacks(board.Occupancy[Constants.Occupancy], index) |
-                             AttackTables.PextRookAttacks(board.Occupancy[Constants.Occupancy], index);
+        var potentialMoves = AttackTables.BishopAttacks(board.Occupancy[Constants.Occupancy], index) |
+                             AttackTables.RookAttacks(board.Occupancy[Constants.Occupancy], index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.BlackPieces];
         while (captureMoves != 0)
         {
@@ -587,8 +587,8 @@ public static class MoveGenerator
         ref byte moveIndex,
         byte index, bool captureOnly)
     {
-        var potentialMoves = AttackTables.PextBishopAttacks(board.Occupancy[Constants.Occupancy], index) |
-                             AttackTables.PextRookAttacks(board.Occupancy[Constants.Occupancy], index);
+        var potentialMoves = AttackTables.BishopAttacks(board.Occupancy[Constants.Occupancy], index) |
+                             AttackTables.RookAttacks(board.Occupancy[Constants.Occupancy], index);
         var captureMoves = potentialMoves & board.Occupancy[Constants.WhitePieces];
         while (captureMoves != 0)
         {
@@ -646,7 +646,8 @@ public static class MoveGenerator
         }
 
         // King Side Castle
-        if ((board.CastleRights & CastleRights.WhiteKingSide) != 0)
+        if ((board.CastleRights & CastleRights.WhiteKingSide) != 0 &&
+            (board.Occupancy[Constants.WhiteRook] & (1UL << (board.Is960 ? board.WhiteKingSideTargetSquare : 7))) != 0)
         {
             var rookSquare = board.Is960 ? board.WhiteKingSideTargetSquare : 7;
 
@@ -677,7 +678,8 @@ public static class MoveGenerator
         }
 
         // Queen Side Castle
-        if ((board.CastleRights & CastleRights.WhiteQueenSide) != 0)
+        if ((board.CastleRights & CastleRights.WhiteQueenSide) != 0 &&
+            (board.Occupancy[Constants.WhiteRook] & (1UL << (board.Is960 ? board.WhiteQueenSideTargetSquare : 0))) != 0)
         {
             var rookSquare = board.Is960 ? board.WhiteQueenSideTargetSquare : 0;
             var startSquare = Math.Min(board.WhiteKingSquare, Math.Min(rookSquare, 2));
@@ -740,7 +742,8 @@ public static class MoveGenerator
         }
         
         // King Side Castle
-        if ((board.CastleRights & CastleRights.BlackKingSide) != 0)
+        if ((board.CastleRights & CastleRights.BlackKingSide) != 0 &&
+            (board.Occupancy[Constants.BlackRook] & (1UL << (board.Is960 ? board.BlackKingSideTargetSquare : 63))) != 0)
         {
             var rookSquare = board.Is960 ? board.BlackKingSideTargetSquare : 63;
 
@@ -773,7 +776,8 @@ public static class MoveGenerator
         }
 
         // Queen Side Castle
-        if ((board.CastleRights & CastleRights.BlackQueenSide) != 0)
+        if ((board.CastleRights & CastleRights.BlackQueenSide) != 0 &&
+            (board.Occupancy[Constants.BlackRook] & (1UL << (board.Is960 ? board.BlackQueenSideTargetSquare : 56))) != 0)
         {
             var rookSquare = board.Is960 ? board.BlackQueenSideTargetSquare : 56;
             var startSquare = Math.Min(board.BlackKingSquare, Math.Min(rookSquare, 58));

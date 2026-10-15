@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 
@@ -26,14 +26,38 @@ public static unsafe class AttackTables
     private static readonly ulong* BishopPextOffset;
     private static readonly ulong* RookPextOffset;
 
+    // Flattened magic fallback (ARM64 / ForceMagic): one native pool of moves plus
+    // per-square entries, so slider lookups avoid the record deref and the two
+    // managed bounds checks of MagicBitBoard.Moves.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MagicEntry
+    {
+        public ulong Magic;
+        public ulong Mask;
+        public int Shift;
+        public int Offset;
+    }
+
+    private static readonly MagicEntry* RookMagicEntries;
+    private static readonly MagicEntry* BishopMagicEntries;
+    private static readonly ulong* MagicMovesPool;
+
     public static readonly ulong* LineBitBoards;
     public static readonly ulong* LineBitBoardsInclusive;
 
     static AttackTables()
     {
-        PextAttacks = MemoryHelpers.Allocate<ulong>(5248 + 102400);
-        BishopPextOffset = MemoryHelpers.Allocate<ulong>(64);
-        RookPextOffset = MemoryHelpers.Allocate<ulong>(64);
+        // The PEXT representation is only reachable when BMI2 is available; on
+        // fallback targets (ARM, scalar, ForceMagic) the tables are never read, so
+        // they are not allocated at all. Magic tables are always built: they are the
+        // runtime path on fallback targets and the generation source for the PEXT
+        // tables on BMI2 targets.
+        if (EngineCapabilities.UsePext)
+        {
+            PextAttacks = MemoryHelpers.Allocate<ulong>(5248 + 102400);
+            BishopPextOffset = MemoryHelpers.Allocate<ulong>(64);
+            RookPextOffset = MemoryHelpers.Allocate<ulong>(64);
+        }
         KnightAttackTable = MemoryHelpers.Allocate<ulong>(64);
         KingAttackTable = MemoryHelpers.Allocate<ulong>(64);
         WhitePawnAttackTable = MemoryHelpers.Allocate<ulong>(64);
@@ -42,7 +66,6 @@ public static unsafe class AttackTables
         BishopAttackMasks = MemoryHelpers.Allocate<ulong>(64);
         LineBitBoards = MemoryHelpers.Allocate<ulong>(64 * 64);
         LineBitBoardsInclusive = MemoryHelpers.Allocate<ulong>(64 * 64);
-        var rand = Random.Shared;
         for (var i = 0; i < 64; i++)
         {
             RookAttackMasks[i] = RookAttackMask(i);
@@ -54,8 +77,45 @@ public static unsafe class AttackTables
 
         for (var i = 0; i < 64; i++)
         {
-            RookMagics[i] = GetRookMagicNumbers(i, rand);
-            BishopMagics[i] = GetBishopMagicNumbers(i, rand);
+            RookMagics[i] = BuildMagic(i, MagicConstants.Rook[i], true);
+            BishopMagics[i] = BuildMagic(i, MagicConstants.Bishop[i], false);
+        }
+
+        // Flatten the magic tables into native storage for the non-PEXT path.
+        {
+            var totalMoves = 0;
+            for (var i = 0; i < 64; i++)
+                totalMoves += RookMagics[i].Moves.Length + BishopMagics[i].Moves.Length;
+            MagicMovesPool = MemoryHelpers.Allocate<ulong>(totalMoves);
+            RookMagicEntries = MemoryHelpers.Allocate<MagicEntry>(64);
+            BishopMagicEntries = MemoryHelpers.Allocate<MagicEntry>(64);
+            var poolIndex = 0;
+            for (var i = 0; i < 64; i++)
+            {
+                var rook = RookMagics[i];
+                RookMagicEntries[i] = new MagicEntry
+                {
+                    Magic = rook.MagicNumber, Mask = rook.MovementMask, Shift = rook.Position, Offset = poolIndex,
+                };
+                fixed (ulong* src = rook.Moves)
+                {
+                    Buffer.MemoryCopy(src, MagicMovesPool + poolIndex,
+                        (long)rook.Moves.Length * sizeof(ulong), (long)rook.Moves.Length * sizeof(ulong));
+                }
+                poolIndex += rook.Moves.Length;
+
+                var bishop = BishopMagics[i];
+                BishopMagicEntries[i] = new MagicEntry
+                {
+                    Magic = bishop.MagicNumber, Mask = bishop.MovementMask, Shift = bishop.Position, Offset = poolIndex,
+                };
+                fixed (ulong* src = bishop.Moves)
+                {
+                    Buffer.MemoryCopy(src, MagicMovesPool + poolIndex,
+                        (long)bishop.Moves.Length * sizeof(ulong), (long)bishop.Moves.Length * sizeof(ulong));
+                }
+                poolIndex += bishop.Moves.Length;
+            }
         }
 
         // Initialize the knight and king attack tables
@@ -126,6 +186,8 @@ public static unsafe class AttackTables
             KingAttackTable[square] = kingAttacks;
         }
 
+        if (EngineCapabilities.UsePext)
+        {
         ulong pextAttackIndex = 0;
         for (var square = 0; square < 64; square++)
         {
@@ -149,6 +211,8 @@ public static unsafe class AttackTables
                 var blockers = Bmi2.X64.ParallelBitDeposit(i, rookAttackMask);
                 PextAttacks[pextAttackIndex++] = RookMagics[square].GetMoves(blockers);
             }
+        }
+
         }
 
         for (var i = 0; i < 64; i++)
@@ -604,126 +668,46 @@ public static unsafe class AttackTables
         return rayMoves;
     }
 
-    private static MagicBitBoard GetBishopMagicNumbers(int square, Random rand)
+    private static MagicBitBoard BuildMagic(int square, ulong magic, bool rook)
     {
-        var movementMask = BishopAttackMasks[square];
-
-        // Calculate all possible blocker configurations for movement mask
-        var blockers = CreateAllBlockerBitBoards(movementMask);
-
-        // Calculate all possible legal moves for each blocker arrangement
-        Span<ulong> legalMoves = stackalloc ulong[blockers.Length];
-        var position = 1UL << square;
-        for (var j = 0; j < blockers.Length; j++)
+        var mask = rook ? RookAttackMasks[square] : BishopAttackMasks[square];
+        var shift = 64 - System.Numerics.BitOperations.PopCount(mask);
+        var moves = new ulong[1 << (64 - shift)];
+        for (var subset = mask; ; subset = (subset - 1) & mask)
         {
-            legalMoves[j] = CalculateBishopLegalMoveBitBoard(position, blockers[j]);
+            var attack = rook ? CalculateRookLegalMoveBitBoard(1UL << square, subset)
+                : CalculateBishopLegalMoveBitBoard(1UL << square, subset);
+            var index = (int)(unchecked(subset * magic) >> shift);
+            if (moves[index] != 0 && moves[index] != attack)
+                throw new InvalidOperationException("Invalid generated magic constant.");
+            moves[index] = attack;
+            if (subset == 0) break;
         }
-
-        var relevantBits = BitboardHelpers.PopCount(movementMask);
-        Span<ulong> usedAttacks = stackalloc ulong[1 << relevantBits];
-        var indexBits = 64 - relevantBits;
-        ulong magic = 0;
-
-        while (true)
-        {
-            var u1 = ((ulong)rand.Next() & 0xFFFF) | (((ulong)rand.Next() & 0xFFFF) << 16) |
-                     (((ulong)rand.Next() & 0xFFFF) << 32) | (((ulong)rand.Next() & 0xFFFF) << 48);
-            var u2 = ((ulong)rand.Next() & 0xFFFF) | (((ulong)rand.Next() & 0xFFFF) << 16) |
-                     (((ulong)rand.Next() & 0xFFFF) << 32) | (((ulong)rand.Next() & 0xFFFF) << 48);
-            var u3 = ((ulong)rand.Next() & 0xFFFF) | (((ulong)rand.Next() & 0xFFFF) << 16) |
-                     (((ulong)rand.Next() & 0xFFFF) << 32) | (((ulong)rand.Next() & 0xFFFF) << 48);
-            magic = u1 & u2 & u3;
-            var isMagic = true;
-            usedAttacks.Clear();
-            for (var i = 0; i < legalMoves.Length; i++)
-            {
-                var occupancy = blockers[i];
-                var index = (int)((occupancy * magic) >> indexBits);
-                if (usedAttacks[index] == 0)
-                {
-                    usedAttacks[index] = legalMoves[i];
-                }
-                else if (usedAttacks[index] != legalMoves[i])
-                {
-                    isMagic = false;
-                    break;
-                }
-            }
-
-            if (isMagic)
-            {
-                break;
-            }
-        }
-
-        return new MagicBitBoard(magic, movementMask, indexBits, usedAttacks.ToArray());
+        return new MagicBitBoard(magic, mask, shift, moves);
     }
 
-    private static MagicBitBoard GetRookMagicNumbers(int square, Random rand)
-    {
-        var movementMask = RookAttackMasks[square];
-
-        // Calculate all possible blocker configurations for movement mask
-        var blockers = CreateAllBlockerBitBoards(movementMask);
-
-        // Calculate all possible legal moves for each blocker arrangement
-        Span<ulong> legalMoves = stackalloc ulong[blockers.Length];
-        var position = 1UL << square;
-        for (var j = 0; j < blockers.Length; j++)
-        {
-            legalMoves[j] = CalculateRookLegalMoveBitBoard(position, blockers[j]);
-        }
-
-        var relevantBits = BitboardHelpers.PopCount(movementMask);
-        Span<ulong> usedAttacks = stackalloc ulong[1 << relevantBits];
-        var indexBits = 64 - relevantBits;
-        ulong magic = 0;
-
-        while (true)
-        {
-            var u1 = ((ulong)rand.Next() & 0xFFFF) | (((ulong)rand.Next() & 0xFFFF) << 16) |
-                     (((ulong)rand.Next() & 0xFFFF) << 32) | (((ulong)rand.Next() & 0xFFFF) << 48);
-            var u2 = ((ulong)rand.Next() & 0xFFFF) | (((ulong)rand.Next() & 0xFFFF) << 16) |
-                     (((ulong)rand.Next() & 0xFFFF) << 32) | (((ulong)rand.Next() & 0xFFFF) << 48);
-            var u3 = ((ulong)rand.Next() & 0xFFFF) | (((ulong)rand.Next() & 0xFFFF) << 16) |
-                     (((ulong)rand.Next() & 0xFFFF) << 32) | (((ulong)rand.Next() & 0xFFFF) << 48);
-            magic = u1 & u2 & u3;
-            var isMagic = true;
-            usedAttacks.Clear();
-            for (var i = 0; i < legalMoves.Length; i++)
-            {
-                var occupancy = blockers[i];
-                var index = (int)((occupancy * magic) >> indexBits);
-                if (usedAttacks[index] == 0)
-                {
-                    usedAttacks[index] = legalMoves[i];
-                }
-                else if (usedAttacks[index] != legalMoves[i])
-                {
-                    isMagic = false;
-                    break;
-                }
-            }
-
-            if (isMagic)
-            {
-                break;
-            }
-        }
-
-        return new MagicBitBoard(magic, movementMask, indexBits, usedAttacks.ToArray());
-    }
-
+    // Architecture-dispatched sliding attacks: BMI2 PEXT tables on x86 with the
+    // instruction, deterministic magic tables everywhere else (ARM, scalar).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong PextRookAttacks(ulong occupation, int square)
+    public static ulong RookAttacks(ulong occupation, int square)
     {
+        if (!EngineCapabilities.UsePext)
+        {
+            ref readonly var entry = ref RookMagicEntries[square];
+            return *(MagicMovesPool + entry.Offset + (int)(((entry.Mask & occupation) * entry.Magic) >> entry.Shift));
+        }
         return *(PextAttacks +
                  *(RookPextOffset + square) + Bmi2.X64.ParallelBitExtract(occupation, *(RookAttackMasks + square)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong PextBishopAttacks(ulong occupation, int square)
+    public static ulong BishopAttacks(ulong occupation, int square)
     {
+        if (!EngineCapabilities.UsePext)
+        {
+            ref readonly var entry = ref BishopMagicEntries[square];
+            return *(MagicMovesPool + entry.Offset + (int)(((entry.Mask & occupation) * entry.Magic) >> entry.Shift));
+        }
         return *(PextAttacks +
                  *(BishopPextOffset + square) + Bmi2.X64.ParallelBitExtract(occupation, *(BishopAttackMasks + square)));
     }
@@ -731,9 +715,9 @@ public static unsafe class AttackTables
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAttackedByWhite(this ref BoardStateData board, int index)
     {
-        return (PextBishopAttacks(board.Occupancy[Constants.Occupancy], index) &
+        return (BishopAttacks(board.Occupancy[Constants.Occupancy], index) &
                 (board.Occupancy[Constants.WhiteBishop] | board.Occupancy[Constants.WhiteQueen])) != 0 ||
-               (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.WhiteRook] | board.Occupancy[Constants.WhiteQueen])) !=
+               (RookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.WhiteRook] | board.Occupancy[Constants.WhiteQueen])) !=
                0 ||
                (*(KnightAttackTable + index) & board.Occupancy[Constants.WhiteKnight]) != 0 ||
                (*(BlackPawnAttackTable + index) & board.Occupancy[Constants.WhitePawn]) != 0 ||
@@ -743,9 +727,9 @@ public static unsafe class AttackTables
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAttackedByBlack(this ref BoardStateData board, int index)
     {
-        return (PextBishopAttacks(board.Occupancy[Constants.Occupancy], index) &
+        return (BishopAttacks(board.Occupancy[Constants.Occupancy], index) &
                 (board.Occupancy[Constants.BlackBishop] | board.Occupancy[Constants.BlackQueen])) != 0 ||
-               (PextRookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.BlackQueen])) !=
+               (RookAttacks(board.Occupancy[Constants.Occupancy], index) & (board.Occupancy[Constants.BlackRook] | board.Occupancy[Constants.BlackQueen])) !=
                0 ||
                (*(KnightAttackTable + index) & board.Occupancy[Constants.BlackKnight]) != 0 ||
                (*(WhitePawnAttackTable + index) & board.Occupancy[Constants.BlackPawn]) != 0 ||
