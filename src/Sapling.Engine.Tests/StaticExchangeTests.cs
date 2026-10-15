@@ -15,7 +15,7 @@ public class StaticExchangeTests
     //[InlineData("3r3k/3r4/2n1n3/8/3p4/2PR4/1B1Q4/3R3K w - -", "d3d4", "pRnPnB")]
     [InlineData("3N4/2K5/2n5/1k6/8/8/8/8 b - -", "c6d8", "nN")]
     [InlineData("r1bqkb1r/2pp1ppp/p1n5/1p2p3/3Pn3/1B3N2/PPP2PPP/RNBQ1RK1 b kq -", "c6d4", "PnNp")]
-    [InlineData("6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - -", "f1f4", "pR")]
+    [InlineData("6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - -", "f1f4", "pRB")]
     [InlineData("4R3/2r3p1/5bk1/1p1r3p/p2PR1P1/P1BK1P2/1P6/8 b - -", "h5g4", "Pp")]
     public unsafe void GetKingPosition_Returns_CorrectPosition(string fen, string uciMove, string exchange)
     {
