@@ -1,0 +1,7 @@
+<Project>
+  <!-- Append build symbols without preventing project-specific constants from being added.
+       Separate multiple symbols with %3B on the command line. -->
+  <PropertyGroup Condition="'$(SaplingBuildConstants)' != ''">
+    <DefineConstants>$(DefineConstants);$(SaplingBuildConstants)</DefineConstants>
+  </PropertyGroup>
+</Project>

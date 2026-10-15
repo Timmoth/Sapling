@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Browser host: a thin managed facade over the portable engine, loaded in a
+       dedicated Web Worker. Baseline profile is single-worker, no shared memory and no
+       cross-origin isolation headers. Search runs in bounded slices so the worker event
+       loop regains control between slices (see EngineHost.cs and wwwroot/worker.js). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>preview</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <WasmEnableSIMD Condition="'$(WasmNoSIMD)' == 'true'">false</WasmEnableSIMD>
+    <WasmEnableThreads>false</WasmEnableThreads>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sapling.Engine\Sapling.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

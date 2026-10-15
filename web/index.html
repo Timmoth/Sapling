@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Sapling – Chess Engine</title>
+  <meta name="description"
+    content="Play Sapling, an open-source .NET chess engine, entirely in your browser via WebAssembly. Adjustable thinking time, live search stats, and FEN/PGN export. Built by Tim Jones." />
+  <meta name="author" content="Tim Jones" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0b0b0f" />
+  <link rel="icon" type="image/png" href="./assets/logo.png" />
+  <link rel="apple-touch-icon" href="./assets/logo.png" />
+
+  <!-- Set rel="canonical" and og:url to your deployed URL when you publish. -->
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Sapling – Chess Engine">
+  <meta property="og:description"
+    content="Play Sapling, an open-source .NET chess engine, entirely in your browser via WebAssembly. Built by Tim Jones.">
+  <meta property="og:url" content="https://github.com/Timmoth/Sapling">
+  <meta property="og:image" content="./assets/sapling-banner.png">
+  <meta property="og:site_name" content="Sapling">
+  <meta property="og:locale" content="en_GB">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sapling – Chess Engine">
+  <meta name="twitter:description"
+    content="Play Sapling, an open-source .NET chess engine, entirely in your browser via WebAssembly. Built by Tim Jones.">
+  <meta name="twitter:image" content="./assets/sapling-banner.png">
+  <meta name="twitter:site" content="@Timmoth_j">
+  <meta name="twitter:creator" content="@Timmoth_j">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Sapling",
+    "applicationCategory": "Game",
+    "operatingSystem": "Web browser",
+    "description": "An open-source .NET chess engine that runs entirely in the browser via WebAssembly.",
+    "url": "https://github.com/Timmoth/Sapling",
+    "codeRepository": "https://github.com/Timmoth/Sapling",
+    "author": {
+      "@type": "Person",
+      "name": "Tim Jones",
+      "alternateName": "Timmoth",
+      "url": "https://timmoth.com/",
+      "sameAs": ["https://github.com/Timmoth", "https://twitter.com/Timmoth_j"]
+    }
+  }
+  </script>
+
+  <script>
+    // Dark appearance is the first-load default regardless of OS theme; applied before
+    // paint to avoid a light flash. A stored explicit light choice is honoured if present.
+    (function () {
+      try {
+        if (localStorage.getItem('sapling-theme') === 'light') document.documentElement.classList.remove('dark');
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" src="./assets/logo.png" width="28" height="28" alt="Sapling logo" />
+      <h1>Sapling</h1>
+    </div>
+    <div class="topbar-right">
+      <div id="status" class="status" role="status" aria-live="polite" data-state="loading">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="status-text">Loading engine&hellip;</span>
+      </div>
+      <a class="github" href="https://github.com/Timmoth/Sapling" target="_blank" rel="me noopener"
+        title="Sapling on GitHub" aria-label="Sapling on GitHub">
+        <svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" focusable="false">
+          <path fill="currentColor"
+            d="M16,2.345c7.735,0,14,6.265,14,14-.002,6.015-3.839,11.359-9.537,13.282-.7,.14-.963-.298-.963-.665,0-.473,.018-1.978,.018-3.85,0-1.312-.437-2.152-.945-2.59,3.115-.35,6.388-1.54,6.388-6.912,0-1.54-.543-2.783-1.435-3.762,.14-.35,.63-1.785-.14-3.71,0,0-1.173-.385-3.85,1.435-1.12-.315-2.31-.472-3.5-.472s-2.38,.157-3.5,.472c-2.677-1.802-3.85-1.435-3.85-1.435-.77,1.925-.28,3.36-.14,3.71-.892,.98-1.435,2.24-1.435,3.762,0,5.355,3.255,6.563,6.37,6.913-.403,.35-.77,.963-.893,1.872-.805,.368-2.818,.963-4.077-1.155-.263-.42-1.05-1.452-2.152-1.435-1.173,.018-.472,.665,.017,.927,.595,.332,1.277,1.575,1.435,1.978,.28,.787,1.19,2.293,4.707,1.645,0,1.173,.018,2.275,.018,2.607,0,.368-.263,.787-.963,.665-5.719-1.904-9.576-7.255-9.573-13.283,0-7.735,6.265-14,14-14Z" />
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="board-area">
+      <div id="board" class="board" role="grid" aria-label="Chess board"></div>
+      <div id="promotion" class="promotion" hidden></div>
+    </section>
+
+    <aside class="panel">
+      <section class="group" aria-label="Play">
+        <h2 class="section-label">Play</h2>
+        <div class="row">
+          <button id="new-game" class="btn primary">New game</button>
+          <button id="flip" class="btn">Flip</button>
+          <button id="stop" class="btn secondary" hidden>Stop</button>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <span>You play</span>
+          <div id="side" class="segmented" role="radiogroup" aria-label="You play">
+            <button type="button" role="radio" aria-checked="true" class="pill selected" data-value="w">White</button>
+            <button type="button" role="radio" aria-checked="false" class="pill" data-value="b">Black</button>
+          </div>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <span>Think</span>
+          <div id="difficulty" class="segmented" role="radiogroup" aria-label="Thinking time">
+            <button type="button" role="radio" aria-checked="false" class="pill" data-value="short">Short</button>
+            <button type="button" role="radio" aria-checked="true" class="pill selected" data-value="medium">Medium</button>
+            <button type="button" role="radio" aria-checked="false" class="pill" data-value="long">Long</button>
+          </div>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <span>Human-style level <em id="human-elo-label">Off</em></span>
+          <input id="human-elo" class="slider" type="range" min="0" max="3000" step="10" value="0"
+            aria-label="Human-style play level" />
+          <div class="slider-scale"><span>10</span><span>3000</span></div>
+        </div>
+      </section>
+
+      <section class="group" aria-label="Moves">
+        <h2 class="section-label">Moves</h2>
+        <ol id="moves" class="moves"></ol>
+      </section>
+
+      <section class="group" aria-label="Search">
+        <h2 class="section-label">Search</h2>
+        <dl id="stats" class="stats">
+          <div><dt>Depth</dt><dd id="st-depth">&ndash;</dd></div>
+          <div><dt>Evaluation</dt><dd id="st-eval">&ndash;</dd></div>
+          <div><dt>Time</dt><dd id="st-time">&ndash;</dd></div>
+          <div><dt>Nodes</dt><dd id="st-nodes">&ndash;</dd></div>
+          <div><dt>Nodes/s</dt><dd id="st-nps">&ndash;</dd></div>
+        </dl>
+        <details class="pv">
+          <summary>Principal variation</summary>
+          <code id="st-pv" class="pv-text">&ndash;</code>
+        </details>
+      </section>
+
+      <section class="group" aria-label="Export">
+        <h2 class="section-label">Export</h2>
+        <div class="row">
+          <button id="copy-fen" class="btn secondary">Copy FEN</button>
+          <button id="copy-pgn" class="btn secondary">Copy PGN</button>
+          <button id="download-pgn" class="btn secondary">Download PGN</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <span class="foot-text">Built by</span>
+    <a class="foot-link" href="https://timmoth.com/" target="_blank" rel="me noopener">Tim Jones</a>
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
