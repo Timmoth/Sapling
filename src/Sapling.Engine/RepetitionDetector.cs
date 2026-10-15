@@ -79,7 +79,7 @@ public static unsafe class RepetitionDetector
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsThreefoldRepetition(ushort turnCount, ushort halfMoveClock, ulong* hashHistory)
     {
-        if (halfMoveClock < 3)
+        if (halfMoveClock < 3 || turnCount == 0)
             return false;
 
         var currHash = hashHistory + turnCount - 1;
@@ -87,7 +87,9 @@ public static unsafe class RepetitionDetector
         var initialHash = *(currHash);
 
         var count = 1;
-        for (var i = 2; i < halfMoveClock; i+=2)
+        // Bound the walk so the index (turnCount - 1 - i) never goes below 0; for consistent
+        // positions halfMoveClock <= turnCount so this guard is a no-op.
+        for (var i = 2; i <= halfMoveClock && i <= turnCount - 1; i += 2)
         {
             currHash -= 2;
             if (*(currHash) != initialHash)
