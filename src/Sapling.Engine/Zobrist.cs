@@ -1,4 +1,6 @@
-﻿namespace Sapling.Engine;
+﻿using Sapling.Engine.MoveGen;
+
+namespace Sapling.Engine;
 
 public static unsafe class Zobrist
 {
@@ -374,12 +376,58 @@ public static unsafe class Zobrist
             zobristKey ^= BlackQueenSideCastlingRights;
         }
 
-        if (board.EnPassantFile < 8)
+        var enPassantHashFile = GetEnPassantHashFile(ref board);
+        if (enPassantHashFile < 8)
         {
-            zobristKey ^= EnPassantFile[board.EnPassantFile];
+            zobristKey ^= EnPassantFile[enPassantHashFile];
         }
 
         return zobristKey;
+    }
+
+    /// <summary>
+    /// Returns the en-passant file only when a pawn of the side to move can
+    /// legally capture onto the target square. The raw EnPassantFile is
+    /// retained for FEN output and move generation; it is not always part of the
+    /// position identity/hash.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static unsafe byte GetEnPassantHashFile(ref BoardStateData board)
+    {
+        var file = board.EnPassantFile;
+        if (file >= 8)
+            return 8;
+
+        var targetSquare = (board.WhiteToMove ? 5 * 8 : 2 * 8) + file;
+        var capturedSquare = targetSquare + (board.WhiteToMove ? -8 : 8);
+        var capturedPawn = board.WhiteToMove ? Constants.BlackPawn : Constants.WhitePawn;
+        if (board.GetPiece((byte)targetSquare) != Constants.None ||
+            board.GetPiece((byte)capturedSquare) != capturedPawn)
+            return 8;
+
+        var sourceRank = board.WhiteToMove ? 4 * 8 : 3 * 8;
+        var pawn = board.WhiteToMove ? Constants.WhitePawn : Constants.BlackPawn;
+        if (file > 0 && IsLegalEnPassantFrom(ref board, (byte)(sourceRank + file - 1), file, pawn))
+            return file;
+        if (file < 7 && IsLegalEnPassantFrom(ref board, (byte)(sourceRank + file + 1), file, pawn))
+            return file;
+
+        return 8;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool IsLegalEnPassantFrom(ref BoardStateData board, byte fromSquare, byte file, byte pawn)
+    {
+        if (board.GetPiece(fromSquare) != pawn)
+            return false;
+
+        var child = board;
+        var move = board.WhiteToMove
+            ? MoveExtensions.EncodeWhiteEnpassantMove(fromSquare, file)
+            : MoveExtensions.EncodeBlackEnpassantMove(fromSquare, file);
+        return board.WhiteToMove
+            ? child.PartialApplyWhite(move)
+            : child.PartialApplyBlack(move);
     }
 
     public static unsafe ulong CalculatePolyGlotKey(ref BoardStateData board)
@@ -418,22 +466,9 @@ public static unsafe class Zobrist
             zobristKey ^= BlackQueenSideCastlingRights;
         }
 
-        if (board.EnPassantFile < 8)
-        {
-            var stmPawn = board.WhiteToMove ? 2 : 1;
-            var enpassantSquare = (byte)(board.WhiteToMove ? 4 * 8 + board.EnPassantFile : 3 * 8 + board.EnPassantFile);
-            bool canEnpassant = board.EnPassantFile > 0 && board.GetPiece(enpassantSquare - 1) == stmPawn;
-
-            if (board.EnPassantFile < 7 && board.GetPiece(enpassantSquare + 1) == stmPawn)
-            {
-                canEnpassant = true;
-            }
-
-            if (canEnpassant)
-            {
-                zobristKey ^= EnPassantFile[board.EnPassantFile];
-            }
-        }
+        var enPassantHashFile = GetEnPassantHashFile(ref board);
+        if (enPassantHashFile < 8)
+            zobristKey ^= EnPassantFile[enPassantHashFile];
 
         return zobristKey;
     }

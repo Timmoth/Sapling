@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Pgn;
 using System.Runtime.Intrinsics.X86;
@@ -18,32 +18,137 @@ public static class BoardStateExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe bool InsufficientMatingMaterial(this ref BoardStateData board)
     {
-        if (board.PieceCount > 4)
-        {
-            return false;
-        }
-
         var black = board.Occupancy[Constants.BlackPieces] & ~board.Occupancy[Constants.BlackKing];
         var white = board.Occupancy[Constants.WhitePieces] & ~board.Occupancy[Constants.WhiteKing];
+        // Only declare the unambiguous dead positions here. K+N vs K+B and
+        // K+N vs K+N can contain legal checkmates, so they must be searched.
+        return (black == 0 && white == 0) ||
+               (black == 0 && IsSingleMinor(ref board, white, Constants.WhiteKnight, Constants.WhiteBishop)) ||
+               (white == 0 && IsSingleMinor(ref board, black, Constants.BlackKnight, Constants.BlackBishop));
+    }
 
-        var blackPopCount = BitboardHelpers.PopCount(black);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool IsSingleMinor(ref BoardStateData board, ulong pieces, int knight, int bishop) =>
+        BitboardHelpers.PopCount(pieces) == 1 &&
+        (pieces & (board.Occupancy[knight] | board.Occupancy[bishop])) == pieces;
 
-        if ((white == 0 && black == board.Occupancy[Constants.BlackKnight] && blackPopCount <= 2))
+    /// <summary>Returns whether the side to move has at least one legal move.</summary>
+    public static unsafe bool HasAnyLegalMove(this ref BoardStateData board)
+    {
+        var moves = stackalloc uint[218];
+        byte count = 0;
+
+        // Generate and validate one piece at a time. Most positions have a legal move
+        // among the king or first pawn moves, so building the complete pseudo-legal list
+        // before testing its first entry wastes substantial work on qsearch cutoffs.
+        if (board.WhiteToMove)
         {
-            // Can't mate with only knights
-            return true;
+            board.GenerateWhiteKingPseudoLegalMoves(moves, ref count, board.WhiteKingSquare, false);
+            if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+
+            var positions = board.Occupancy[Constants.WhitePawn];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetWhitePawnPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.WhiteKnight];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetWhiteKnightPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.WhiteBishop];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetWhiteBishopPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.WhiteRook];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetWhiteRookPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.WhiteQueen];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetWhiteQueenPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+        }
+        else
+        {
+            board.GetBlackKingPseudoLegalMoves(moves, ref count, board.BlackKingSquare, false);
+            if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+
+            var positions = board.Occupancy[Constants.BlackPawn];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetBlackPawnPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.BlackKnight];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetBlackKnightPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.BlackBishop];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetBlackBishopPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.BlackRook];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetBlackRookPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
+
+            positions = board.Occupancy[Constants.BlackQueen];
+            while (positions != 0)
+            {
+                count = 0;
+                board.GetBlackQueenPseudoLegalMoves(moves, ref count, positions.PopLSB(), false);
+                if (HasLegalMoveInGeneratedMoves(ref board, moves, count)) return true;
+            }
         }
 
-        var whitePopCount = BitboardHelpers.PopCount(white);
-        if ((black == 0 && white == board.Occupancy[Constants.WhiteKnight] && whitePopCount <= 2))
-        {
-            // Can't mate with only knights
-            return true;
-        }
+        return false;
+    }
 
-        // Can't mate with 1 knight and bishop
-        return (black == 0 || (blackPopCount == 1 && (board.Occupancy[Constants.BlackKnight] | board.Occupancy[Constants.BlackBishop]) == black)) &&
-               (white == 0 || (whitePopCount == 1 && (board.Occupancy[Constants.WhiteKnight] | board.Occupancy[Constants.WhiteBishop]) == white));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool HasLegalMoveInGeneratedMoves(
+        ref BoardStateData board, uint* moves, byte count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            var candidate = board;
+            var legal = board.WhiteToMove
+                ? candidate.PartialApplyWhite(moves[i])
+                : candidate.PartialApplyBlack(moves[i]);
+            if (legal)
+                return true;
+        }
+        return false;
     }
 
     public static void SetCastleRights(ref BoardStateData boardState, string castleRights)
@@ -135,6 +240,8 @@ public static class BoardStateExtensions
 
         ushort halfMoveClock = parts.Length > 4 ? ushort.Parse(parts[4]) : (ushort)0;
         ushort fullMoveNumber = parts.Length > 5 ? ushort.Parse(parts[5]) : (ushort)1;
+        if (fullMoveNumber == 0)
+            throw new FormatException("FEN fullmove number must be positive.");
 
         var index = 0;
         for (var i = rows.Length - 1; i >= 0; i--)
@@ -196,6 +303,8 @@ public static class BoardStateExtensions
 
         ushort halfMoveClock = parts.Length > 4 ? ushort.Parse(parts[4]) : (ushort)0;
         ushort fullMoveNumber = parts.Length > 5 ? ushort.Parse(parts[5]) : (ushort)1;
+        if (fullMoveNumber == 0)
+            throw new FormatException("FEN fullmove number must be positive.");
 
         var index = 0;
         for (var i = rows.Length - 1; i >= 0; i--)
@@ -408,6 +517,16 @@ public static class BoardStateExtensions
                     var pos = ~(1UL << toSquare);
                     *(occupancy + capturedPiece) &= pos;
                     *(occupancy + Constants.BlackPieces) &= pos;
+
+                    // A rook captured by a promotion still loses its castling right.
+                    if (toSquare == (board.Is960 ? board.BlackQueenSideTargetSquare : 56))
+                    {
+                        board.CastleRights &= ~CastleRights.BlackQueenSide;
+                    }
+                    else if (toSquare == (board.Is960 ? board.BlackKingSideTargetSquare : 63))
+                    {
+                        board.CastleRights &= ~CastleRights.BlackKingSide;
+                    }
                 }
 
                 board.EnPassantFile = 8;
@@ -599,6 +718,16 @@ public static class BoardStateExtensions
                     var pos = ~(1UL << toSquare);
                     *(occupancy + capturedPiece) &= pos;
                     *(occupancy + Constants.WhitePieces) &= pos;
+
+                    // A rook captured by a promotion still loses its castling right.
+                    if (toSquare == (board.Is960 ? board.WhiteQueenSideTargetSquare : 0))
+                    {
+                        board.CastleRights &= ~CastleRights.WhiteQueenSide;
+                    }
+                    else if (toSquare == (board.Is960 ? board.WhiteKingSideTargetSquare : 7))
+                    {
+                        board.CastleRights &= ~CastleRights.WhiteKingSide;
+                    }
                 }
 
                 var toPos = 1UL << toSquare;
@@ -654,7 +783,7 @@ public static class BoardStateExtensions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void FinishApplyWhite(this ref BoardStateData board, ref AccumulatorState accumulatorState, uint m,
-        int oldEnpassant,
+        int oldEnpassant, int oldEnpassantHashFile,
         CastleRights prevCastle)
     {
         var moveType = m.GetMoveType();
@@ -672,7 +801,7 @@ public static class BoardStateExtensions
             var deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
                          *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare);
             board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                 *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
 
             if (movedPiece == Constants.WhitePawn)
@@ -723,7 +852,7 @@ public static class BoardStateExtensions
                     *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare);
 
             board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                          *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                          *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
             board.PawnHash ^= deltaHash;
         }
@@ -745,7 +874,7 @@ public static class BoardStateExtensions
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + board.WhiteKingSideTargetSquare] ^
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + 5];
                     board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.WhiteMaterialHash ^= deltaHash;
 
@@ -761,7 +890,7 @@ public static class BoardStateExtensions
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + board.WhiteQueenSideTargetSquare] ^
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + 3];
                     board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.WhiteMaterialHash ^= deltaHash;
                 }
@@ -776,7 +905,7 @@ public static class BoardStateExtensions
                         Constants.WhiteKingSideCastleRookFromIndex,
                         Constants.WhiteKingSideCastleRookToIndex);
                     board.Hash ^= Zobrist.WhiteKingSideCastleZobrist ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.WhiteMaterialHash ^= Zobrist.WhiteKingSideCastleZobrist;
                 }
@@ -787,7 +916,7 @@ public static class BoardStateExtensions
                         Constants.WhiteQueenSideCastleRookFromIndex,
                         Constants.WhiteQueenSideCastleRookToIndex);
                     board.Hash ^= Zobrist.WhiteQueenSideCastleZobrist ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.WhiteMaterialHash ^= Zobrist.WhiteQueenSideCastleZobrist;
                 }
@@ -822,7 +951,7 @@ public static class BoardStateExtensions
             board.Hash ^= deltaHash ^
                           promotionHash ^
                           Zobrist.SideToMove ^
-                          *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                          *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
             board.WhiteMaterialHash ^= promotionHash;
             board.PawnHash ^= deltaHash;
@@ -863,7 +992,7 @@ public static class BoardStateExtensions
                         *(Zobrist.PiecesArray + (capturedPiece << 6) + enpassantSquare);
 
             board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                          *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                          *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
             board.PawnHash ^= deltaHash;
         }
@@ -871,7 +1000,7 @@ public static class BoardStateExtensions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void FinishApplyBlack(this ref BoardStateData board, ref AccumulatorState accumulatorState, uint m,
-    int oldEnpassant,
+    int oldEnpassant, int oldEnpassantHashFile,
     CastleRights prevCastle)
     {
         var moveType = m.GetMoveType();
@@ -888,7 +1017,7 @@ public static class BoardStateExtensions
             var deltaHash = *(Zobrist.PiecesArray + movedPieceZobristIndex + fromSquare) ^
                          *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare);
             board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                          *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                          *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
 
             if (movedPiece == Constants.BlackPawn)
@@ -939,7 +1068,7 @@ public static class BoardStateExtensions
                     *(Zobrist.PiecesArray + movedPieceZobristIndex + toSquare);
 
             board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                          *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                          *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
             board.PawnHash ^= deltaHash;
         }
@@ -963,7 +1092,7 @@ public static class BoardStateExtensions
                                                Zobrist.PiecesArray[Constants.BlackRook * 64 + 61];
 
                     board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.BlackMaterialHash ^= deltaHash;
                 }
@@ -979,7 +1108,7 @@ public static class BoardStateExtensions
                                     Zobrist.PiecesArray[Constants.BlackRook * 64 + 59];
 
                     board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.BlackMaterialHash ^= deltaHash;
                 }
@@ -994,7 +1123,7 @@ public static class BoardStateExtensions
                         Constants.BlackKingSideCastleRookFromIndex,
                         Constants.BlackKingSideCastleRookToIndex);
                     board.Hash ^= Zobrist.BlackKingSideCastleZobrist ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.BlackMaterialHash ^= Zobrist.BlackKingSideCastleZobrist;
                 }
@@ -1005,7 +1134,7 @@ public static class BoardStateExtensions
                         Constants.BlackQueenSideCastleRookFromIndex,
                         Constants.BlackQueenSideCastleRookToIndex);
                     board.Hash ^= Zobrist.BlackQueenSideCastleZobrist ^ Zobrist.SideToMove ^
-                                  *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                                  *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.BlackMaterialHash ^= Zobrist.BlackQueenSideCastleZobrist;
                 }
@@ -1039,7 +1168,7 @@ public static class BoardStateExtensions
             board.Hash ^= deltaHash ^
                           promotionDelta ^
                           Zobrist.SideToMove ^
-                          *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                          *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
 
             board.PawnHash ^= deltaHash;
@@ -1082,7 +1211,7 @@ public static class BoardStateExtensions
                         *(Zobrist.PiecesArray + (capturedPiece << 6) + enpassantSquare);
 
             board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
-                          *(Zobrist.DeltaEnpassant + oldEnpassant * 9 + board.EnPassantFile) ^
+                          *(Zobrist.DeltaEnpassant + oldEnpassantHashFile * 9 + Zobrist.GetEnPassantHashFile(ref board)) ^
                           *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
             board.PawnHash ^= deltaHash;
         }
@@ -1092,13 +1221,11 @@ public static class BoardStateExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void ApplyNullMove(this ref BoardStateData board)
     {
+        var enPassantHashFile = Zobrist.GetEnPassantHashFile(ref board);
         board.Hash ^= Zobrist.SideToMove;
-
-        if (board.EnPassantFile != 8)
-        {
-            board.Hash ^= *(Zobrist.EnPassantFile + board.EnPassantFile);
-            board.EnPassantFile = 8;
-        }
+        if (enPassantHashFile < 8)
+            board.Hash ^= *(Zobrist.EnPassantFile + enPassantHashFile);
+        board.EnPassantFile = 8;
 
         board.TurnCount++;
         board.WhiteToMove = !board.WhiteToMove;
@@ -1185,7 +1312,7 @@ public static class BoardStateExtensions
             return 0;
         }
 
-        return (byte)Bmi1.X64.TrailingZeroCount(
+        return (byte)System.Numerics.BitOperations.TrailingZeroCount(
                           (board.Occupancy[Constants.BlackPawn] >> square & 1UL) << 1 |
                           (board.Occupancy[Constants.WhitePawn] >> square & 1UL) << 2 |
                           (board.Occupancy[Constants.BlackKnight] >> square & 1UL) << 3 |
@@ -1203,89 +1330,22 @@ public static class BoardStateExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe byte GetWhitePiece(this ref BoardStateData board, byte square)
     {
-        var squareBB = 1UL << square;
-
-        if ((board.Occupancy[Constants.WhitePawn] & squareBB) != 0)
-        {
-            return Constants.WhitePawn;
-        }
-
-        if ((board.Occupancy[Constants.WhiteKnight] & squareBB) != 0)
-        {
-            return Constants.WhiteKnight;
-        }
-
-        if ((board.Occupancy[Constants.WhiteBishop] & squareBB) != 0)
-        {
-            return Constants.WhiteBishop;
-        }
-
-        if ((board.Occupancy[Constants.WhiteRook] & squareBB) != 0)
-        {
-            return Constants.WhiteRook;
-        }
-
-        if ((board.Occupancy[Constants.WhiteQueen] & squareBB) != 0)
-        {
-            return Constants.WhiteQueen;
-        }
-
-        if ((board.Occupancy[Constants.WhiteKing] & squareBB) != 0)
-        {
-            return Constants.WhiteKing;
-        }
-
-        return 0;
-        //return (byte)Bmi1.X64.TrailingZeroCount((board.Occupancy[Constants.WhitePawn] >> square & 1UL) << 2 |
-        //                                          (board.Occupancy[Constants.WhiteKnight] >> square & 1UL) << 4 |
-        //                                          (board.Occupancy[Constants.WhiteBishop] >> square & 1UL) << 6 |
-        //                                          (board.Occupancy[Constants.WhiteRook] >> square & 1UL) << 8 |
-        //                                          (board.Occupancy[Constants.WhiteQueen] >> square & 1UL) << 10 |
-        //                                          (board.Occupancy[Constants.WhiteKing] >> square & 1UL) << 12);
+        return (byte)System.Numerics.BitOperations.TrailingZeroCount((board.Occupancy[Constants.WhitePawn] >> square & 1UL) << 2 |
+                                                  (board.Occupancy[Constants.WhiteKnight] >> square & 1UL) << 4 |
+                                                  (board.Occupancy[Constants.WhiteBishop] >> square & 1UL) << 6 |
+                                                  (board.Occupancy[Constants.WhiteRook] >> square & 1UL) << 8 |
+                                                  (board.Occupancy[Constants.WhiteQueen] >> square & 1UL) << 10 |
+                                                  (board.Occupancy[Constants.WhiteKing] >> square & 1UL) << 12);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe byte GetBlackPiece(this ref BoardStateData board, byte square)
     {
-        var squareBB = 1UL << square;
-
-        if ((board.Occupancy[Constants.BlackPawn] & squareBB) != 0)
-        {
-            return Constants.BlackPawn;
-        }
-
-        if ((board.Occupancy[Constants.BlackKnight] & squareBB) != 0)
-        {
-            return Constants.BlackKnight;
-        }
-
-        if ((board.Occupancy[Constants.BlackBishop] & squareBB) != 0)
-        {
-            return Constants.BlackBishop;
-        }
-
-        if ((board.Occupancy[Constants.BlackRook] & squareBB) != 0)
-        {
-            return Constants.BlackRook;
-        }
-
-        if ((board.Occupancy[Constants.BlackQueen] & squareBB) != 0)
-        {
-            return Constants.BlackQueen;
-        }
-
-        if ((board.Occupancy[Constants.BlackKing] & squareBB) != 0)
-        {
-            return Constants.BlackKing;
-        }
-
-        return 0;
-
-        //return (byte)Bmi1.X64.TrailingZeroCount((board.Occupancy[Constants.BlackPawn] >> square & 1UL) << 1 |
-        //                                          (board.Occupancy[Constants.BlackKnight] >> square & 1UL) << 3 |
-        //                                          (board.Occupancy[Constants.BlackBishop] >> square & 1UL) << 5 |
-        //                                          (board.Occupancy[Constants.BlackRook] >> square & 1UL) << 7 |
-        //                                          (board.Occupancy[Constants.BlackQueen] >> square & 1UL) << 9 |
-        //                                          (board.Occupancy[Constants.BlackKing] >> square & 1UL) << 11);
+        return (byte)System.Numerics.BitOperations.TrailingZeroCount((board.Occupancy[Constants.BlackPawn] >> square & 1UL) << 1 |
+                                                  (board.Occupancy[Constants.BlackKnight] >> square & 1UL) << 3 |
+                                                  (board.Occupancy[Constants.BlackBishop] >> square & 1UL) << 5 |
+                                                  (board.Occupancy[Constants.BlackRook] >> square & 1UL) << 7 |
+                                                  (board.Occupancy[Constants.BlackQueen] >> square & 1UL) << 9 |
+                                                  (board.Occupancy[Constants.BlackKing] >> square & 1UL) << 11);
     }
 }
