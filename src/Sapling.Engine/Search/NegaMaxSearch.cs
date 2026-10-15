@@ -1,4 +1,4 @@
-﻿﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Transpositions;
@@ -9,13 +9,24 @@ namespace Sapling.Engine.Search;
 
 public partial class Searcher
 {
+    // Scores at or above this bound are mate scores; pruning that returns static
+    // evaluations or beta must not operate on them.
+    private const int MateScoreLimit = Constants.ImmediateMateScore - Constants.MaxSearchDepth;
+
     public unsafe int
         NegaMaxSearch(BoardStateData* currentBoardState, AccumulatorState* currentAccumulatorState, int depthFromRoot, int depth,
             int alpha, int beta)
     {
         NodesVisited++;
+        var rootStartNodes = NodesVisited;
+        long[]? rootMoveNodeCounts = null;
+        if (depthFromRoot == 0)
+        {
+            rootMoveNodeCounts = RootMoveNodeCounts;
+            Array.Clear(rootMoveNodeCounts);
+        }
 
-        if (depthFromRoot >= Constants.MaxSearchDepth)
+        if (depthFromRoot >= Constants.MaxSearchDepth || currentBoardState->TurnCount == ushort.MaxValue)
         {
             // Max depth reached, return evaluation
             return Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot);
@@ -37,10 +48,11 @@ public partial class Searcher
         TranspositionTableFlag transpositionType = default;
         var transpositionEvaluation = TranspositionTableExtensions.NoHashEntry;
         ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
+        var ttSnapshot = TranspositionTableExtensions.Probe(ref ttEntry, SharedTranspositions);
 
         if (depthFromRoot > 0)
         {
-            if (_searchCancelled)
+            if (ShouldStop())
             {
                 // Search was cancelled, return
                 return 0;
@@ -55,10 +67,13 @@ public partial class Searcher
                 return alpha;
             }
 
-            if (currentBoardState->HalfMoveClock >= 100 ||
+            var isDraw = currentBoardState->HalfMoveClock >= 100 ||
                 currentBoardState->InsufficientMatingMaterial() ||
-                RepetitionDetector.IsThreefoldRepetition(currentBoardState->TurnCount, currentBoardState->HalfMoveClock, HashHistory))
+                RepetitionDetector.IsThreefoldRepetition(currentBoardState->TurnCount, currentBoardState->HalfMoveClock, HashHistory);
+            if (isDraw)
             {
+                if (currentBoardState->InCheck && !currentBoardState->HasAnyLegalMove())
+                    return MoveScoring.EvaluateFinalPosition(depthFromRoot, true);
                 // Detect draw by Fifty move counter or repetition
                 return 0;
             }
@@ -70,15 +85,15 @@ public partial class Searcher
                     return alpha;
             }
 
-            if (pHash == ttEntry.FullHash)
+            if (ttSnapshot.Valid && pHash == ttSnapshot.FullHash)
             {
-                transpositionBestMove = ttEntry.Move;
-                transpositionType = ttEntry.Flag;
-                if (ttEntry.Depth >= depth)
+                transpositionBestMove = ttSnapshot.Move;
+                transpositionType = ttSnapshot.Flag;
+                if (ttSnapshot.Depth >= depth)
                 {
-                    var score = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+                    var score = TranspositionTableExtensions.RecalculateMateScores(ttSnapshot.Evaluation, depthFromRoot);
 
-                    transpositionEvaluation = ttEntry.Flag switch
+                    transpositionEvaluation = ttSnapshot.Flag switch
                     {
                         TranspositionTableFlag.Exact => score,
                         TranspositionTableFlag.Alpha when score <= alpha => alpha,
@@ -98,8 +113,11 @@ public partial class Searcher
         var pawnChIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
         var whiteMaterialChIndex = CorrectionIndex(currentBoardState->WhiteMaterialHash, currentBoardState->WhiteToMove);
         var blackMaterialChIndex = CorrectionIndex(currentBoardState->BlackMaterialHash, currentBoardState->WhiteToMove);
+        var previousMoveIndex = currentAccumulatorState->Move == default
+            ? 0
+            : currentAccumulatorState->Move.GetCounterMoveIndex();
 
-        var staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex,
+        var staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex,
             Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot));
 
         if (depthFromRoot > 0)
@@ -109,74 +127,87 @@ public partial class Searcher
                 // Extend searches when in check
                 depth++;
             }
-            else if (!pvNode)
-            {
-                // Reverse futility pruning
-                var margin = depth * SpsaOptions.ReverseFutilityPruningMargin;
-                if (depth <= SpsaOptions.ReverseFutilityPruningDepth && staticEval >= beta + margin)
-                {
-                    return staticEval - margin;
-                }
-
-                // Null move pruning
-                if (staticEval >= beta &&
-                    currentAccumulatorState->Move != default &&
-                    (transpositionType != TranspositionTableFlag.Alpha || transpositionEvaluation >= beta) &&
-                    depth > SpsaOptions.NullMovePruningDepth && currentBoardState->HasMajorPieces())
-                {
-                    var reduction = *(SpsaOptions.NullMovePruningReductionTable + depth);
-
-                    Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
-
-                    newBoardState->ApplyNullMove();
-
-                    newAccumulatorState->UpdateTo(newBoardState);
-                    newAccumulatorState->Move = default;
-
-                    var nullMoveScore = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1,
-                        Math.Max(depth - reduction - 1, 0), -beta,
-                        -beta + 1);
-
-                    if (nullMoveScore >= beta)
-                    {
-                        // Beta cutoff
-                        return beta;
-                    }
-                }
-
-                // Razoring
-                if (depth is > 0 and <= 3)
-                {
-                    var score = staticEval + SpsaOptions.RazorMarginA;
-                    if (depth == 1 && score < beta)
-                    {
-                        NodesVisited--;
-                        var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
-
-                        return int.Max(qScore, score);
-                    }
-
-                    score = staticEval + SpsaOptions.RazorMarginB;
-                    if (score < beta)
-                    {
-                        NodesVisited--;
-                        var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
-                        if (qScore < beta)
-                        {
-                            return int.Max(qScore, score);
-                        }
-                    }
-
-                    canPrune = true;
-                }
-            }
         }
 
         if (depth <= 0)
         {
-            // Max depth reached, return evaluation of quiet position
+            // Reduced LMR searches can reach or pass the horizon. Enter quiescence
+            // before selective pruning so negative-depth nodes cannot use depth-scaled
+            // margins and depth-zero stalemates retain their terminal score.
             NodesVisited--;
             return QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
+        }
+
+        if (depthFromRoot > 0 && !parentInCheck && !pvNode &&
+            !IsMateBand(staticEval) && !IsMateBand(alpha) && !IsMateBand(beta))
+        {
+            // Reverse futility pruning
+            var margin = depth * SpsaOptions.ReverseFutilityPruningMargin;
+            if (depth <= SpsaOptions.ReverseFutilityPruningDepth && staticEval >= beta + margin)
+            {
+                return staticEval - margin;
+            }
+
+            // Null move pruning
+            if (staticEval >= beta &&
+                currentAccumulatorState->Move != default &&
+                (transpositionType != TranspositionTableFlag.Alpha || transpositionEvaluation >= beta) &&
+                depth > SpsaOptions.NullMovePruningDepth && currentBoardState->HasMajorPieces() &&
+                ((currentBoardState->Occupancy[Constants.WhiteRook] | currentBoardState->Occupancy[Constants.BlackRook] |
+                  currentBoardState->Occupancy[Constants.WhiteQueen] | currentBoardState->Occupancy[Constants.BlackQueen]) != 0))
+            {
+                var reduction = *(SpsaOptions.NullMovePruningReductionTable + depth);
+
+                Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
+
+                newBoardState->ApplyNullMove();
+
+                newAccumulatorState->UpdateTo(newBoardState);
+                newAccumulatorState->Move = default;
+
+                var nullMoveScore = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1,
+                    Math.Max(depth - reduction - 1, 0), -beta,
+                    -beta + 1);
+
+                if (Interrupted())
+                    return 0;
+
+                if (nullMoveScore >= beta)
+                {
+                    // Beta cutoff
+                    return beta;
+                }
+            }
+
+            // Razoring
+            if (depth is > 0 and <= 3)
+            {
+                var score = staticEval + SpsaOptions.RazorMarginA;
+                if (depth == 1 && score < beta)
+                {
+                    NodesVisited--;
+                    var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
+                    if (Interrupted())
+                        return 0;
+
+                    return int.Max(qScore, score);
+                }
+
+                score = staticEval + SpsaOptions.RazorMarginB;
+                if (score < beta)
+                {
+                    NodesVisited--;
+                    var qScore = QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
+                    if (Interrupted())
+                        return 0;
+                    if (qScore < beta)
+                    {
+                        return int.Max(qScore, score);
+                    }
+                }
+
+                canPrune = true;
+            }
         }
 
         if (transpositionType == default && depth > SpsaOptions.InternalIterativeDeepeningDepth)
@@ -186,8 +217,9 @@ public partial class Searcher
         }
 
         var whiteToMove = currentBoardState->WhiteToMove;
+        var oldEnpassantHashFile = Zobrist.GetEnPassantHashFile(ref *currentBoardState);
 
-        var moves = stackalloc uint[218];
+        var moves = stackalloc uint[MaxMovesPerPly];
 
         // Generate pseudo legal moves from this position
         var psuedoMoveCount = currentBoardState->GeneratePseudoLegalMoves(moves, false);
@@ -200,10 +232,10 @@ public partial class Searcher
             if (!currentBoardState->InCheck)
             {
                 var diff = eval - staticEval;
-                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
+                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
             }
 
-            ttEntry.Set(pHash, (byte)depth, depthFromRoot, eval,
+            StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
@@ -222,9 +254,9 @@ public partial class Searcher
         var killerA = *(killers + (depthFromRoot << 1));
 
         // Data used in move ordering
-        var scores = stackalloc int[psuedoMoveCount];
+        var scores = stackalloc int[MaxMovesPerPly];
 
-        var captures = stackalloc short[currentBoardState->PieceCount];
+        var captures = stackalloc short[64];
 
         var occupancyBitBoards = stackalloc ulong[8]
         {
@@ -292,7 +324,7 @@ public partial class Searcher
             && currentAccumulatorState->Move != default
             && depth >= SpsaOptions.ProbCutMinDepth
             && Math.Abs(beta) < TranspositionTableExtensions.PositiveCheckmateDetectionLimit
-            && (pHash != ttEntry.FullHash || ttEntry.Depth < depth - SpsaOptions.ProbCutMinDepth || (ttEntry.Evaluation != TranspositionTableExtensions.NoHashEntry && ttEntry.Evaluation >= probBeta)))
+            && ((!ttSnapshot.Valid || pHash != ttSnapshot.FullHash) || ttSnapshot.Depth < depth - SpsaOptions.ProbCutMinDepth || (ttSnapshot.Evaluation != TranspositionTableExtensions.NoHashEntry && ttSnapshot.Evaluation >= probBeta)))
         {
 
             for (; probCutSortedUpTo < psuedoMoveCount; ++probCutSortedUpTo)
@@ -346,19 +378,20 @@ public partial class Searcher
                 newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
                 if (whiteToMove)
                 {
-                    newBoardState->FinishApplyWhite(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+                    newBoardState->FinishApplyWhite(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, oldEnpassantHashFile, currentBoardState->CastleRights);
                 }
                 else
                 {
-                    newBoardState->FinishApplyBlack(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+                    newBoardState->FinishApplyBlack(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, oldEnpassantHashFile, currentBoardState->CastleRights);
                 }
                 *nextHashHistoryEntry = newBoardState->Hash;
 
-                Sse.Prefetch0(Transpositions + (newBoardState->Hash & TtMask));
+                PrefetchTransposition(Transpositions + (newBoardState->Hash & TtMask));
 
                 NodesVisited--;
                 var score = -QuiescenceSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, -probBeta, -probBeta + 1);
 
+                if (Interrupted()) return 0;
                 if (score >= probBeta)
                 {
                     score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - SpsaOptions.ProbCutMinDepth,
@@ -366,9 +399,10 @@ public partial class Searcher
 
                 }
 
+                if (Interrupted()) return 0;
                 if (score >= probBeta)
                 {
-                    ttEntry.Set(pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
+                    StoreTransposition(ref ttEntry, pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
                         score,
                         TranspositionTableFlag.Beta,
                         default);
@@ -385,6 +419,11 @@ public partial class Searcher
         var evaluationBound = TranspositionTableFlag.Alpha;
 
         var bestScore = int.MinValue;
+        // Quiet moves actually searched (failed-low or alpha-raising) before a beta cutoff. Used
+        // for history malus so LMP-skipped / illegal / never-searched quiets are not penalized.
+        // Keep the searched-quiet history set in a per-node stack buffer.
+        var searchedQuiets = stackalloc uint[MaxMovesPerPly];
+        var searchedQuietCount = 0;
         // Evaluate each move
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
@@ -450,18 +489,19 @@ public partial class Searcher
             newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
             if (whiteToMove)
             {
-                newBoardState->FinishApplyWhite(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+                newBoardState->FinishApplyWhite(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, oldEnpassantHashFile, currentBoardState->CastleRights);
             }
             else
             {
-                newBoardState->FinishApplyBlack(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, currentBoardState->CastleRights);
+                newBoardState->FinishApplyBlack(ref *newAccumulatorState, m, currentBoardState->EnPassantFile, oldEnpassantHashFile, currentBoardState->CastleRights);
             }
             *nextHashHistoryEntry = newBoardState->Hash;
 
-            Sse.Prefetch0(Transpositions + (newBoardState->Hash & TtMask));
+            PrefetchTransposition(Transpositions + (newBoardState->Hash & TtMask));
 
             var needsFullSearch = true;
             var score = 0;
+            var nodesBeforeMove = NodesVisited;
 
             if (searchedMoves > 0)
             {
@@ -471,11 +511,14 @@ public partial class Searcher
                     var reduction = isInteresting
                         ? *(SpsaOptions.LateMovePruningInterestingReductionTable + depth * 218 + searchedMoves)
                         : *(SpsaOptions.LateMovePruningReductionTable + depth * 218 + searchedMoves);
+                    reduction = Math.Min(Math.Max(reduction, 0), depth - 1);
 
                     if (reduction > 0)
                     {
                         score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - reduction - 1,
                             -alpha - 1, -alpha);
+                        if (Interrupted())
+                            return 0;
                         needsFullSearch = score > alpha;
                     }
                 }
@@ -484,6 +527,8 @@ public partial class Searcher
                 {
                     // PVS
                     score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha);
+                    if (Interrupted())
+                        return 0;
                     needsFullSearch = score > alpha && score < beta;
                 }
             }
@@ -498,17 +543,27 @@ public partial class Searcher
 
             searchedMoves++;
 
-            if (_searchCancelled && depthFromRoot > 0)
+            if (Interrupted())
             {
-                // Search was cancelled
+                // Search was cancelled or the slice was exhausted. The root must also stop
+                // consuming moves: post-stop child calls return 0 immediately, which would
+                // otherwise corrupt bestMove, correction history, killers and the root TT entry.
                 break;
             }
+
+            if (depthFromRoot == 0)
+                rootMoveNodeCounts![moveIndex] = NodesVisited - nodesBeforeMove;
 
             if (score > bestScore)
             {
                 bestScore = score;
                 bestMove = m;
             }
+
+            // Record searched quiets that did not produce the beta cutoff (failed-low or
+            // alpha-raising). The cutoff winner is excluded and gets the bonus instead.
+            if (m.IsQuiet() && score < beta)
+                searchedQuiets[searchedQuietCount++] = m;
 
             if (score <= alpha)
             {
@@ -526,21 +581,24 @@ public partial class Searcher
                                    && (score > staticEval))
                 {
                     var diff = bestScore - staticEval;
-                    UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
+                    UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
                 }
 
                 // Cache in transposition table
-                ttEntry.Set(pHash, (byte)depth, depthFromRoot,
+                StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot,
                     score,
                     TranspositionTableFlag.Beta,
                     bestMove);
+
+                if (depthFromRoot == 0)
+                    UpdateRootBestMoveNodeFraction(moves, rootMoveNodeCounts!, psuedoMoveCount, rootStartNodes, bestMove);
 
                 if (m.IsQuiet())
                 {
                     // Update move ordering heuristics for quiet moves that lead to a beta cut off
 
                     // History
-                    HistoryHeuristicExtensions.UpdateMovesHistory(History, moves, moveIndex, m, depth);
+                    HistoryHeuristicExtensions.UpdateMovesHistory(History, searchedQuiets, searchedQuietCount, m, depth);
 
                     *(killers + (depthFromRoot << 1)) = m;
                     if (counterMoveIndex != 0)
@@ -552,7 +610,7 @@ public partial class Searcher
                 return score;
             }
 
-            if (!_searchCancelled || depthFromRoot > 0)
+            if (!Interrupted() || depthFromRoot > 0)
             {
                 // update pv table
                 *(_pVTable + pvIndex) = m;
@@ -560,9 +618,11 @@ public partial class Searcher
             }
         }
 
-        if (_searchCancelled && depthFromRoot > 0)
+        if (Interrupted())
         {
-            // Search was cancelled
+            // Search was cancelled or the slice was exhausted: return without publishing TT
+            // entries or correction history updates from partial work, at the root as well as
+            // below it. Completed subtrees searched before the interruption remain cached.
             return 0;
         }
 
@@ -574,28 +634,50 @@ public partial class Searcher
             if (!parentInCheck)
             {
                 var diff = eval - staticEval;
-                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
+                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
             }
 
-            ttEntry.Set(pHash, (byte)depth, depthFromRoot, eval,
+            StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
         }
-
 
         if (!parentInCheck
                             && (bestMove == default || bestMove.IsQuiet())
                             && (evaluationBound == TranspositionTableFlag.Exact || bestScore < staticEval))
         {
             var diff = bestScore - staticEval;
-            UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, diff, depth);
+            UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
         }
 
+        if (depthFromRoot == 0)
+            UpdateRootBestMoveNodeFraction(moves, rootMoveNodeCounts!, psuedoMoveCount, rootStartNodes, bestMove);
+
         // Cache in transposition table
-        ttEntry.Set(pHash, (byte)depth, depthFromRoot, alpha,
+        StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, alpha,
             evaluationBound, bestMove);
 
         return alpha;
     }
+
+    private unsafe void UpdateRootBestMoveNodeFraction(uint* moves, long[] nodeCounts, int count,
+        long rootStartNodes, uint bestMove)
+    {
+        long total = 0;
+        long best = 0;
+        for (var i = 0; i < count; i++)
+        {
+            var nodes = nodeCounts[i];
+            total += nodes;
+            if (moves[i] == bestMove)
+                best = nodes;
+        }
+
+        total = Math.Max(total, NodesVisited - rootStartNodes);
+        RootBestMoveNodeFraction = total > 0 ? (double)best / total : 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsMateBand(int score) => score >= MateScoreLimit || score <= -MateScoreLimit;
 }

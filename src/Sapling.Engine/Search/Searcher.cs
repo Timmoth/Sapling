@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Sapling.Engine.Evaluation;
@@ -8,7 +8,7 @@ using Sapling.Engine.Tuning;
 
 namespace Sapling.Engine.Search;
 
-public unsafe partial class Searcher
+public unsafe partial class Searcher : IDisposable
 {
     private const int _pvTableLength = Constants.MaxSearchDepth * (Constants.MaxSearchDepth + 1) / 2;
     private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
@@ -16,25 +16,117 @@ public unsafe partial class Searcher
     public readonly Transposition* Transpositions;
     public readonly ulong TtMask;
     private long _lockedUntil;
+    private int _disposed;
+    private readonly object _lifecycleGate = new();
+    private int _buffersFreed;
+    internal bool SharedTranspositions = true;
+    internal object? TableOwner; // Keep the owner alive when callers retain a borrowed worker.
 
-    private bool _searchCancelled;
+    private volatile bool _searchCancelled;
+    // Sticky shutdown: a reset must never re-arm a search once the session is closing.
+    private volatile bool _aborted;
+    private long _deadlineTimestamp;
+    private long _softDeadlineTimestamp;
+    private int _softLimitMs;
+    private int _hardLimitMs;
+    private int _nodeLimit;
+
+    // Bounded-slice controls for the resumable browser driver (4.3). Zero means "no slice
+    // limit", so the native/CLI path is unaffected. Hitting a slice limit sets
+    // _sliceExhausted (aborts the current iteration) rather than _searchCancelled (which
+    // would end the whole search), so the search resumes on the next slice.
+    private long _sliceNodeBudget;
+    private long _sliceDeadlineTs;
+    private long _sliceStartNodes;
+    private bool _sliceExhausted;
+    // True only while a resumable slice is configured. Native sessions never set it, so the
+    // hot ShouldStop path skips the slice checks with a single predictable branch.
+    private bool _sliceActive;
+
+    internal void SetTimeLimit(int milliseconds) => SetTimeLimits(milliseconds, milliseconds);
+
+    internal void SetTimeLimits(int softLimitMs, int hardLimitMs)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var frequency = System.Diagnostics.Stopwatch.Frequency;
+        _softLimitMs = Math.Max(0, softLimitMs);
+        _hardLimitMs = Math.Max(0, hardLimitMs);
+        _softDeadlineTimestamp = softLimitMs > 0
+            ? now + (long)(softLimitMs * (double)frequency / 1000)
+            : 0;
+        _deadlineTimestamp = hardLimitMs > 0
+            ? now + (long)(hardLimitMs * (double)frequency / 1000)
+            : 0;
+    }
+
+    // Single stop contract: every stop condition (explicit stop, node limit, hard deadline)
+    // sets the sticky _searchCancelled flag. NodesVisited >= nodeLimit is the one boundary;
+    // callers must not re-derive stop state from NodesVisited with a different comparison.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool ShouldStop()
+    {
+        if (_searchCancelled)
+            return true;
+        var nodeLimit = _nodeLimit;
+        if (nodeLimit > 0 && NodesVisited >= nodeLimit)
+        {
+            _searchCancelled = true;
+            return true;
+        }
+
+        var sliceActive = _sliceActive;
+        if (sliceActive && _sliceNodeBudget > 0 && NodesVisited - _sliceStartNodes >= _sliceNodeBudget)
+        {
+            _sliceExhausted = true;
+            return true;
+        }
+
+        // Reference path for the deferred deadline-field optimization: load the clock
+        // deadline on every visited node while retaining the same stop semantics.
+        var deadline = _deadlineTimestamp;
+        var sliceDeadline = sliceActive ? _sliceDeadlineTs : 0;
+        if (deadline != 0 || sliceDeadline != 0)
+        {
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (deadline != 0 && now >= deadline)
+            {
+                _searchCancelled = true;
+                return true;
+            }
+            if (sliceDeadline != 0 && now >= sliceDeadline)
+            {
+                _sliceExhausted = true;
+                return true;
+            }
+        }
+        return false;
+    }
+    // Unified "this search work is interrupted" signal for recursive return paths. It covers both
+    // permanent cancellation and resumable slice exhaustion, so an interrupted child's sentinel
+    // return is never consumed as a real score, and no parent TT/history/PV/correction result that
+    // depends on an interrupted child is published. Native searches never set _sliceExhausted, so
+    // this is identical to _searchCancelled there.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Interrupted() => _searchCancelled || _sliceExhausted;
     public uint BestSoFar;
     public long NodesVisited;
+    internal double RootBestMoveNodeFraction;
+    internal readonly long[] RootMoveNodeCounts = new long[MaxMovesPerPly];
+    private const int MaxMovesPerPly = 218;
     private const int KillersLength = Constants.MaxSearchDepth * 2;
 
     private const int HistoryLength = 13 * 64;
     private const int CountersLength = 13 * 64;
     public readonly BoardStateData* BucketCacheWhiteBoards;
-    public readonly VectorShort** BucketCacheWhiteAccumulators;
+    public readonly short** BucketCacheWhiteAccumulators;
     public readonly BoardStateData* BucketCacheBlackBoards;
-    public readonly VectorShort** BucketCacheBlackAccumulators;
-    public readonly VectorShort** WhiteAccumulators;
-    public readonly VectorShort** BlackAccumulators;
+    public readonly short** BucketCacheBlackAccumulators;
+    public readonly short** WhiteAccumulators;
+    public readonly short** BlackAccumulators;
     public readonly ulong* HashHistory;
 
     public readonly BoardStateData* Boards;
     public readonly AccumulatorState* Accumulators;
-
 
     public readonly int* History;
     public readonly uint* Counters;
@@ -42,13 +134,19 @@ public unsafe partial class Searcher
     public readonly int* PawnCorrHist;
     public readonly int* WhiteMaterialCorrHist;
     public readonly int* BlackMaterialCorrHist;
+    public readonly int* PreviousMoveCorrHist;
 
     public Searcher(Transposition* transpositions, long ttCount)
     {
-        GC.SuppressFinalize(this);
+        if (ttCount <= 0 || !System.Numerics.BitOperations.IsPow2((ulong)ttCount))
+            throw new ArgumentOutOfRangeException(nameof(ttCount));
+        if (transpositions == null)
+            throw new ArgumentNullException(nameof(transpositions));
         Transpositions = transpositions;
 
         TtMask = (ulong)(ttCount - 1);
+        try
+        {
         _pVTable = MemoryHelpers.Allocate<uint>(_pvTableLength);
 
         WhiteAccumulators = AllocateSearchStack(Constants.MaxSearchDepth + 1);
@@ -59,8 +157,11 @@ public unsafe partial class Searcher
             BlackAccumulators[i] = AllocateAccumulator();
         }
 
-        Boards = MemoryHelpers.Allocate<BoardStateData>(Constants.MaxSearchDepth);
-        Accumulators = MemoryHelpers.Allocate<AccumulatorState>(Constants.MaxSearchDepth);
+        // Boards/Accumulators are indexed by ply; the frame at depthFromRoot = MaxSearchDepth-1
+        // advances to index MaxSearchDepth before the depth guard returns, so capacity must be
+        // MaxSearchDepth + 1 (off-by-one heap write otherwise).
+        Boards = MemoryHelpers.Allocate<BoardStateData>(Constants.MaxSearchDepth + 1);
+        Accumulators = MemoryHelpers.Allocate<AccumulatorState>(Constants.MaxSearchDepth + 1);
 
         BucketCacheWhiteBoards = MemoryHelpers.Allocate<BoardStateData>(NnueWeights.InputBuckets * 2);
         BucketCacheBlackBoards = MemoryHelpers.Allocate<BoardStateData>(NnueWeights.InputBuckets * 2);
@@ -73,107 +174,128 @@ public unsafe partial class Searcher
             BucketCacheBlackAccumulators[i] = AllocateAccumulator();
         }
 
-        HashHistory = MemoryHelpers.Allocate<ulong>(800);
+        HashHistory = MemoryHelpers.Allocate<ulong>(GameState.HashHistoryLength);
         Counters = MemoryHelpers.Allocate<uint>(CountersLength);
         History = MemoryHelpers.Allocate<int>(HistoryLength);
         killers = MemoryHelpers.Allocate<uint>(KillersLength);
         PawnCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
         WhiteMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
         BlackMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
+        PreviousMoveCorrHist = MemoryHelpers.Allocate<int>(CountersLength);
+        }
+        catch
+        {
+            FreeBuffers();
+            GC.SuppressFinalize(this);
+            throw;
+        }
     }
 
-    public static VectorShort* AllocateAccumulator()
-    {
-        const nuint alignment = 64;
+    public static short* AllocateAccumulator() =>
+        (short*)MemoryHelpers.Allocate<short>(NnueWeights.Layer1Size);
 
-        var block = NativeMemory.AlignedAlloc((nuint)Searcher.L1ByteSize, alignment);
-        NativeMemory.Clear(block, (nuint)Searcher.L1ByteSize);
-
-        return (VectorShort*)block;
-    }
-
-    public static unsafe VectorShort** AllocateSearchStack(nuint items)
-    {
-        const nuint alignment = 64;
-
-        nuint bytes = ((nuint)sizeof(VectorShort*) * (nuint)items);
-        void* block = NativeMemory.AlignedAlloc(bytes, alignment);
-        NativeMemory.Clear(block, bytes);
-
-        return (VectorShort**)block;
-    }
+    public static short** AllocateSearchStack(nuint items) =>
+        (short**)MemoryHelpers.Allocate<nint>(checked((long)items));
 
     ~Searcher()
     {
+        FreeBuffers();
+    }
+
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref _disposed, 1);
+        Stop();
+        lock (_lifecycleGate)
+        {
+            FreeBuffers();
+        }
+        GC.SuppressFinalize(this);
+    }
+
+    private void FreeBuffers()
+    {
+        if (Interlocked.Exchange(ref _buffersFreed, 1) != 0)
+            return;
         if (_pVTable != null)
-            NativeMemory.AlignedFree(_pVTable);
+            MemoryHelpers.FreeAligned(_pVTable);
 
         if (HashHistory != null)
-            NativeMemory.AlignedFree(HashHistory);
+            MemoryHelpers.FreeAligned(HashHistory);
 
         if (Counters != null)
-            NativeMemory.AlignedFree(Counters);
+            MemoryHelpers.FreeAligned(Counters);
 
         if (History != null)
-            NativeMemory.AlignedFree(History);
+            MemoryHelpers.FreeAligned(History);
 
         if (killers != null)
-            NativeMemory.AlignedFree(killers);
+            MemoryHelpers.FreeAligned(killers);
 
         if (PawnCorrHist != null)
-            NativeMemory.AlignedFree(PawnCorrHist);
+            MemoryHelpers.FreeAligned(PawnCorrHist);
 
         if (WhiteMaterialCorrHist != null)
-            NativeMemory.AlignedFree(WhiteMaterialCorrHist);
+            MemoryHelpers.FreeAligned(WhiteMaterialCorrHist);
 
         if (BlackMaterialCorrHist != null)
-            NativeMemory.AlignedFree(BlackMaterialCorrHist);
+            MemoryHelpers.FreeAligned(BlackMaterialCorrHist);
+
+        if (PreviousMoveCorrHist != null)
+            MemoryHelpers.FreeAligned(PreviousMoveCorrHist);
 
         for (var i = 0; i < Constants.MaxSearchDepth + 1; i++)
         {
-            if (WhiteAccumulators[i] != null)
-                NativeMemory.AlignedFree(WhiteAccumulators[i]);
+            if (WhiteAccumulators != null && WhiteAccumulators[i] != null)
+                MemoryHelpers.FreeAligned(WhiteAccumulators[i]);
 
-            if (BlackAccumulators[i] != null)
-                NativeMemory.AlignedFree(BlackAccumulators[i]);
+            if (BlackAccumulators != null && BlackAccumulators[i] != null)
+                MemoryHelpers.FreeAligned(BlackAccumulators[i]);
         }
 
         if (WhiteAccumulators != null)
-            NativeMemory.AlignedFree(WhiteAccumulators);
+            MemoryHelpers.FreeAligned(WhiteAccumulators);
 
         if (BlackAccumulators != null)
-            NativeMemory.AlignedFree(BlackAccumulators);
+            MemoryHelpers.FreeAligned(BlackAccumulators);
 
         for (var i = 0; i < NnueWeights.InputBuckets * 2; i++)
         {
-            if (BucketCacheWhiteAccumulators[i] != null)
-                NativeMemory.AlignedFree(BucketCacheWhiteAccumulators[i]);
+            if (BucketCacheWhiteAccumulators != null && BucketCacheWhiteAccumulators[i] != null)
+                MemoryHelpers.FreeAligned(BucketCacheWhiteAccumulators[i]);
 
-            if (BucketCacheBlackAccumulators[i] != null)
-                NativeMemory.AlignedFree(BucketCacheBlackAccumulators[i]);
+            if (BucketCacheBlackAccumulators != null && BucketCacheBlackAccumulators[i] != null)
+                MemoryHelpers.FreeAligned(BucketCacheBlackAccumulators[i]);
         }
 
         if (BucketCacheWhiteAccumulators != null)
-            NativeMemory.AlignedFree(BucketCacheWhiteAccumulators);
+            MemoryHelpers.FreeAligned(BucketCacheWhiteAccumulators);
 
         if (BucketCacheBlackAccumulators != null)
-            NativeMemory.AlignedFree(BucketCacheBlackAccumulators);
+            MemoryHelpers.FreeAligned(BucketCacheBlackAccumulators);
 
         if (BucketCacheWhiteBoards != null)
-            NativeMemory.AlignedFree(BucketCacheWhiteBoards);
+            MemoryHelpers.FreeAligned(BucketCacheWhiteBoards);
 
         if (BucketCacheBlackBoards != null)
-            NativeMemory.AlignedFree(BucketCacheBlackBoards);
+            MemoryHelpers.FreeAligned(BucketCacheBlackBoards);
 
         if (Boards != null)
-            NativeMemory.AlignedFree(Boards);
+            MemoryHelpers.FreeAligned(Boards);
 
         if (Accumulators != null)
-            NativeMemory.AlignedFree(Accumulators);
+            MemoryHelpers.FreeAligned(Accumulators);
     }
 
     public void Stop()
     {
+        _searchCancelled = true;
+    }
+
+    /// <summary>Stops the current search and every search started afterwards.</summary>
+    public void Abort()
+    {
+        _aborted = true;
         _searchCancelled = true;
     }
 
@@ -210,27 +332,82 @@ public unsafe partial class Searcher
 
     public void Reset(GameState inputBoard)
     {
-        _searchCancelled = false;
+        lock (_lifecycleGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            ResetCore(inputBoard);
+        }
+    }
+
+    private void ResetCore(GameState inputBoard)
+    {
+        inputBoard.EnsureUsable();
+        _searchCancelled = _aborted;
+        _deadlineTimestamp = 0;
+        _softDeadlineTimestamp = 0;
+        _softLimitMs = 0;
+        _hardLimitMs = 0;
+        RootBestMoveNodeFraction = 0;
+        _nodeLimit = 0;
+        // Clear resumable slice state so a stale _sliceExhausted cannot make Interrupted() true
+        // for a subsequent native search on the same worker.
+        _sliceActive = false;
+        _sliceExhausted = false;
+        _sliceNodeBudget = 0;
+        _sliceDeadlineTs = 0;
+        _sliceStartNodes = 0;
         NodesVisited = 0;
         BestSoFar = 0;
 
-        NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
+        // Carry a fading quiet-move ordering signal across successive search calls.
+        for (var i = 0; i < HistoryLength; i++)
+            History[i] = History[i] * 3 / 4;
         NativeMemory.Clear(Counters, (nuint)CountersLength * sizeof(uint));
         NativeMemory.Clear(killers, (nuint)KillersLength * sizeof(uint));
 
         NativeMemory.Clear(_pVTable, _pvTableBytes);
 
-        NativeMemory.Clear(Boards, (nuint)sizeof(BoardStateData) * Constants.MaxSearchDepth);
-        NativeMemory.Clear(Accumulators, (nuint)sizeof(AccumulatorState) * Constants.MaxSearchDepth);
+        NativeMemory.Clear(Boards, (nuint)sizeof(BoardStateData) * (Constants.MaxSearchDepth + 1));
+        NativeMemory.Clear(Accumulators, (nuint)sizeof(AccumulatorState) * (Constants.MaxSearchDepth + 1));
 
         NativeMemory.Clear(BucketCacheWhiteBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
         NativeMemory.Clear(BucketCacheBlackBoards, (nuint)sizeof(BoardStateData) * NnueWeights.InputBuckets * 2);
 
-        Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * (uint)inputBoard.Board.TurnCount);
+        var historyToCopy = Math.Min((uint)inputBoard.Board.TurnCount, (uint)GameState.HashHistoryLength);
+        Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * historyToCopy);
     }
+
+    public unsafe void ClearMoveHistory() =>
+        NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
 
     public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, Action cancelSearch, List<Searcher>? searchers = null, int nodeLimit = 0,
         int depthLimit = 0, int threadId = -1, DateTime? timeLimit = null)
+    {
+        lock (_lifecycleGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            if (depthLimit < 0 || depthLimit > Constants.MaxSearchDepth)
+                throw new ArgumentOutOfRangeException(nameof(depthLimit));
+            if (nodeLimit < 0)
+                throw new ArgumentOutOfRangeException(nameof(nodeLimit));
+            inputBoard.EnsureUsable();
+            _nodeLimit = nodeLimit;
+            try
+            {
+                return SearchCore(inputBoard, cancelSearch, searchers, nodeLimit, depthLimit, threadId, timeLimit);
+            }
+            finally
+            {
+                GC.KeepAlive(inputBoard);
+                GC.KeepAlive(TableOwner);
+                GC.KeepAlive(this);
+            }
+        }
+    }
+
+    private (List<uint> pv, int depthSearched, int score, long nodes) SearchCore(
+        GameState inputBoard, Action cancelSearch, List<Searcher>? searchers, int nodeLimit,
+        int depthLimit, int threadId, DateTime? timeLimit)
     {
         var depthSearched = 0;
 
@@ -240,6 +417,18 @@ public unsafe partial class Searcher
 
         var maxDepth = depthLimit > 0 ? depthLimit : Constants.MaxSearchDepth;
 
+        // The DateTime parameter is retained for direct callers that do not set a deadline.
+        if (_deadlineTimestamp == 0 && timeLimit.HasValue)
+        {
+            var remainingMs = (timeLimit.Value - DateTime.Now).TotalMilliseconds;
+            var limitMs = Math.Clamp((int)Math.Ceiling(remainingMs), 1, int.MaxValue);
+            _deadlineTimestamp = remainingMs > 0
+                ? System.Diagnostics.Stopwatch.GetTimestamp() + (long)(limitMs * (double)System.Diagnostics.Stopwatch.Frequency / 1000)
+                : System.Diagnostics.Stopwatch.GetTimestamp();
+            _softDeadlineTimestamp = _deadlineTimestamp;
+            _softLimitMs = _hardLimitMs = remainingMs > 0 ? limitMs : 0;
+        }
+
         ref var rootBoard = ref Boards[0];
 
         inputBoard.Board.CloneTo(ref rootBoard);
@@ -248,16 +437,22 @@ public unsafe partial class Searcher
         var bestEval = lastIterationEval = NegaMaxSearch(Boards, Accumulators, 0, 0, alpha, beta);
 
         BestSoFar = _pVTable[0];
-        var pvMoves = stackalloc uint[Constants.MaxSearchDepth];
+        // One slot past the deepest iteration so the copied PV always has a terminator in range.
+        var pvMoves = stackalloc uint[Constants.MaxSearchDepth + 1];
 
         NativeMemory.Copy(_pVTable, pvMoves, (nuint)Constants.MaxSearchDepth * sizeof(uint));
+        pvMoves[Constants.MaxSearchDepth] = 0;
 
-        var startTime = DateTime.Now;
-        for (var j = 1; j < maxDepth; j++)
+        var startTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        var previousBestMove = BestSoFar;
+        var previousScore = bestEval;
+        var stableBestMoves = 0;
+        // Iteration j searches to depth j, so a 'go depth N' limit must include j == maxDepth.
+        for (var j = 1; j <= maxDepth; j++)
         {
-            var iterationStart = DateTime.Now;
+            var iterationStartTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
 
-            if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
+            if (_searchCancelled)
             {
                 break;
             }
@@ -285,12 +480,20 @@ public unsafe partial class Searcher
                     break;
                 }
 
-                if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
+                if (_searchCancelled)
                 {
                     break;
                 }
 
             } while (true);
+
+            // Only completed iterations may replace the reported result. An iteration that
+            // hit the stop contract (stop, node limit >=, or hard deadline) is discarded in
+            // full: its partial PV, score and depth must never become the final answer.
+            if (_searchCancelled)
+            {
+                break;
+            }
 
             if (_pVTable[0] == 0)
             {
@@ -298,7 +501,9 @@ public unsafe partial class Searcher
             }
 
             BestSoFar = _pVTable[0];
-            NativeMemory.Copy(_pVTable, pvMoves, (nuint)j * sizeof(uint));
+            var pvLength = Math.Min(j, Constants.MaxSearchDepth);
+            NativeMemory.Copy(_pVTable, pvMoves, (nuint)pvLength * sizeof(uint));
+            pvMoves[pvLength] = 0;
             depthSearched = j;
             bestEval = lastIterationEval;
 
@@ -306,10 +511,10 @@ public unsafe partial class Searcher
             {
                 var nodes = searchers?.Sum(s =>s.NodesVisited) ?? NodesVisited;
 
-                var dt = DateTime.Now - startTime;
+                var dt = System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp);
                 var nps = (long)(nodes / dt.TotalSeconds);
                 var sb = new StringBuilder();
-                for (var i = 0; i <= j; i++)
+                for (var i = 0; i < pvLength; i++)
                 {
                     if (pvMoves[i] == 0)
                     {
@@ -323,20 +528,71 @@ public unsafe partial class Searcher
                 Console.WriteLine(
                      $"info depth {depthSearched} score {ScoreToString(bestEval)} nodes {nodes} nps {nps} time {(int)dt.TotalMilliseconds} pv{sb}");
 
-                var iterationDuration = DateTime.Now - iterationStart;
-                var timeRemaining = timeLimit - DateTime.Now;
-                if (timeRemaining.HasValue && timeRemaining.Value.TotalMilliseconds < iterationDuration.TotalMilliseconds * 1.5)
+                var iterationDuration = System.Diagnostics.Stopwatch.GetElapsedTime(iterationStartTimestamp);
+                if (_softDeadlineTimestamp != 0)
                 {
-                    cancelSearch();
-                    break;
+                    stableBestMoves = BestSoFar == previousBestMove ? stableBestMoves + 1 : 0;
+                    var scoreDrop = previousScore - bestEval;
+                    var adjustedSoftLimit = TimeManagement.AdjustSoftLimit(
+                        _softLimitMs, _hardLimitMs, depthSearched, stableBestMoves,
+                        scoreDrop, RootBestMoveNodeFraction);
+                    var adjustedDeadline = startTimestamp + (long)(adjustedSoftLimit *
+                        (double)System.Diagnostics.Stopwatch.Frequency / 1000);
+                    _softDeadlineTimestamp = _deadlineTimestamp == 0
+                        ? adjustedDeadline
+                        : Math.Min(adjustedDeadline, _deadlineTimestamp);
+                    previousBestMove = BestSoFar;
+                    previousScore = bestEval;
+
+                    if (System.Diagnostics.Stopwatch.GetTimestamp() >= _softDeadlineTimestamp)
+                    {
+                        cancelSearch();
+                        break;
+                    }
+                }
+
+                if (_deadlineTimestamp != 0)
+                {
+                    var timeRemaining = System.Diagnostics.Stopwatch.GetElapsedTime(System.Diagnostics.Stopwatch.GetTimestamp(), _deadlineTimestamp);
+                    if (timeRemaining.TotalMilliseconds < iterationDuration.TotalMilliseconds * 1.5)
+                    {
+                        cancelSearch();
+                        break;
+                    }
                 }
             }
 
-            if (_searchCancelled || (nodeLimit > 0 && NodesVisited > nodeLimit))
+            if (_searchCancelled)
                 break;
         }
-        
-        return (GetPvMoveList(pvMoves), depthSearched, bestEval, NodesVisited);
+
+        var pvList = GetPvMoveList(pvMoves);
+
+        // Legal fallback at very small limits: if no iteration completed, prefer the depth-0
+        // root move, then any legal move. An empty list is returned only for a genuinely
+        // moveless position (checkmate/stalemate).
+        if (pvList.Count == 0 && BestSoFar != 0)
+        {
+            pvList.Add(BestSoFar);
+        }
+        else if (pvList.Count == 0 && inputBoard.LegalMoves.Count > 0)
+        {
+            pvList.Add(inputBoard.LegalMoves[0]);
+        }
+
+        return (pvList, depthSearched, bestEval, NodesVisited);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void StoreTransposition(ref Transposition entry, ulong hash, byte depth, int ply,
+        int eval, TranspositionTableFlag flag, uint move = default) =>
+        TranspositionTableExtensions.Set(ref entry, hash, depth, ply, eval, flag, move, SharedTranspositions);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PrefetchTransposition(void* entry)
+    {
+        if (System.Runtime.Intrinsics.X86.Sse.IsSupported)
+            System.Runtime.Intrinsics.X86.Sse.Prefetch0(entry);
     }
 
     private static string ScoreToString(int score)

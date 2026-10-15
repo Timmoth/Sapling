@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using Sapling.Engine.MoveGen;
@@ -14,23 +14,25 @@ public partial class Searcher
     {
         NodesVisited++;
 
-        if (_searchCancelled)
+        if (ShouldStop())
         {
             // Search was cancelled
             return 0;
         }
 
-
-        if (depthFromRoot >= Constants.MaxSearchDepth)
+        if (depthFromRoot >= Constants.MaxSearchDepth || boardState->TurnCount == ushort.MaxValue)
         {
             // Reached max depth
             return Evaluate(boardState, accumulatorState, depthFromRoot);
         }
 
-        if (boardState->HalfMoveClock >= 100 ||
+        var isDraw = boardState->HalfMoveClock >= 100 ||
             boardState->InsufficientMatingMaterial() ||
-            RepetitionDetector.IsThreefoldRepetition(boardState->TurnCount, boardState->HalfMoveClock, HashHistory))
+            RepetitionDetector.IsThreefoldRepetition(boardState->TurnCount, boardState->HalfMoveClock, HashHistory);
+        if (isDraw)
         {
+            if (boardState->InCheck && !boardState->HasAnyLegalMove())
+                return MoveScoring.EvaluateFinalPosition(depthFromRoot, true);
             // Detect draw by Fifty move counter or repetition
             return 0;
         }
@@ -46,12 +48,13 @@ public partial class Searcher
         ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
         uint ttBestMove = default;
 
-        if (pHash == ttEntry.FullHash)
+        var ttSnapshot = TranspositionTableExtensions.Probe(ref ttEntry, SharedTranspositions);
+        if (ttSnapshot.Valid && pHash == ttSnapshot.FullHash)
         {
-            ttBestMove = ttEntry.Move;
-            var score = TranspositionTableExtensions.RecalculateMateScores(ttEntry.Evaluation, depthFromRoot);
+            ttBestMove = ttSnapshot.Move;
+            var score = TranspositionTableExtensions.RecalculateMateScores(ttSnapshot.Evaluation, depthFromRoot);
 
-            var transpositionEvaluation = ttEntry.Flag switch
+            var transpositionEvaluation = ttSnapshot.Flag switch
             {
                 TranspositionTableFlag.Exact => score,
                 TranspositionTableFlag.Alpha when score <= alpha => alpha,
@@ -66,21 +69,28 @@ public partial class Searcher
         }
 
         var inCheck = boardState->InCheck;
+        int qEval = 0;
         if (!inCheck)
         {
             var pawnChIndex = CorrectionIndex(boardState->PawnHash, boardState->WhiteToMove);
             var whiteMaterialChIndex = CorrectionIndex(boardState->WhiteMaterialHash, boardState->WhiteToMove);
             var blackMaterialChIndex = CorrectionIndex(boardState->BlackMaterialHash, boardState->WhiteToMove);
+            var previousMoveIndex = accumulatorState->Move == default
+                ? 0
+                : accumulatorState->Move.GetCounterMoveIndex();
 
             // Evaluate current position
-            var val = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, Evaluate(boardState, accumulatorState, depthFromRoot));
-            if (val >= beta)
+            qEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex,
+                Evaluate(boardState, accumulatorState, depthFromRoot));
+            if (qEval >= beta)
             {
+                if (!boardState->HasAnyLegalMove())
+                    return 0;
                 // Beta cut off
-                return val;
+                return qEval;
             }
 
-            alpha = int.Max(alpha, val);
+            alpha = int.Max(alpha, qEval);
         }
 
         // Get all capturing moves
@@ -95,18 +105,25 @@ public partial class Searcher
                 var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
 
                 // Cache in transposition table
-                ttEntry.Set(pHash, 0, depthFromRoot, finalEval,
+                StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, finalEval,
                     TranspositionTableFlag.Exact);
                 return finalEval;
             }
 
-            ttEntry.Set(pHash, 0, depthFromRoot, alpha,
+            if (!boardState->HasAnyLegalMove())
+            {
+                StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, 0,
+                    TranspositionTableFlag.Exact);
+                return 0;
+            }
+
+            StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, alpha,
                 TranspositionTableFlag.Alpha,
                 default);
             return alpha;
         }
 
-        var scores = stackalloc int[psuedoMoveCount];
+        var scores = stackalloc int[MaxMovesPerPly];
 
         var occupancyBitBoards = stackalloc ulong[8]
         {
@@ -120,38 +137,13 @@ public partial class Searcher
             boardState->Occupancy[Constants.BlackKing] | boardState->Occupancy[Constants.WhiteKing]
         };
 
-        var captures = stackalloc short[boardState->PieceCount];
+        var captures = stackalloc short[64];
 
         for (var i = 0; i < psuedoMoveCount; ++i)
         {
             var move = *(moves + i);
-            if (ttBestMove == move)
-            {
-                *(scores + i) = SpsaOptions.MoveOrderingBestMoveBias;
-            }
-
-            if (move.IsCapture())
-            {
-                if (move.IsEnPassant())
-                {
-                    *(scores + i) = SpsaOptions.MoveOrderingEnPassantMoveBias;
-                    continue;
-                }
-
-                var captureDelta = boardState->StaticExchangeEvaluation(occupancyBitBoards, captures, move);
-
-                *(scores + i) = (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
-                                captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
-                continue;
-            }
-
-            if (move.IsPromotion())
-            {
-                *(scores + i) = SpsaOptions.MoveOrderingPromoteBias;
-                continue;
-            }
-
-            *(scores + i) = *(History + move.GetCounterMoveIndex());
+            *(scores + i) = ScoreQuiescenceMove(ref *boardState, move, ttBestMove,
+                occupancyBitBoards, captures, History);
         }
 
         var evaluationBound = TranspositionTableFlag.Alpha;
@@ -164,6 +156,7 @@ public partial class Searcher
 
         var nextHashHistoryEntry = HashHistory + boardState->TurnCount;
         var prevEnpassant = boardState->EnPassantFile;
+        var prevEnpassantHashFile = Zobrist.GetEnPassantHashFile(ref *boardState);
         var prevCastleRights = boardState->CastleRights;
         var whiteToMove = boardState->WhiteToMove;
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
@@ -194,9 +187,9 @@ public partial class Searcher
                 }
             }
 
-            Unsafe.CopyBlock(nextBoardState, boardState, BoardStateData.BoardStateSize);
-
             var m = *currentMovePtr;
+
+            Unsafe.CopyBlock(nextBoardState, boardState, BoardStateData.BoardStateSize);
 
             if (whiteToMove ? !nextBoardState->PartialApplyWhite(m) : !nextBoardState->PartialApplyBlack(m))
             {
@@ -218,20 +211,20 @@ public partial class Searcher
 
             if (whiteToMove)
             {
-                nextBoardState->FinishApplyWhite(ref *nextAccumulatorState, m, prevEnpassant, prevCastleRights);
+                nextBoardState->FinishApplyWhite(ref *nextAccumulatorState, m, prevEnpassant, prevEnpassantHashFile, prevCastleRights);
             }
             else
             {
-                nextBoardState->FinishApplyBlack(ref *nextAccumulatorState, m, prevEnpassant, prevCastleRights);
+                nextBoardState->FinishApplyBlack(ref *nextAccumulatorState, m, prevEnpassant, prevEnpassantHashFile, prevCastleRights);
             }
 
             *nextHashHistoryEntry = nextBoardState->Hash;
 
-            Sse.Prefetch0(Transpositions + (nextBoardState->Hash & TtMask));
+            PrefetchTransposition(Transpositions + (nextBoardState->Hash & TtMask));
 
             var val = -QuiescenceSearch(nextBoardState, nextAccumulatorState, depthFromRoot + 1, -beta, -alpha);
 
-            if (_searchCancelled)
+            if (ShouldStop())
             {
                 // Search was cancelled
                 return 0;
@@ -249,14 +242,14 @@ public partial class Searcher
             if (val >= beta)
             {
                 // Cache in transposition table
-                ttEntry.Set(pHash, 0, depthFromRoot, val,
+                StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, val,
                     TranspositionTableFlag.Beta, bestMove);
                 // Beta cut off
                 return val;
             }
         }
 
-        if (_searchCancelled)
+        if (ShouldStop())
         {
             // Search was cancelled
             return 0;
@@ -268,13 +261,24 @@ public partial class Searcher
             var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
 
             // Cache in transposition table
-            ttEntry.Set(pHash, 0, depthFromRoot, finalEval,
+            StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, finalEval,
                 TranspositionTableFlag.Exact);
             return finalEval;
         }
 
+        // In a non-check node the generated move list contains captures only. A
+        // stalemated side can still have pseudo-legal captures (for example, a
+        // pinned piece capturing an adjacent piece), all of which are rejected
+        // by PartialApply. Distinguish that from an ordinary quiet position.
+        if (!inCheck && !hasValidMove && !boardState->HasAnyLegalMove())
+        {
+            StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, 0,
+                TranspositionTableFlag.Exact);
+            return 0;
+        }
+
         // Cache in transposition table
-        ttEntry.Set(pHash, 0, depthFromRoot, alpha,
+        StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, alpha,
             evaluationBound,
             bestMove);
 
@@ -282,14 +286,45 @@ public partial class Searcher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static unsafe int ScoreQuiescenceMove(ref BoardStateData boardState, uint move,
+        uint ttBestMove, ulong* occupancyBitBoards, short* captures, int* history)
+    {
+        if (move == ttBestMove)
+            return SpsaOptions.MoveOrderingBestMoveBias;
+
+        if (move.IsCapture())
+        {
+            if (move.IsEnPassant())
+                return SpsaOptions.MoveOrderingEnPassantMoveBias;
+
+            var captureDelta = boardState.StaticExchangeEvaluation(occupancyBitBoards, captures, move);
+            return (captureDelta >= 0
+                    ? SpsaOptions.MoveOrderingWinningCaptureBias
+                    : SpsaOptions.MoveOrderingLosingCaptureBias) + captureDelta +
+                   (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
+        }
+
+        if (move.IsPromotion())
+            return SpsaOptions.MoveOrderingPromoteBias;
+
+        return *(history + move.GetCounterMoveIndex());
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe void ShiftPvMoves(int target, int source, int moveCountToCopy)
     {
+        // Nothing to copy at the deepest ply: return before touching the source, which can sit at
+        // the end of the PV allocation (index == length) and would otherwise be an out-of-bounds read.
+        if (moveCountToCopy <= 0)
+            return;
+
         // Check if the source position is zero
         if (*(_pVTable + source) == 0)
         {
-            // Calculate the number of bytes to clear
-            var bytesToClear = _pvTableBytes - (nuint)target * sizeof(uint);
-            NativeMemory.Clear(_pVTable + target, bytesToClear);
+            // Empty child: terminate this node's PV by clearing only the destination row's
+            // remainder (moveCountToCopy slots), not the whole triangular table tail. Readers
+            // stop at the first zero, so zeroing beyond this row is unnecessary work.
+            NativeMemory.Clear(_pVTable + target, (nuint)moveCountToCopy * sizeof(uint));
             return;
         }
 

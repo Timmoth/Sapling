@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 
 namespace Sapling.Engine;
@@ -8,7 +8,7 @@ public static class BitboardHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte PopLSB(this ref ulong b)
     {
-        var i = (byte)Bmi1.X64.TrailingZeroCount(b);
+        var i = (byte)System.Numerics.BitOperations.TrailingZeroCount(b);
         b &= b - 1;
 
         return i;
@@ -17,13 +17,13 @@ public static class BitboardHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong PeekLSB(this ulong bitBoard)
     {
-        return Bmi1.X64.TrailingZeroCount(bitBoard);
+        return (ulong)System.Numerics.BitOperations.TrailingZeroCount(bitBoard);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte PopCount(ulong bitBoard)
     {
-        return (byte)Popcnt.X64.PopCount(bitBoard);
+        return (byte)System.Numerics.BitOperations.PopCount(bitBoard);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

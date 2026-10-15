@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Intrinsics.X86;
 using System.Text;
@@ -19,7 +19,8 @@ internal class Program
 {
     private static readonly ConcurrentQueue<string> CommandQueue = new();
     private static readonly ManualResetEventSlim CommandAvailable = new(false);
-    private static bool hasQuit = false;
+    private const string QuitCommand = "quit";
+    private static volatile bool hasQuit;
 
     private static FileStream _fileStream;
     private static StreamWriter _logWriter;
@@ -36,43 +37,6 @@ private static void Main(string[] args)
             return;
         }
 
-#if AVX512
-            if (!Avx512BW.IsSupported)
-            {
-                Console.WriteLine("[Error] Avx512BW is not supported on this system");
-                return;
-            }
-#else
-        if (!Avx2.IsSupported)
-            {
-                Console.WriteLine("[Error] Avx2 is not supported on this system");
-                return;
-            }
-        #endif
-
-        if (!Bmi1.IsSupported)
-        {
-            Console.WriteLine("[Error] Bmi1 is not supported on this system");
-            return;
-        }
-
-        if (!Bmi2.IsSupported)
-        {
-            Console.WriteLine("[Error] Bmi2 is not supported on this system");
-            return;
-        }
-
-        if (!Popcnt.IsSupported)
-        {
-            Console.WriteLine("[Error] Popcnt is not supported on this system");
-            return;
-        }
-
-        if (!Sse.IsSupported)
-        {
-            Console.WriteLine("[Error] Sse is not supported on this system");
-            return;
-        }
         var logDirectory = Path.Combine(Environment.CurrentDirectory, "logs");
         if (!Directory.Exists(logDirectory))
         {
@@ -126,7 +90,7 @@ private static void Main(string[] args)
       
         try
         {
-            UciEngine engine = new(_logWriter);
+            using UciEngine engine = new(_logWriter);
 
             // Start the command reading task
             _ = Task.Run(() =>
@@ -137,8 +101,14 @@ private static void Main(string[] args)
             // Process commands in the main loop
             ProcessCommands(engine);
         }
+        catch (ObjectDisposedException) when (hasQuit)
+        {
+            // Shutdown may win the race immediately before a queued search starts.
+        }
         catch (Exception ex)
         {
+            Environment.ExitCode = 1;
+            Console.Error.WriteLine(ex.Message);
             _logWriter.WriteLine("[FATAL ERROR]");
             _logWriter.WriteLine("----------");
             _logWriter.WriteLine(ex.ToString());
@@ -147,50 +117,71 @@ private static void Main(string[] args)
         finally
         {
             _logWriter.Flush();
-            _logWriter.Flush();
             _logWriter.Close();
         }
     }
 
     private static void ReadCommands(UciEngine engine)
     {
-        while (true)
+        try
         {
-            var command = Console.ReadLine();
-            if (string.IsNullOrEmpty(command))
+            while (true)
             {
-                continue; // Skip empty commands
-            }
+                var command = Console.ReadLine();
+                if (command == null)
+                {
+                    // EOF is a quit: the session ends, but commands already queued are
+                    // still drained by the consumer instead of being dropped.
+                    break;
+                }
 
-            if (command.Contains("quit", StringComparison.OrdinalIgnoreCase))
-            {
-                hasQuit = true;
-                engine.ReceiveCommand("stop");
-                Environment.Exit(0);
-                break;
-            }
+                command = command.Trim();
 
-            if (command.Contains("stop", StringComparison.OrdinalIgnoreCase))
-            {
-                // Process the stop command immediately
-                engine.ReceiveCommand(command);
-                continue;
-            }
+                if (command.Length == 0) continue;
 
-            CommandQueue.Enqueue(command);
-            CommandAvailable.Set(); // Signal that a command is available
+                if (command.Equals("stop", StringComparison.OrdinalIgnoreCase) ||
+                    command.Equals("ponderhit", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Process the stop command immediately; it must never queue behind a search.
+                    engine.ReceiveCommand(command);
+                    continue;
+                }
+
+                CommandQueue.Enqueue(command);
+                CommandAvailable.Set(); // Signal that a command is available
+
+                if (command.Equals(QuitCommand, StringComparison.OrdinalIgnoreCase))
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            // The consumer must never wait on a reader that has stopped, so always close the stream
+            // with a quit and stop/refuse searches so a queued 'go' cannot outrun the shutdown.
+            CommandQueue.Enqueue(QuitCommand);
+            CommandAvailable.Set();
+            engine.Abort();
         }
     }
 
     private static void ProcessCommands(UciEngine engine)
     {
-        while (!hasQuit)
+        while (true)
         {
             CommandAvailable.Wait(); // Wait until a command is available
             CommandAvailable.Reset(); // Reset the event for the next wait
 
             while (CommandQueue.TryDequeue(out var command))
             {
+                if (command.Equals(QuitCommand, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Everything queued before quit has been answered; now the session ends.
+                    hasQuit = true;
+                    return;
+                }
+
                 engine.ReceiveCommand(command);
             }
         }

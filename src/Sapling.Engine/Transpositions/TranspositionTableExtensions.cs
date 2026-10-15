@@ -1,11 +1,49 @@
-﻿using System.Numerics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Sapling.Engine.Transpositions;
 
 public static class TranspositionTableExtensions
 {
     public const int NoHashEntry = 25_000;
+
+    public struct TtSnapshot
+    {
+        public bool Valid; // coherent snapshot (no write interleaved the read)
+        public ulong FullHash;
+        public byte Depth;
+        public int Evaluation;
+        public TranspositionTableFlag Flag;
+        public uint Move;
+    }
+
+    // Seqlock over an atomic payload: the whole payload lives in Stamp, so a
+    // reader that brackets the FullHash read with two identical even Stamp reads
+    // has a consistent snapshot. Any generation mix fails the Stamp re-read or
+    // the caller's FullHash check and becomes a miss; readers never spin.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static TtSnapshot Probe(ref Transposition entry, bool shared = true)
+    {
+        var stamp = shared ? Volatile.Read(ref entry.Stamp) : entry.Stamp;
+        if (shared && ((stamp >> 58) & 1UL) != 0)
+            return default;
+
+        var hash = shared ? Volatile.Read(ref entry.FullHash) : entry.FullHash;
+
+        if (shared && Volatile.Read(ref entry.Stamp) != stamp)
+            return default;
+
+        return new TtSnapshot
+        {
+            Valid = true,
+            FullHash = hash,
+            Depth = (byte)(stamp >> 48),
+            Evaluation = (short)(stamp >> 32),
+            Flag = (TranspositionTableFlag)(byte)((stamp >> 56) & 3),
+            Move = (uint)stamp,
+        };
+    }
 
     public const int
         PositiveCheckmateDetectionLimit =
@@ -30,58 +68,40 @@ public static class TranspositionTableExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe (int Evaluation, uint BestMove, TranspositionTableFlag NodeType) Get(Transposition* tt,
-        ulong ttMask, ulong hash, int depth, int ply, int alpha, int beta)
-    {
-        ref var entry = ref tt[hash & ttMask];
-
-        if (hash != entry.FullHash)
-        {
-            return (NoHashEntry, default, default);
-        }
-
-        var eval = NoHashEntry;
-
-        if (entry.Depth < depth)
-        {
-            return (eval, entry.Move, entry.Flag);
-        }
-
-        // We want to translate the checkmate position relative to the saved node to our root position from which we're searching
-        // If the recorded score is a checkmate in 3 and we are at depth 5, we want to read checkmate in 8
-        var score = RecalculateMateScores(entry.Evaluation, ply);
-
-        eval = entry.Flag switch
-        {
-            TranspositionTableFlag.Exact => score,
-            TranspositionTableFlag.Alpha when score <= alpha => alpha,
-            TranspositionTableFlag.Beta when score >= beta => beta,
-            _ => NoHashEntry
-        };
-
-        return (eval, entry.Move, entry.Flag);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Set(this ref Transposition entry, ulong hash, byte depth, int ply,
-        int eval, TranspositionTableFlag nodeType, uint move = default)
+        int eval, TranspositionTableFlag nodeType, uint move = default, bool shared = true)
     {
-        var shouldReplace =
-            entry.FullHash == 0 // No actual entry
-            || hash != entry.FullHash // Different key: collision
-            || nodeType == TranspositionTableFlag.Exact // Entering PV data
-            || depth >= entry.Depth; // Higher depth
+        var curStamp = shared ? Volatile.Read(ref entry.Stamp) : entry.Stamp;
+        var curHash = shared ? Volatile.Read(ref entry.FullHash) : entry.FullHash;
 
-        if (!shouldReplace)
-        {
+        // Replacement policy on the snapshot (same rule as before: store when the
+        // slot is empty, holds a different hash, is Exact, or is shallower).
+        if (curHash != 0 && hash == curHash && nodeType != TranspositionTableFlag.Exact
+            && depth < (byte)(curStamp >> 48))
             return;
-        }
 
-        entry.FullHash = hash;
-        entry.Evaluation = RecalculateMateScores(eval, -ply);
-        entry.Depth = depth;
-        entry.Flag = nodeType;
-        entry.Move = move != 0 ? move : entry.Move; //Don't clear TT move if no best move is provided: keep old one
+        // A zero-move store may keep the incumbent move only when it is the SAME
+        // position. Across a hash collision the incumbent move belongs to a
+        // different position and must not be privileged.
+        var newMove = move != 0 ? move : (curHash == hash ? (uint)curStamp : 0u);
+        var version = (int)((curStamp >> 58) & 0x3F);
+        var newStamp = Transposition.PackStamp(newMove, RecalculateMateScores(eval, -ply), depth, nodeType,
+            shared ? (version + 2) & 0x3F : version);
+
+        if (shared)
+        {
+            if ((version & 1) != 0 ||
+                Interlocked.CompareExchange(ref entry.Stamp, curStamp + (1UL << 58), curStamp) != curStamp)
+                return;
+
+            Volatile.Write(ref entry.FullHash, hash);
+            Volatile.Write(ref entry.Stamp, newStamp);
+        }
+        else
+        {
+            entry.FullHash = hash;
+            entry.Stamp = newStamp;
+        }
     }
 
     public static unsafe long CalculateTranspositionTableSize(long sizeInMb)
@@ -92,7 +112,17 @@ public static class TranspositionTableExtensions
         const long EightGB = 8L * 1024;
         const long TwoGB = 2L * 1024;
 
-        ulong estimatedCount = (ulong)sizeInMb * 1024 * 1024 / (ulong)sizeof(Transposition);
+        // Entry COUNT is computed with the historical 20-byte divisor so a given
+        // Hash setting yields the identical power-of-two count (and therefore the
+        // identical indexing mask and collision pattern) as before the 16-byte
+        // entry layout — this keeps search trees bit-identical across the change.
+        // Allocation uses the real 16-byte stride, so the table uses ~20% less RAM.
+        const long NominalEntryBytes = 20;
+
+        if (sizeInMb > long.MaxValue / (1024 * 1024))
+            throw new OverflowException("Requested size is too large.");
+
+        ulong estimatedCount = (ulong)sizeInMb * 1024 * 1024 / NominalEntryBytes;
 
         if (estimatedCount == 0)
             throw new OverflowException("Requested size is too small to store even one transposition.");
@@ -103,30 +133,34 @@ public static class TranspositionTableExtensions
             : BitOperations.RoundUpToPowerOf2(estimatedCount) >> 1;
 
         ulong upper = lower << 1;
+        if (upper < lower)
+            throw new OverflowException("Transposition table entry count overflows.");
 
-        // Calculate size in MB for the rounded counts
-        long lowerMb = (long)(lower * (ulong)sizeof(Transposition) / (1024 * 1024));
-        long upperMb = (long)(upper * (ulong)sizeof(Transposition) / (1024 * 1024));
+        // Calculate size in MB for the rounded counts (nominal bytes: keeps the
+        // round-up/round-down decision identical to the pre-16B layout).
+        long lowerMb = (long)(lower * (ulong)NominalEntryBytes / (1024 * 1024));
+        long upperMb = (long)(upper * (ulong)NominalEntryBytes / (1024 * 1024));
 
-        long chosenMb;
+        ulong finalCount;
 
         if (sizeInMb <= EightGB)
         {
             // Always round up under 8GB
-            chosenMb = upperMb;
+            finalCount = upper;
         }
         else if ((upperMb - sizeInMb) <= TwoGB)
         {
             // Round up if it's within 2GB
-            chosenMb = upperMb;
+            finalCount = upper;
         }
         else
         {
             // Otherwise round down
-            chosenMb = lowerMb;
+            finalCount = lower;
         }
 
-        ulong finalCount = (ulong)chosenMb * 1024 * 1024 / (ulong)sizeof(Transposition);
+        // Return the selected power of two directly: rounding via integer MB corrupts
+        // small table sizes and makes hash & (count - 1) an invalid indexing mask.
 
         if (finalCount == 0 || finalCount > long.MaxValue)
             throw new OverflowException("Final transposition table size is too large.");
@@ -144,7 +178,7 @@ public static class TranspositionTableExtensions
         }
 
         // Reverse the potential shift caused by rounding up in the original function
-        ulong adjustedTranspositionCount = transpositionCount << 1;
+        ulong adjustedTranspositionCount = (ulong)transpositionCount << 1;
 
         // Calculate the size in MB
         var sizeInMb = (int)(adjustedTranspositionCount * (ulong)sizeof(Transposition) / (1024 * 1024));

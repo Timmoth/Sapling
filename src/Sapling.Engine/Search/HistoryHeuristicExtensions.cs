@@ -22,7 +22,7 @@ public static unsafe class HistoryHeuristicExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateMovesHistory(int* history, uint* moves, int quietCount, uint m, int depth)
+    public static void UpdateMovesHistory(int* history, uint* searchedQuiets, int searchedQuietCount, uint m, int depth)
     {
         var bonus = *(BonusTable + depth);
 
@@ -33,10 +33,10 @@ public static unsafe class HistoryHeuristicExtensions
 
         var malus = (short)-bonus;
 
-        // Process quiet moves
-        for (var n = 0; n < quietCount; n++)
+        // Penalize only quiet moves that were actually searched before the cutoff.
+        for (var n = 0; n < searchedQuietCount; n++)
         {
-            var quiet = *(moves + n);
+            var quiet = *(searchedQuiets + n);
             if (!quiet.IsQuiet() || quiet == default)
             {
                 continue;

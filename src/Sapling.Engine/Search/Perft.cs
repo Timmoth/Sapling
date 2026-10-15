@@ -37,8 +37,9 @@ public static class Perft
         return nodeCount;
     }
 
-    public static unsafe List<(ulong nodes, string move)> PerftRootSequential(this ref BoardStateData board, int depth)
+    public static unsafe List<(ulong nodes, string move)> PerftRootSequential(this ref BoardStateData board, int depth, bool reportProgress = true)
     {
+        if (depth < 1) throw new ArgumentOutOfRangeException(nameof(depth), "Root divide requires depth >= 1.");
         var moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, false);
         BoardStateData copy = default;
@@ -57,19 +58,24 @@ public static class Perft
             }
 
             copy.UpdateCheckStatus();
-            var nodeCount = copy.PerftInternal(depth - 1);
+            var nodeCount = depth == 1 ? 1UL : copy.PerftInternal(depth - 1);
+            // Promotion suffix keeps divide output unambiguous: g7g8q/r/b/n, not g7g8 four times.
+            var moveName = m.ToUciMoveName();
 
-            Console.WriteLine(
-                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()} {nodeCount}");
-            rootMoves.Add((nodeCount,
-                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()}"));
+            if (reportProgress)
+            {
+                Console.WriteLine($"{moveName}: {nodeCount}");
+            }
+            rootMoves.Add((nodeCount, moveName));
         }
 
         return rootMoves.ToList();
     }
 
-    public static unsafe List<(ulong nodes, string move)> PerftRootParallel(this BoardStateData board, int depth)
+    public static unsafe List<(ulong nodes, string move)> PerftRootParallel(this BoardStateData board, int depth, bool reportProgress = true)
     {
+        if (depth < 1) throw new ArgumentOutOfRangeException(nameof(depth), "Root divide requires depth >= 1.");
+        if (OperatingSystem.IsBrowser()) return board.PerftRootSequential(depth, reportProgress);
         var moves = stackalloc uint[218];
         var moveCount = board.GeneratePseudoLegalMoves(moves, false);
         var whiteToMove = board.WhiteToMove;
@@ -92,12 +98,14 @@ public static class Perft
             }
 
             copy.UpdateCheckStatus();
-            var nodeCount = copy.PerftInternal(depth - 1);
+            var nodeCount = depth == 1 ? 1UL : copy.PerftInternal(depth - 1);
+            var moveName = m.ToUciMoveName();
 
-            Console.WriteLine(
-                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()} {nodeCount}");
-            rootMoves.Add((nodeCount,
-                $"{m.GetFromSquare().ConvertPosition()}{m.GetToSquare().ConvertPosition()}"));
+            if (reportProgress)
+            {
+                Console.WriteLine($"{moveName}: {nodeCount}");
+            }
+            rootMoves.Add((nodeCount, moveName));
         });
 
         return rootMoves.ToList();

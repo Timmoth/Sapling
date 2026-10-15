@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 using Sapling.Engine.Evaluation;
@@ -9,21 +9,30 @@ using Sapling.Engine.Tuning;
 
 namespace Sapling;
 
-public class UciEngine
+public class UciEngine : IDisposable
 {
+    private readonly object _commandGate = new();
+    private bool _disposed;
+
     public long TranspositionSize = (long)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
 
-    private static readonly string[] PositionLabels = { "position", "fen", "moves" };
-    private static readonly string[] GoLabels = { "go", "movetime", "wtime", "btime", "winc", "binc", "movestogo" };
+    public static int MaxHashMb()
+    {
+        var availableMb = (int)(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024 * 1024));
+        return Math.Clamp(availableMb / 2, 32, 1_000_000);
+    }
+
     private readonly StreamWriter _logWriter;
 
     private ParallelSearcher _parallelSearcher;
-    private DateTime _dt = DateTime.Now;
+    private long _logTimestamp = Stopwatch.GetTimestamp();
     private GameState _gameState = GameState.InitialState();
     private readonly DataGenerator _dataGen = new();
 
     private bool _ponderEnabled = false;
+    private volatile bool _aborted;
     private int _threadCount = 1;
+    private readonly Random _humanRng = new();
     private readonly string _version;
     public UciEngine(StreamWriter logWriter)
     {
@@ -37,6 +46,12 @@ public class UciEngine
 
     private void SetOption(string[] tokens)
     {
+        if (tokens.Length < 5)
+        {
+            ReportProtocolError("setoption expects 'name <option> value <value>'");
+            return;
+        }
+
         if (tokens[1] != "name")
         {
             return;
@@ -69,24 +84,113 @@ public class UciEngine
                 break;
             case "hash":
                 {
-                    if (tokens[3] == "value" && int.TryParse(tokens[4], out var transpositionSize))
+                    if (tokens[3] != "value" || !int.TryParse(tokens[4], out var transpositionSize))
                     {
-                        TranspositionSize = (long)TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
-                        _parallelSearcher = new(TranspositionSize);
-                        _parallelSearcher.SetThreads(_threadCount);
-                        LogToFile($"[Debug] Set Transposition Size '{TranspositionSize}'");
+                        ReportProtocolError("setoption name Hash value <mb> expects a number");
+                        break;
                     }
+
+                    if (transpositionSize < 32)
+                    {
+                        ReportProtocolError($"Hash must be at least 32 MB, got {transpositionSize}");
+                        break;
+                    }
+
+                    var maxHash = MaxHashMb();
+                    if (transpositionSize > maxHash)
+                    {
+                        ReportProtocolError($"Hash {transpositionSize} MB exceeds available memory; clamping to {maxHash} MB");
+                        transpositionSize = maxHash;
+                    }
+
+                    var size = TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
+                    var replacement = new ParallelSearcher(size);
+                    try { replacement.SetThreads(_threadCount); }
+                    catch { replacement.Dispose(); throw; }
+                    var previous = Interlocked.Exchange(ref _parallelSearcher, replacement);
+                    TranspositionSize = size;
+                    previous.Dispose();
+                    LogToFile($"[Debug] Set Transposition Size '{TranspositionSize}'");
                     break;
                 }
+
+            case "humanelo":
+                if (tokens[3] == "value" && int.TryParse(tokens[4], out var humanElo))
+                {
+                    HumanPlay.SetElo(Math.Clamp(humanElo, 0, 3000));
+                    LogToFile($"[Debug] Set HumanElo '{humanElo}'");
+                }
+
+                break;
         }
+    }
+
+    public void Dispose()
+    {
+        _dataGen.Cancelled = true;
+        // Dispose marks the session closed before joining. A flag-only Stop here can
+        // be lost when a command has acquired its gate but has not started searching.
+        Volatile.Read(ref _parallelSearcher).Dispose();
+        lock (_commandGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _parallelSearcher.Dispose();
+            _gameState.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Stops any running search and refuses later ones. Used by the command reader on quit/EOF so
+    /// queued commands can still be drained without a pending 'go' outracing the shutdown.
+    /// </summary>
+    public void Abort()
+    {
+        _aborted = true;
+        _dataGen.Cancelled = true;
+        Volatile.Read(ref _parallelSearcher).Abort();
     }
 
     public void ReceiveCommand(string message)
     {
+        if (message.Trim().Equals("stop", StringComparison.OrdinalIgnoreCase))
+        {
+            Volatile.Read(ref _parallelSearcher).Stop();
+            _dataGen.Cancelled = true;
+            return;
+        }
+        if (message.Trim().Equals("ponderhit", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_ponderEnabled)
+                Volatile.Read(ref _parallelSearcher).Stop();
+            return;
+        }
+        lock (_commandGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            try
+            {
+                ReceiveCommandCore(message);
+            }
+            catch (Exception ex)
+            {
+                // A malformed command is a protocol error, never a reason to end the session.
+                ReportProtocolError($"ignoring \"{message}\": {ex.Message}");
+            }
+        }
+    }
+
+    private void ReceiveCommandCore(string message)
+    {
         LogToFile($"Request -> '{message}'");
 
         var loweredMessage = message.Trim().ToLower();
-        var tokens = message.Split(' ');
+        var tokens = Tokenize(message);
+        if (tokens.Length == 0)
+        {
+            return;
+        }
+
         var messageType = tokens[0];
 
         switch (messageType)
@@ -96,8 +200,10 @@ public class UciEngine
                 Respond("id author Tim Jones");
                 Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                 Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
-                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max 1000000");
-                Respond($"option name UCI_Chess960 type check default false");
+                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max {MaxHashMb()}");
+                Respond("option name HumanElo type spin default 0 min 0 max 3000");
+                // UCI_Chess960 is deliberately not advertised: castling is only verified for
+                // standard chess, so advertising it would let GUIs start unsupported games.
 #if OpenBench
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)
                 {
@@ -119,6 +225,7 @@ public class UciEngine
                 break;
             case "ucinewgame":
                 _gameState.Reset();
+                _parallelSearcher.NewGame();
                 break;
             case "position":
                 ProcessPositionCommand(message);
@@ -144,6 +251,19 @@ public class UciEngine
             case "bench":
                 Bench.Run();
                 break;
+            case "rank":
+                // Offline calibration helper: print the root moves ranked best-first with their
+                // fixed-depth scores, for the human-data mining pipeline. Not a UCI keyword.
+                if (tokens.Length < 2 || !int.TryParse(tokens[1], out var rankDepth) || rankDepth < 1)
+                {
+                    ReportProtocolError("rank requires a positive depth");
+                    break;
+                }
+
+                foreach (var (mv, sc, _) in _parallelSearcher.RankRootMoves(_gameState, Math.Min(rankDepth, Constants.MaxSearchDepth)))
+                    Console.WriteLine($"rankmove {mv.ToUciMoveName()} {sc}");
+                Console.WriteLine("rankdone");
+                break;
             case "version":
                 Console.WriteLine(_version);
                 break;
@@ -162,72 +282,118 @@ public class UciEngine
 
     private void ProcessPositionCommand(string message)
     {
-        // FEN
-        if (message.ToLower().Contains("startpos"))
+        var tokens = Tokenize(message);
+        if (tokens.Length < 2)
+        {
+            ReportProtocolError("position requires 'startpos' or 'fen'");
+            return;
+        }
+
+        var movesIndex = -1;
+        for (var i = 2; i < tokens.Length; i++)
+        {
+            if (tokens[i].Equals("moves", StringComparison.OrdinalIgnoreCase))
+            {
+                movesIndex = i;
+                break;
+            }
+        }
+
+        var fenEnd = movesIndex == -1 ? tokens.Length : movesIndex;
+
+        if (tokens[1].Equals("startpos", StringComparison.OrdinalIgnoreCase))
         {
             _gameState.Reset();
         }
-        else if (message.ToLower().Contains("fen"))
+        else if (tokens[1].Equals("fen", StringComparison.OrdinalIgnoreCase))
         {
-            var customFen = TryGetLabelledValue(message, "fen", PositionLabels);
-            _gameState.ResetToFen(customFen.ToString());
+            var customFen = string.Join(" ", tokens[2..fenEnd]);
+            if (FenValidator.Validate(customFen) is { } fenError)
+            {
+                // Reject the command; the previous position and the session both stay alive.
+                ReportProtocolError($"invalid FEN ({fenError}); position unchanged");
+                return;
+            }
+
+            _gameState.ResetToFen(customFen);
         }
         else
         {
-            Console.WriteLine("Invalid position command (expected 'startpos' or 'fen')");
+            ReportProtocolError("position expects 'startpos' or 'fen'");
+            return;
         }
 
         // Moves
-        var allMoves = TryGetLabelledValue(message, "moves", PositionLabels);
-        if (allMoves.IsEmpty || allMoves.IsWhiteSpace())
+        if (movesIndex == -1 || movesIndex == tokens.Length - 1)
         {
             return;
         }
 
-        var moveList = SplitSpan(allMoves, ' ');
-        foreach (var move in moveList)
+        for (var i = movesIndex + 1; i < tokens.Length; i++)
         {
+            var move = tokens[i];
             var mov = _gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == move);
             if (mov == default)
             {
                 var moves = string.Join(",", _gameState.LegalMoves.Select(m => m.ToUciMoveName()));
-                LogToFileForce("ERRROR!");
                 LogToFileForce("Couldn't apply move: " + move +
                                $" for {(_gameState.Board.WhiteToMove ? "white" : "black")}");
                 LogToFileForce("Valid moves: " + moves);
-
-                LogToFileForce($"Error applying move: '{mov.ToMoveString()}'");
-                break;
+                ReportProtocolError($"illegal move '{move}' in position command; remaining moves ignored");
+                return;
             }
 
-            _gameState.Apply(mov);
+            try
+            {
+                _gameState.Apply(mov);
+            }
+            catch (InvalidOperationException ex)
+            {
+                ReportProtocolError($"cannot apply '{move}': {ex.Message}");
+                return;
+            }
         }
     }
 
     private unsafe void ProcessGoCommand(string message)
     {
-        var messageSegments = message.Split(' ');
-        var loweredMessage = message.ToLower();
-        if (loweredMessage.StartsWith("go perft"))
+        var tokens = Tokenize(message);
+        if (tokens.Length >= 2 && tokens[1].Equals("perft", StringComparison.OrdinalIgnoreCase))
         {
-            var depth = int.Parse(messageSegments[2]);
-            var stopWatch = Stopwatch.StartNew();
+            if (tokens.Length < 3 || !int.TryParse(tokens[2], out var perftDepth) || perftDepth < 1)
+            {
+                ReportProtocolError("go perft requires a positive depth");
+                return;
+            }
+
             ulong totalNodeCount = 0;
-            foreach (var (nodeCount, move) in _gameState.Board.PerftRootParallel(depth))
+            foreach (var (nodeCount, move) in _gameState.Board.PerftRootParallel(perftDepth))
             {
                 totalNodeCount += nodeCount;
             }
 
-            Respond(
-                $"{totalNodeCount} in {stopWatch.ElapsedMilliseconds}, {(long)totalNodeCount / stopWatch.ElapsedMilliseconds} KNPS");
+            // Standard perft total; fast depth-1 runs may take zero milliseconds.
+            Respond($"Nodes searched: {totalNodeCount}");
 
             return;
         }
 
-        if (loweredMessage.StartsWith("go see"))
+        if (tokens.Length >= 2 && tokens[1].Equals("see", StringComparison.OrdinalIgnoreCase))
         {
-            var seeMove = messageSegments[2];
+            if (tokens.Length < 3)
+            {
+                ReportProtocolError("go see requires a move");
+                return;
+            }
+
+            var seeMove = tokens[2];
             var mov = _gameState.LegalMoves.FirstOrDefault(m => m.ToUciMoveName() == seeMove);
+            if (mov == default)
+            {
+                ReportProtocolError($"go see: '{seeMove}' is not a legal move");
+                return;
+            }
+
             var occupancyBitBoards = stackalloc ulong[8]
             {
                 _gameState.Board.Occupancy[Constants.WhitePieces],
@@ -246,38 +412,137 @@ public class UciEngine
             return;
         }
 
-        if (loweredMessage.StartsWith("go depth"))
+        var depth = 0;
+        var depthSpecified = false;
+        var nodeLimit = 0;
+        var nodesSpecified = false;
+        var moveTime = int.MinValue;
+        var hasWhiteTime = false;
+        var hasBlackTime = false;
+        var timeRemainingWhiteMs = 0;
+        var timeRemainingBlackMs = 0;
+        var incrementWhiteMs = 0;
+        var incrementBlackMs = 0;
+        var movesToGo = 0;
+
+        for (var i = 1; i < tokens.Length; i++)
         {
-            var depth = int.Parse(messageSegments[2]);
-            OnMoveChosen(_parallelSearcher.DepthBoundSearch(_gameState, depth));
+            switch (tokens[i])
+            {
+                case "depth":
+                case "movetime":
+                case "wtime":
+                case "btime":
+                case "winc":
+                case "binc":
+                case "movestogo":
+                {
+                    if (i + 1 >= tokens.Length || !int.TryParse(tokens[i + 1], out var value))
+                    {
+                        ReportProtocolError($"go {tokens[i]} requires a number");
+                        return;
+                    }
+
+                    i++;
+                    switch (tokens[i - 1])
+                    {
+                        case "depth":
+                            depth = value;
+                            depthSpecified = true;
+                            break;
+                        case "movetime":
+                            moveTime = value;
+                            break;
+                        case "wtime":
+                            hasWhiteTime = true;
+                            timeRemainingWhiteMs = value;
+                            break;
+                        case "btime":
+                            hasBlackTime = true;
+                            timeRemainingBlackMs = value;
+                            break;
+                        case "winc":
+                            incrementWhiteMs = value;
+                            break;
+                        case "binc":
+                            incrementBlackMs = value;
+                            break;
+                        default:
+                            movesToGo = value;
+                            break;
+                    }
+
+                    break;
+                }
+                case "nodes":
+                {
+                    if (i + 1 >= tokens.Length || !int.TryParse(tokens[i + 1], out nodeLimit) || nodeLimit <= 0)
+                    {
+                        ReportProtocolError("go nodes requires a positive 32-bit count");
+                        return;
+                    }
+                    nodesSpecified = true;
+                    i++;
+                    break;
+                }
+                case "searchmoves":
+                    ReportProtocolError("go searchmoves is not supported");
+                    return;
+                case "infinite":
+                case "ponder":
+                    break;
+                default:
+                    LogToFileForce($"go parameter '{tokens[i]}' is not recognised and was ignored");
+                    break;
+            }
+        }
+
+        if (_aborted)
+        {
             return;
         }
 
-        var thinkTime = 0;
-
-        if (message.Contains("movetime"))
+        if (depthSpecified)
         {
-            thinkTime = TryGetLabelledValueInt(message, "movetime", GoLabels);
-        }
-        else
-        {
-            var timeRemainingWhiteMs = TryGetLabelledValueInt(message, "wtime", GoLabels);
-            var timeRemainingBlackMs = TryGetLabelledValueInt(message, "btime", GoLabels);
-            var incrementWhiteMs = TryGetLabelledValueInt(message, "winc", GoLabels);
-            var incrementBlackMs = TryGetLabelledValueInt(message, "binc", GoLabels);
+            if (depth < 1 || depth > Constants.MaxSearchDepth)
+            {
+                ReportProtocolError($"go depth must be between 1 and {Constants.MaxSearchDepth}");
+                return;
+            }
 
-            int movesToGo = TryGetLabelledValueInt(message, "movestogo", GoLabels);
-            thinkTime = CalculateThinkTime(timeRemainingWhiteMs, timeRemainingBlackMs, incrementWhiteMs,
-                incrementBlackMs, movesToGo, _gameState.History.Count, _gameState.Board.WhiteToMove);
+            OnMoveChosen(ApplyHumanLevel(_parallelSearcher.DepthBoundSearch(_gameState, depth)));
+            return;
         }
 
-        if (thinkTime is <= 0)
+        if (nodesSpecified)
         {
-            thinkTime = 0;
+            OnMoveChosen(ApplyHumanLevel(_parallelSearcher.NodeBoundSearch(_gameState, nodeLimit)));
+            return;
         }
 
-        OnMoveChosen(_parallelSearcher.TimeBoundSearch(_gameState, thinkTime));
+        if (moveTime != int.MinValue && moveTime < 0)
+        {
+            ReportProtocolError("go movetime must be non-negative");
+            return;
+        }
+
+        var whiteToMove = _gameState.Board.WhiteToMove;
+        var timeBudget = TimeManagement.Calculate(
+            whiteToMove ? timeRemainingWhiteMs : timeRemainingBlackMs,
+            whiteToMove ? incrementWhiteMs : incrementBlackMs,
+            movesToGo,
+            _gameState.History.Count,
+            whiteToMove ? hasWhiteTime : hasBlackTime,
+            moveTime == int.MinValue ? -1 : moveTime,
+            tokens.Contains("infinite", StringComparer.OrdinalIgnoreCase) ||
+            (_ponderEnabled && tokens.Contains("ponder", StringComparer.OrdinalIgnoreCase)));
+
+        OnMoveChosen(ApplyHumanLevel(_parallelSearcher.TimeBoundSearch(
+            _gameState, timeBudget.SoftLimitMs, timeBudget.HardLimitMs)));
     }
+
+    private static string[] Tokenize(string message) =>
+        message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
     private const float MinSearchTimeMs = 10f;
     private const float OverheadBufferMs = 50f;
     private const float IncrementUsageFactorLong = 0.6f;
@@ -337,6 +602,42 @@ public class UciEngine
         // 6) Enforce absolute minimum
         return (int)Math.Max(MinSearchTimeMs, Math.Ceiling(think));
     }
+    /// <summary>
+    /// Human-like difficulty override. Inert unless HumanPlay is enabled AND a rank distribution
+    /// is loaded, so normal play is byte-for-byte unchanged. When active it ranks the root moves at
+    /// a fixed depth and samples which rank to play; rank 0 keeps the engine's own best move.
+    /// </summary>
+    private (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) ApplyHumanLevel(
+        (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) result)
+    {
+        if (!HumanPlay.Enabled || result.move.Count == 0)
+            return result;
+
+        var ranked = _parallelSearcher.RankRootMoves(_gameState, HumanPlay.RankDepth);
+        if (ranked.Count == 0)
+            return result;
+
+        var scores = new int[ranked.Count];
+        var feats = new int[ranked.Count];
+        for (var i = 0; i < ranked.Count; i++)
+        {
+            scores[i] = ranked[i].Score;
+            feats[i] = ranked[i].Feat;
+        }
+        var rank = HumanPlay.PickRank(_humanRng, scores, feats);
+        if (rank <= 0)
+            return result; // play the engine's own best move (keeps PV + ponder)
+
+        if (rank >= ranked.Count)
+            rank = ranked.Count - 1;
+
+        var chosen = ranked[rank].Move;
+        if (chosen == result.move[0])
+            return result;
+
+        return (new List<uint> { chosen }, result.depthSearched, ranked[rank].Score, result.nodes, result.duration);
+    }
+
     private void OnMoveChosen(
         (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) result)
     {
@@ -379,39 +680,20 @@ public class UciEngine
             $"info depth {result.depthSearched} score {ScoreToString(result.score)} nodes {result.nodes} nps {nps} time {(int)result.duration.TotalMilliseconds} pv {(string.Join(" ", result.move.Select(m => m.ToUciMoveName())))}");
     }
 
-    public static List<string> SplitSpan(ReadOnlySpan<char> span, char delimiter)
-    {
-        // Create a list to hold the resulting spans
-        var result = new List<string>();
-
-        // Variables to track the start of the current span and the end of the last span
-        var start = 0;
-        int index;
-
-        while ((index = span[start..].IndexOf(delimiter)) != -1)
-        {
-            // Create a span for the current segment and add it to the result
-            var segment = span.Slice(start, index);
-            result.Add(segment.ToString());
-            // Move start to the character after the delimiter
-            start += index + 1;
-        }
-
-        // Add the final segment
-        var finalSegment = span.Slice(start);
-        if (!finalSegment.IsEmpty)
-        {
-            result.Add(finalSegment.ToString());
-        }
-
-        // Convert the list to an array
-        return result;
-    }
-
     private void Respond(string message)
     {
         Console.WriteLine(message);
         LogToFile("Response <- " + message);
+    }
+
+    /// <summary>
+    /// Reports a rejected command as an info string line: GUIs ignore it, a human reading the
+    /// session sees why the command was dropped, and the command loop keeps running.
+    /// </summary>
+    private void ReportProtocolError(string message)
+    {
+        Console.WriteLine($"info string error: {message}");
+        LogToFileForce("Error -> " + message);
     }
 
     private static string ScoreToString(int score)
@@ -426,57 +708,6 @@ public class UciEngine
         return $"cp {score}";
     }
 
-    private static int TryGetLabelledValueInt(ReadOnlySpan<char> text, ReadOnlySpan<char> label, string[] allLabels,
-        int defaultValue = 0)
-    {
-        // Get the labelled value as a span
-        var valueSpan = TryGetLabelledValue(text, label, allLabels, defaultValue.ToString());
-
-        // Split the span to extract the first part, try to parse it as an int
-        var spaceIndex = valueSpan.IndexOf(' ');
-        var valuePart = spaceIndex >= 0 ? valueSpan[..spaceIndex] : valueSpan;
-
-        return int.TryParse(valuePart, out var result) ? result : defaultValue;
-    }
-
-    private static ReadOnlySpan<char> TryGetLabelledValue(ReadOnlySpan<char> text, ReadOnlySpan<char> label,
-        string[] allLabels, ReadOnlySpan<char> defaultValue = default)
-    {
-        text = text.Trim();
-
-        // Check if the label is present in the text
-        var labelIndex = text.IndexOf(label, StringComparison.Ordinal);
-        if (labelIndex == -1)
-        {
-            return defaultValue;
-        }
-
-        // Calculate the start index of the value
-        var valueStart = labelIndex + label.Length;
-        var valueEnd = text.Length;
-
-        // Determine the end of the value by looking for the next label
-        foreach (var labelId in allLabels)
-        {
-            if (labelId.AsSpan().SequenceEqual(label))
-            {
-                continue;
-            }
-
-            var labelIdIndex = text[valueStart..].IndexOf(labelId, StringComparison.Ordinal);
-            if (labelIdIndex == -1)
-            {
-                continue;
-            }
-
-            valueEnd = valueStart + labelIdIndex;
-            break;
-        }
-
-        // Return the trimmed span of the value
-        return text.Slice(valueStart, valueEnd - valueStart).Trim();
-    }
-
     private void LogToFile(string text)
     {
         if (!UciOptions.IsDebug)
@@ -484,15 +715,20 @@ public class UciEngine
             return;
         }
 
-        var delta = DateTime.Now - _dt;
-        _dt = DateTime.Now;
-        _logWriter.WriteLine($"{delta.TotalMilliseconds}ms {text}");
+        LogElapsed(text);
     }
 
     private void LogToFileForce(string text)
     {
-        var delta = DateTime.Now - _dt;
-        _dt = DateTime.Now;
+        LogElapsed(text);
+    }
+
+    // Monotonic log deltas: wall-clock DateTime can jump (NTP/manual changes/sleep).
+    private void LogElapsed(string text)
+    {
+        var now = Stopwatch.GetTimestamp();
+        var delta = Stopwatch.GetElapsedTime(_logTimestamp, now);
+        _logTimestamp = now;
         _logWriter.WriteLine($"{delta.TotalMilliseconds}ms {text}");
     }
 }

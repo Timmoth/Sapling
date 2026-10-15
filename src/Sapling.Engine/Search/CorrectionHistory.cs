@@ -1,4 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Sapling.Engine.Search;
 
@@ -16,6 +17,19 @@ public partial class Searcher
     public const int CorrectionGrain = 256;
     public const short CorrectionMax = CorrectionGrain * 32;
 
+    // Cleared on ucinewgame, not between searches.
+    public unsafe void ClearCorrectionHistory()
+    {
+        lock (_lifecycleGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        NativeMemory.Clear(PawnCorrHist, (nuint)TableElementsSize * sizeof(int));
+        NativeMemory.Clear(WhiteMaterialCorrHist, (nuint)TableElementsSize * sizeof(int));
+        NativeMemory.Clear(BlackMaterialCorrHist, (nuint)TableElementsSize * sizeof(int));
+        NativeMemory.Clear(PreviousMoveCorrHist, (nuint)CountersLength * sizeof(int));
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static void Update(ref int entry, int newWeight, int scaledDiff)
     {
@@ -24,7 +38,8 @@ public partial class Searcher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private unsafe void UpdateCorrectionHistory(int pawnChIndex, int whiteMaterialChIndex, int blackMaterialChIndex, int diff, int depth)
+    private unsafe void UpdateCorrectionHistory(int pawnChIndex, int whiteMaterialChIndex, int blackMaterialChIndex,
+        uint previousMoveIndex, int diff, int depth)
     {
         int scaledDiff = diff * CorrectionGrain;
         int newWeight = Math.Min(16, 1 + depth);
@@ -33,18 +48,25 @@ public partial class Searcher
         Update(ref *(WhiteMaterialCorrHist + whiteMaterialChIndex), newWeight, scaledDiff);
         Update(ref *(BlackMaterialCorrHist + blackMaterialChIndex), newWeight, scaledDiff);
 
+        // Keep the continuation-keyed correction deliberately half as influential as
+        // each existing table so it adds context without dominating their combined signal.
+        if (previousMoveIndex != 0)
+            Update(ref *(PreviousMoveCorrHist + previousMoveIndex), Math.Max(1, newWeight / 2), scaledDiff);
+
     }
 
     const int MinMateScore = Constants.ImmediateMateScore - Constants.MaxSearchDepth;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private unsafe int AdjustEval(int pawnChIndex, int whiteMaterialChIndex, int blackMaterialChIndex, int rawEval)
+    private unsafe int AdjustEval(int pawnChIndex, int whiteMaterialChIndex, int blackMaterialChIndex,
+        uint previousMoveIndex, int rawEval)
     {
         var pch = *(PawnCorrHist + pawnChIndex);
         var mchW = *(WhiteMaterialCorrHist + whiteMaterialChIndex);
         var mchB = *(BlackMaterialCorrHist + blackMaterialChIndex);
 
-        return rawEval + (int)((pch + mchW + mchB) / CorrectionGrain);
+        var previousMoveCorrection = previousMoveIndex == 0 ? 0 : *(PreviousMoveCorrHist + previousMoveIndex) / 2;
+        return rawEval + (int)((pch + mchW + mchB + previousMoveCorrection) / CorrectionGrain);
 
     }
 }
