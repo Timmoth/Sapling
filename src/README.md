@@ -9,7 +9,7 @@ You can browse all windows, linux or mac releases [here](https://github.com/Timm
 
 ## Requirements
 - Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
-- The releases come with a bundled version of the dotnet runtime, however if you want to run from source you'll need the dotnet 8 SDK installed.
+- The releases come with a bundled version of the dotnet runtime. To build from source, install the .NET 11.0.100-rc.2 SDK.
 
 ## Running from source
 ```bash
@@ -80,12 +80,21 @@ dotnet run --project .\Sapling\Sapling.csproj --configuration Release
 ## SPRT
 After any changes to the engine a SPRT test must be ran to ensure that the changes have a positive effect.
 
-There is a script `sprt.bat` which contains the command to run a cutechess-cli SPRT test. Ensure that you've configured CuteChess to point to both `dev` and `base` engines before hand, and also update the opening book + endgame table base to point to one on your system.
+Run playing-strength SPRTs with CuteChess CLI using fixed engine builds, time control, and opening set. Record the command and result with the experiment.
 
 ## NNUE
-I'm in the process of training a (768x8->1024)x2-8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger as I improve the network. Check [here](https://github.com/Timmoth/Sapling/tree/main/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
+I'm in the process of training a (768x8->1024)x2-8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger as I improve the network. Check [here](https://github.com/Timmoth/Sapling/tree/main/src/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
 
 ## Resources:
 - [Chess Programming Wiki](https://www.chessprogramming.org/)
 - [Talk Chess Forum](https://talkchess.com/)
 - [Coding Adventure](https://www.youtube.com/watch?v=U4ogK0MIzqk)
+
+## Optional build configurations
+
+The default build uses the production search settings. Pass
+`-p:SaplingBuildConstants=OpenBench` for the mutable tuning interface or
+`-p:SaplingBuildConstants=AVX512` for the x86 AVX512 backend. Separate multiple
+symbols with `%3B`. Use separate build directories for different configurations.
+An AVX512 artifact requires compatible hardware when explicitly selected with
+`SAPLING_BACKEND=Avx512`; keep the default artifact for other machines.
