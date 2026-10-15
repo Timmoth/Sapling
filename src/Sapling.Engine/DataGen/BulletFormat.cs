@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -56,9 +56,8 @@ public unsafe struct BulletFormat
     {
         // Create a temporary buffer to read the data from the BinaryReader
         Span<byte> buffer = stackalloc byte[Size];
-
-        // Read the data into the buffer
-        reader.Read(buffer);
+        // ReadExactly handles valid partial reads as well as truncated records.
+        reader.BaseStream.ReadExactly(buffer);
 
         // Copy the data from the buffer into this struct
         fixed (void* buffPtr = &buffer[0], thisPtr = &this)
@@ -86,6 +85,7 @@ public unsafe struct BulletFormat
     {
         var data = new BulletFormat();
         Span<byte> pieces = stackalloc byte[16];
+        pieces.Clear();
 
         if (board.WhiteToMove)
         {

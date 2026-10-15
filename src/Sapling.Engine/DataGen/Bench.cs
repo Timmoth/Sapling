@@ -1,4 +1,4 @@
-﻿using Sapling.Engine.Search;
+using Sapling.Engine.Search;
 using Sapling.Engine.Transpositions;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -73,41 +73,41 @@ namespace Sapling.Engine.DataGen
             "3qk1b1/1p4r1/1n4r1/2P1b2B/p3N2p/P2Q3P/8/1R3R1K w - - 2 39",
         };
 
-        public static unsafe Transposition* AllocateTranspositions(nuint items)
-        {
-            const nuint alignment = 64;
+        public static unsafe Transposition* AllocateTranspositions(nuint items) =>
+            MemoryHelpers.Allocate<Transposition>(checked((long)items));
 
-            nuint bytes = ((nuint)sizeof(Transposition) * (nuint)items);
-            void* block = NativeMemory.AlignedAlloc(bytes, alignment);
-            NativeMemory.Clear(block, bytes);
-
-            return (Transposition*)block;
-        }
 
         public static unsafe void Run(int depth = 14)
         {
             var transpositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
             var transpositions = AllocateTranspositions((nuint)transpositionSize);
 
-            var gameState = GameState.InitialState();
+            using var gameState = GameState.InitialState();
             var searcher = new Searcher(transpositions, transpositionSize);
             var stopwatch = new Stopwatch();
             long totalNodes = 0;
             long totalTime = 0;
-            foreach (var fen in BenchFens)
+            try
             {
-                Console.WriteLine(fen);
-                gameState.ResetToFen(fen);
-                stopwatch.Restart();
-                searcher.Reset(gameState);
-                var result = searcher.Search(gameState, searcher.Stop, depthLimit: depth, threadId: 0);
+                foreach (var fen in BenchFens)
+                {
+                    Console.WriteLine(fen);
+                    gameState.ResetToFen(fen);
+                    stopwatch.Restart();
+                    searcher.Reset(gameState);
+                    var result = searcher.Search(gameState, searcher.Stop, depthLimit: depth, threadId: 0);
 
-                totalTime += stopwatch.ElapsedMilliseconds;
-                totalNodes += result.nodes;
+                    totalTime += stopwatch.ElapsedMilliseconds;
+                    totalNodes += result.nodes;
+                }
+            }
+            finally
+            {
+                searcher.Dispose();
+                MemoryHelpers.FreeAligned(transpositions);
             }
 
             Console.WriteLine($"{totalNodes} nodes {(int)(totalNodes / (float)totalTime) * 1000} nps");
-            NativeMemory.AlignedFree(transpositions);
         }
     }
 }
