@@ -60,6 +60,7 @@ namespace Sapling.Engine.Tuning
         public const float LateMoveReductionInterestingB = 2.4956496f;
         public const float LateMoveReductionA = 1.315961f;
         public const float LateMoveReductionB = 2.7831153f;
+        public const float LateMoveReductionTtExactScale = 0.75f;
         public const int HistoryHeuristicMaxHistory = 9532;
         public const int HistoryHeuristicBonusMax = 406;
         public const int HistoryHeuristicBonusCoeff = 83;
@@ -132,6 +133,9 @@ namespace Sapling.Engine.Tuning
 
         [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
         public static float LateMoveReductionB = SpsaDefaults.LateMoveReductionB;
+
+        [SpsaMinValue("0"), SpsaMaxValue("1")]
+        public static float LateMoveReductionTtExactScale = SpsaDefaults.LateMoveReductionTtExactScale;
 
         [SpsaMinValue("7000"), SpsaMaxValue("10000")]
         public static int HistoryHeuristicMaxHistory = SpsaDefaults.HistoryHeuristicMaxHistory;
@@ -209,6 +213,7 @@ namespace Sapling.Engine.Tuning
         public const float LateMoveReductionInterestingB = SpsaDefaults.LateMoveReductionInterestingB;
         public const float LateMoveReductionA = SpsaDefaults.LateMoveReductionA;
         public const float LateMoveReductionB = SpsaDefaults.LateMoveReductionB;
+        public const float LateMoveReductionTtExactScale = SpsaDefaults.LateMoveReductionTtExactScale;
         public const int HistoryHeuristicMaxHistory = SpsaDefaults.HistoryHeuristicMaxHistory;
         public const int HistoryHeuristicBonusMax = SpsaDefaults.HistoryHeuristicBonusMax;
         public const int HistoryHeuristicBonusCoeff = SpsaDefaults.HistoryHeuristicBonusCoeff;

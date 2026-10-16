@@ -144,6 +144,9 @@ public partial class Searcher
             return QuiescenceSearch(currentBoardState, currentAccumulatorState, depthFromRoot, alpha, beta);
         }
 
+        var hasDeepExactTtEntry = ttSnapshot.Valid && pHash == ttSnapshot.FullHash &&
+                                  ttSnapshot.Depth >= depth && ttSnapshot.Flag == TranspositionTableFlag.Exact;
+
         if (depthFromRoot > 0 && !parentInCheck && !pvNode &&
             !IsMateBand(staticEval) && !IsMateBand(alpha) && !IsMateBand(beta))
         {
@@ -518,6 +521,9 @@ public partial class Searcher
                     var reduction = isInteresting
                         ? *(SpsaOptions.LateMovePruningInterestingReductionTable + depth * 218 + searchedMoves)
                         : *(SpsaOptions.LateMovePruningReductionTable + depth * 218 + searchedMoves);
+                    if (hasDeepExactTtEntry)
+                        reduction = LateMoveReduction.AdjustForExactTt(reduction, hasDeepExactTtEntry,
+                            SpsaOptions.LateMoveReductionTtExactScale, depth - 1);
                     reduction = Math.Min(Math.Max(reduction, 0), depth - 1);
 
                     if (reduction > 0)
