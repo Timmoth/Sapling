@@ -359,9 +359,7 @@ public unsafe partial class Searcher : IDisposable
         NodesVisited = 0;
         BestSoFar = 0;
 
-        // Carry a fading quiet-move ordering signal across successive search calls.
-        for (var i = 0; i < HistoryLength; i++)
-            History[i] = History[i] * 3 / 4;
+        NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
         NativeMemory.Clear(Counters, (nuint)CountersLength * sizeof(uint));
         NativeMemory.Clear(killers, (nuint)KillersLength * sizeof(uint));
 

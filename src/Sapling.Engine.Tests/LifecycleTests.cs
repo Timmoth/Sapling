@@ -165,7 +165,7 @@ public class LifecycleTests
     }
 
     [Fact]
-    public unsafe void QuietMoveHistory_AgesAcrossSearchesAndClearsOnNewGame()
+    public unsafe void QuietMoveHistory_ClearsAcrossSearchesAndOnNewGame()
     {
         using var state = GameState.InitialState();
         using var owner = new ParallelSearcher(1024);
@@ -175,8 +175,8 @@ public class LifecycleTests
 
         searcher.Reset(state);
 
-        Assert.Equal(75, searcher.History[0]);
-        Assert.Equal(-75, searcher.History[1]);
+        Assert.Equal(0, searcher.History[0]);
+        Assert.Equal(0, searcher.History[1]);
 
         owner.NewGame();
 
