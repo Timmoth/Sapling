@@ -37,6 +37,7 @@ public unsafe class ParameterValidationTests
             [nameof(SpsaOptions.LateMoveReductionInterestingB)] = "2.4956496",
             [nameof(SpsaOptions.LateMoveReductionA)] = "1.315961",
             [nameof(SpsaOptions.LateMoveReductionB)] = "2.7831154",
+            [nameof(SpsaOptions.LateMoveReductionHistoryScale)] = "0.0001",
             [nameof(SpsaOptions.HistoryHeuristicMaxHistory)] = "9532",
             [nameof(SpsaOptions.HistoryHeuristicBonusMax)] = "406",
             [nameof(SpsaOptions.HistoryHeuristicBonusCoeff)] = "83",
