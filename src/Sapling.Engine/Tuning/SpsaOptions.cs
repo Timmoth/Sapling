@@ -47,6 +47,7 @@ namespace Sapling.Engine.Tuning
         public const int ReverseFutilityPruningMargin = 67;
         public const int ReverseFutilityPruningDepth = 7;
         public const int NullMovePruningDepth = 2;
+        public const int NullMoveVerificationMinDepth = 8;
         public const float NullMovePruningReductionA = 3;
         public const float NullMovePruningReductionB = 4;
         public const float NullMovePruningReductionC = 3;
@@ -93,6 +94,9 @@ namespace Sapling.Engine.Tuning
 
         [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int NullMovePruningDepth = SpsaDefaults.NullMovePruningDepth;
+
+        [SpsaMinValue("6"), SpsaMaxValue("12")]
+        public static int NullMoveVerificationMinDepth = SpsaDefaults.NullMoveVerificationMinDepth;
 
         [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static float NullMovePruningReductionA = SpsaDefaults.NullMovePruningReductionA;
@@ -196,6 +200,7 @@ namespace Sapling.Engine.Tuning
         public const int ReverseFutilityPruningMargin = SpsaDefaults.ReverseFutilityPruningMargin;
         public const int ReverseFutilityPruningDepth = SpsaDefaults.ReverseFutilityPruningDepth;
         public const int NullMovePruningDepth = SpsaDefaults.NullMovePruningDepth;
+        public const int NullMoveVerificationMinDepth = SpsaDefaults.NullMoveVerificationMinDepth;
         public const float NullMovePruningReductionA = SpsaDefaults.NullMovePruningReductionA;
         public const float NullMovePruningReductionB = SpsaDefaults.NullMovePruningReductionB;
         public const float NullMovePruningReductionC = SpsaDefaults.NullMovePruningReductionC;

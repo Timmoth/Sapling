@@ -24,6 +24,7 @@ public unsafe class ParameterValidationTests
             [nameof(SpsaOptions.ReverseFutilityPruningMargin)] = "67",
             [nameof(SpsaOptions.ReverseFutilityPruningDepth)] = "7",
             [nameof(SpsaOptions.NullMovePruningDepth)] = "2",
+            [nameof(SpsaOptions.NullMoveVerificationMinDepth)] = "8",
             [nameof(SpsaOptions.NullMovePruningReductionA)] = "3",
             [nameof(SpsaOptions.NullMovePruningReductionB)] = "4",
             [nameof(SpsaOptions.NullMovePruningReductionC)] = "3",
