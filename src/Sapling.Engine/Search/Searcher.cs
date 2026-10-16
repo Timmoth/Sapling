@@ -461,6 +461,14 @@ public unsafe partial class Searcher : IDisposable
             var betaWindowIndex = 0;
             do
             {
+                if (j <= 4)
+                {
+                    alpha = Constants.MinScore;
+                    beta = Constants.MaxScore;
+                    lastIterationEval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
+                    break;
+                }
+
                 alpha = lastIterationEval - GetAsperationWindow(alphaWindowIndex);
                 beta = lastIterationEval + GetAsperationWindow(betaWindowIndex);
 
