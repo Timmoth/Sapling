@@ -445,7 +445,6 @@ public unsafe partial class Searcher : IDisposable
 
         var startTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
         var previousBestMove = BestSoFar;
-        var previousScore = bestEval;
         var stableBestMoves = 0;
         // Iteration j searches to depth j, so a 'go depth N' limit must include j == maxDepth.
         for (var j = 1; j <= maxDepth; j++)
@@ -532,17 +531,15 @@ public unsafe partial class Searcher : IDisposable
                 if (_softDeadlineTimestamp != 0)
                 {
                     stableBestMoves = BestSoFar == previousBestMove ? stableBestMoves + 1 : 0;
-                    var scoreDrop = previousScore - bestEval;
                     var adjustedSoftLimit = TimeManagement.AdjustSoftLimit(
                         _softLimitMs, _hardLimitMs, depthSearched, stableBestMoves,
-                        scoreDrop, RootBestMoveNodeFraction);
+                        RootBestMoveNodeFraction);
                     var adjustedDeadline = startTimestamp + (long)(adjustedSoftLimit *
                         (double)System.Diagnostics.Stopwatch.Frequency / 1000);
                     _softDeadlineTimestamp = _deadlineTimestamp == 0
                         ? adjustedDeadline
                         : Math.Min(adjustedDeadline, _deadlineTimestamp);
                     previousBestMove = BestSoFar;
-                    previousScore = bestEval;
 
                     if (System.Diagnostics.Stopwatch.GetTimestamp() >= _softDeadlineTimestamp)
                     {
