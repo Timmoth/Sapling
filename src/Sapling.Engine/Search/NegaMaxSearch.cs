@@ -120,11 +120,6 @@ public partial class Searcher
         var rawStaticEval = Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot);
         var staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex,
             rawStaticEval);
-        var previousSameSideEval = depthFromRoot >= 2 && currentAccumulatorState->Move != default &&
-            currentAccumulatorState[-1].Move != default ? currentAccumulatorState[-2].Evaluation :
-            TranspositionTableExtensions.NoHashEntry;
-        var improving = previousSameSideEval != TranspositionTableExtensions.NoHashEntry &&
-            rawStaticEval > previousSameSideEval;
 
         if (depthFromRoot > 0)
         {
@@ -325,8 +320,7 @@ public partial class Searcher
         var probCutSortedUpTo = 0;
 
         // Probcut
-        int probCutMargin = improving ? 97 : 252;
-        int probBeta = beta + probCutMargin;
+        int probBeta = beta + SpsaOptions.ProbCutBetaMargin;
         if (!pvNode && !parentInCheck
             && currentAccumulatorState->Move != default
             && depth >= SpsaOptions.ProbCutMinDepth
