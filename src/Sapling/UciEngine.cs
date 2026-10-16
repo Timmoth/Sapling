@@ -57,9 +57,12 @@ public class UciEngine : IDisposable
             return;
         }
 
-        if (SpsaTuner.HasParameter(tokens[2].ToLower()))
+        if (SpsaTuner.HasParameter(tokens[2].ToLowerInvariant()))
         {
-            SpsaTuner.SetParameterValue(tokens);
+            if (!SpsaTuner.SetParameterValue(tokens))
+            {
+                ReportProtocolError($"Invalid value for SPSA parameter {tokens[2]}");
+            }
         }
 
         switch (tokens[2].ToLower())
