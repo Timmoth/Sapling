@@ -51,12 +51,7 @@ public unsafe class ParameterValidationTests
             [nameof(SpsaOptions.InterestingNegaMaxMoveScore)] = "40775",
             [nameof(SpsaOptions.InterestingQuiescenceMoveScore)] = "35432",
             [nameof(SpsaOptions.ProbCutBetaMargin)] = "220",
-            [nameof(SpsaOptions.ProbCutMinDepth)] = "3",
-            [nameof(SpsaOptions.AsperationWindowA)] = "37",
-            [nameof(SpsaOptions.AsperationWindowB)] = "59",
-            [nameof(SpsaOptions.AsperationWindowC)] = "279",
-            [nameof(SpsaOptions.AsperationWindowD)] = "847",
-            [nameof(SpsaOptions.AsperationWindowE)] = "2785"
+            [nameof(SpsaOptions.ProbCutMinDepth)] = "3"
         };
 
         SpsaTuner.TuningParameters.Should().HaveCount(defaults.Count);

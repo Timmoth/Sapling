@@ -75,11 +75,6 @@ namespace Sapling.Engine.Tuning
         public const int InterestingQuiescenceMoveScore = 35432;
         public const int ProbCutBetaMargin = 220;
         public const int ProbCutMinDepth = 3;
-        public const int AsperationWindowA = 37;
-        public const int AsperationWindowB = 59;
-        public const int AsperationWindowC = 279;
-        public const int AsperationWindowD = 847;
-        public const int AsperationWindowE = 2785;
     }
 
     public static unsafe class SpsaOptions
@@ -178,20 +173,6 @@ namespace Sapling.Engine.Tuning
         [SpsaMinValue("0"), SpsaMaxValue("6")]
         public static int ProbCutMinDepth = SpsaDefaults.ProbCutMinDepth;
 
-        [SpsaMinValue("30"), SpsaMaxValue("100")]
-        public static int AsperationWindowA = SpsaDefaults.AsperationWindowA;
-
-        [SpsaMinValue("50"), SpsaMaxValue("200")]
-        public static int AsperationWindowB = SpsaDefaults.AsperationWindowB;
-
-        [SpsaMinValue("100"), SpsaMaxValue("500")]
-        public static int AsperationWindowC = SpsaDefaults.AsperationWindowC;
-
-        [SpsaMinValue("400"), SpsaMaxValue("1500")]
-        public static int AsperationWindowD = SpsaDefaults.AsperationWindowD;
-
-        [SpsaMinValue("1400"), SpsaMaxValue("3000")]
-        public static int AsperationWindowE = SpsaDefaults.AsperationWindowE;
 #else
         public const int ReverseFutilityPruningMargin = SpsaDefaults.ReverseFutilityPruningMargin;
         public const int ReverseFutilityPruningDepth = SpsaDefaults.ReverseFutilityPruningDepth;
@@ -224,11 +205,6 @@ namespace Sapling.Engine.Tuning
         public const int InterestingQuiescenceMoveScore = SpsaDefaults.InterestingQuiescenceMoveScore;
         public const int ProbCutBetaMargin = SpsaDefaults.ProbCutBetaMargin;
         public const int ProbCutMinDepth = SpsaDefaults.ProbCutMinDepth;
-        public const int AsperationWindowA = SpsaDefaults.AsperationWindowA;
-        public const int AsperationWindowB = SpsaDefaults.AsperationWindowB;
-        public const int AsperationWindowC = SpsaDefaults.AsperationWindowC;
-        public const int AsperationWindowD = SpsaDefaults.AsperationWindowD;
-        public const int AsperationWindowE = SpsaDefaults.AsperationWindowE;
 #endif
 
         public static int* LateMovePruningInterestingReductionTable;

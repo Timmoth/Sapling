@@ -317,17 +317,12 @@ public unsafe partial class Searcher : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetAsperationWindow(int index)
+    public static int GetAspirationWindow(int index)
     {
-        return index switch
-        {
-            0 => SpsaOptions.AsperationWindowA,
-            1 => SpsaOptions.AsperationWindowB,
-            2 => SpsaOptions.AsperationWindowC,
-            3 => SpsaOptions.AsperationWindowD,
-            4 => SpsaOptions.AsperationWindowE,
-            _ => Constants.MaxScore
-        };
+        if (index >= 10)
+            return Constants.MaxScore;
+
+        return Math.Min(37 << Math.Max(index, 0), Constants.MaxScore);
     }
 
     public void Reset(GameState inputBoard)
@@ -461,8 +456,8 @@ public unsafe partial class Searcher : IDisposable
             var betaWindowIndex = 0;
             do
             {
-                alpha = lastIterationEval - GetAsperationWindow(alphaWindowIndex);
-                beta = lastIterationEval + GetAsperationWindow(betaWindowIndex);
+                alpha = lastIterationEval - GetAspirationWindow(alphaWindowIndex);
+                beta = lastIterationEval + GetAspirationWindow(betaWindowIndex);
 
                 var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
 

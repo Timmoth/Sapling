@@ -83,8 +83,8 @@ public unsafe partial class Searcher
                     var betaWindowIndex = 0;
                     do
                     {
-                        var alpha = _rsLastEval - GetAsperationWindow(alphaWindowIndex);
-                        var beta = _rsLastEval + GetAsperationWindow(betaWindowIndex);
+                        var alpha = _rsLastEval - GetAspirationWindow(alphaWindowIndex);
+                        var beta = _rsLastEval + GetAspirationWindow(betaWindowIndex);
                         var eval = NegaMaxSearch(Boards, Accumulators, 0, j, alpha, beta);
 
                         // Check interruption before consuming the result: an interrupted iteration
