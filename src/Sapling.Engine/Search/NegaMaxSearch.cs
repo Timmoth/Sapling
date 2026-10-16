@@ -113,9 +113,7 @@ public partial class Searcher
         var pawnChIndex = CorrectionIndex(currentBoardState->PawnHash, currentBoardState->WhiteToMove);
         var whiteMaterialChIndex = CorrectionIndex(currentBoardState->WhiteMaterialHash, currentBoardState->WhiteToMove);
         var blackMaterialChIndex = CorrectionIndex(currentBoardState->BlackMaterialHash, currentBoardState->WhiteToMove);
-        var previousMoveIndex = currentAccumulatorState->Move == default
-            ? 0
-            : currentAccumulatorState->Move.GetCounterMoveIndex();
+        uint previousMoveIndex = 0;
 
         var rawStaticEval = Evaluate(currentBoardState, currentAccumulatorState, depthFromRoot);
         var staticEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex,

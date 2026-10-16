@@ -75,9 +75,7 @@ public partial class Searcher
             var pawnChIndex = CorrectionIndex(boardState->PawnHash, boardState->WhiteToMove);
             var whiteMaterialChIndex = CorrectionIndex(boardState->WhiteMaterialHash, boardState->WhiteToMove);
             var blackMaterialChIndex = CorrectionIndex(boardState->BlackMaterialHash, boardState->WhiteToMove);
-            var previousMoveIndex = accumulatorState->Move == default
-                ? 0
-                : accumulatorState->Move.GetCounterMoveIndex();
+            uint previousMoveIndex = 0;
 
             // Evaluate current position
             qEval = AdjustEval(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex,
