@@ -110,8 +110,6 @@ public unsafe partial class Searcher : IDisposable
     private bool Interrupted() => _searchCancelled || _sliceExhausted;
     public uint BestSoFar;
     public long NodesVisited;
-    internal double RootBestMoveNodeFraction;
-    internal readonly long[] RootMoveNodeCounts = new long[MaxMovesPerPly];
     private const int MaxMovesPerPly = 218;
     private const int KillersLength = Constants.MaxSearchDepth * 2;
 
@@ -347,7 +345,6 @@ public unsafe partial class Searcher : IDisposable
         _softDeadlineTimestamp = 0;
         _softLimitMs = 0;
         _hardLimitMs = 0;
-        RootBestMoveNodeFraction = 0;
         _nodeLimit = 0;
         // Clear resumable slice state so a stale _sliceExhausted cannot make Interrupted() true
         // for a subsequent native search on the same worker.
@@ -535,7 +532,7 @@ public unsafe partial class Searcher : IDisposable
                     var scoreDrop = previousScore - bestEval;
                     var adjustedSoftLimit = TimeManagement.AdjustSoftLimit(
                         _softLimitMs, _hardLimitMs, depthSearched, stableBestMoves,
-                        scoreDrop, RootBestMoveNodeFraction);
+                        scoreDrop);
                     var adjustedDeadline = startTimestamp + (long)(adjustedSoftLimit *
                         (double)System.Diagnostics.Stopwatch.Frequency / 1000);
                     _softDeadlineTimestamp = _deadlineTimestamp == 0

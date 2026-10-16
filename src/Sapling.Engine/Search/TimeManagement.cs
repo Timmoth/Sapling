@@ -65,16 +65,14 @@ public static class TimeManagement
         int hardLimitMs,
         int depth,
         int stableBestMoves,
-        int scoreDrop,
-        double bestMoveNodeFraction)
+        int scoreDrop)
     {
         if (depth < 8 || baseSoftLimitMs <= 0)
             return baseSoftLimitMs;
 
         var stability = StabilityFactors[Math.Min(stableBestMoves, StabilityFactors.Length - 1)];
         var scoreStability = Math.Clamp(1 + scoreDrop / 300d, 0.8, 1.4);
-        var nodeShare = Math.Clamp(1.5 - bestMoveNodeFraction, 0.75, 1.4);
-        var scale = Math.Clamp(stability * scoreStability * nodeShare, 0.65, 1.8);
+        var scale = Math.Clamp(stability * scoreStability, 0.65, 1.8);
         var adjusted = (int)Math.Round(baseSoftLimitMs * scale);
         return hardLimitMs > 0 ? Math.Min(adjusted, hardLimitMs) : adjusted;
     }
