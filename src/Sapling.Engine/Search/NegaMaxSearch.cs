@@ -148,7 +148,12 @@ public partial class Searcher
             !IsMateBand(staticEval) && !IsMateBand(alpha) && !IsMateBand(beta))
         {
             // Reverse futility pruning
-            var margin = depth * SpsaOptions.ReverseFutilityPruningMargin;
+            var margin = PruningMargins.ReverseFutility(
+                depth,
+                SpsaOptions.ReverseFutilityPruningMargin,
+                rawStaticEval,
+                staticEval,
+                SpsaOptions.CorrectionMagnitudeRfpScale);
             if (depth <= SpsaOptions.ReverseFutilityPruningDepth && staticEval >= beta + margin)
             {
                 return staticEval - margin;

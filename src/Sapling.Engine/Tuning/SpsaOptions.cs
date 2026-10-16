@@ -45,6 +45,7 @@ namespace Sapling.Engine.Tuning
     internal static class SpsaDefaults
     {
         public const int ReverseFutilityPruningMargin = 67;
+        public const float CorrectionMagnitudeRfpScale = 0.5f;
         public const int ReverseFutilityPruningDepth = 7;
         public const int NullMovePruningDepth = 2;
         public const float NullMovePruningReductionA = 3;
@@ -87,6 +88,9 @@ namespace Sapling.Engine.Tuning
 #if OpenBench
         [SpsaMinValue("60"), SpsaMaxValue("80")]
         public static int ReverseFutilityPruningMargin = SpsaDefaults.ReverseFutilityPruningMargin;
+
+        [SpsaMinValue("0"), SpsaMaxValue("1.5")]
+        public static float CorrectionMagnitudeRfpScale = SpsaDefaults.CorrectionMagnitudeRfpScale;
 
         [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int ReverseFutilityPruningDepth = SpsaDefaults.ReverseFutilityPruningDepth;
@@ -194,6 +198,7 @@ namespace Sapling.Engine.Tuning
         public static int AsperationWindowE = SpsaDefaults.AsperationWindowE;
 #else
         public const int ReverseFutilityPruningMargin = SpsaDefaults.ReverseFutilityPruningMargin;
+        public const float CorrectionMagnitudeRfpScale = SpsaDefaults.CorrectionMagnitudeRfpScale;
         public const int ReverseFutilityPruningDepth = SpsaDefaults.ReverseFutilityPruningDepth;
         public const int NullMovePruningDepth = SpsaDefaults.NullMovePruningDepth;
         public const float NullMovePruningReductionA = SpsaDefaults.NullMovePruningReductionA;

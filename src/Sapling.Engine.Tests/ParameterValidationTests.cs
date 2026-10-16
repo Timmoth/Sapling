@@ -22,6 +22,7 @@ public unsafe class ParameterValidationTests
         var defaults = new Dictionary<string, string>
         {
             [nameof(SpsaOptions.ReverseFutilityPruningMargin)] = "67",
+            [nameof(SpsaOptions.CorrectionMagnitudeRfpScale)] = "0.5",
             [nameof(SpsaOptions.ReverseFutilityPruningDepth)] = "7",
             [nameof(SpsaOptions.NullMovePruningDepth)] = "2",
             [nameof(SpsaOptions.NullMovePruningReductionA)] = "3",
