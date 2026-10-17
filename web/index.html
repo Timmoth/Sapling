@@ -70,10 +70,6 @@
       <h1>Sapling</h1>
     </div>
     <div class="topbar-right">
-      <div id="status" class="status" role="status" aria-live="polite" data-state="loading">
-        <span class="dot" aria-hidden="true"></span>
-        <span id="status-text">Loading engine&hellip;</span>
-      </div>
       <a class="github" href="https://github.com/Timmoth/Sapling" target="_blank" rel="me noopener"
         title="Sapling on GitHub" aria-label="Sapling on GitHub">
         <svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" focusable="false">
@@ -89,6 +85,10 @@
     <section class="board-area">
       <div id="board" class="board" role="grid" aria-label="Chess board"></div>
       <div id="promotion" class="promotion" hidden></div>
+      <div id="status" class="status" role="status" aria-live="polite" data-state="loading">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="status-text">Loading engine&hellip;</span>
+      </div>
     </section>
 
     <aside class="panel">
@@ -102,17 +102,17 @@
           <button id="flip" class="btn">Flip</button>
         </div>
         <div class="field" style="margin-top:12px">
+          <span>Human-style level <em id="human-elo-label">Off</em></span>
+          <input id="human-elo" class="slider" type="range" min="0" max="3000" step="10" value="0"
+            aria-label="Human-style play level" />
+          <div class="slider-scale"><span>10</span><span>3000</span></div>
+        </div>
+        <div class="field" style="margin-top:12px">
           <span>You play</span>
           <div id="side" class="segmented" role="radiogroup" aria-label="You play">
             <button type="button" role="radio" aria-checked="true" class="pill selected" data-value="w">White</button>
             <button type="button" role="radio" aria-checked="false" class="pill" data-value="b">Black</button>
           </div>
-        </div>
-        <div class="field" style="margin-top:12px">
-          <span>Human-style level <em id="human-elo-label">Off</em></span>
-          <input id="human-elo" class="slider" type="range" min="0" max="3000" step="10" value="0"
-            aria-label="Human-style play level" />
-          <div class="slider-scale"><span>10</span><span>3000</span></div>
         </div>
       </section>
 

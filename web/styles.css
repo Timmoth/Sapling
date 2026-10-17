@@ -106,12 +106,22 @@ body {
 .github:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 .status {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   color: var(--secondaryText);
-  min-height: 28px;
+  box-sizing: border-box;
+  width: min(100%, 560px);
+  height: 28px;
+  margin: 8px auto 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.status #status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tertiaryText); flex: none; }
 .status[data-state="thinking"] .dot,
