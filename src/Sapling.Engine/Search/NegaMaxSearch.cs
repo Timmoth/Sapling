@@ -18,13 +18,6 @@ public partial class Searcher
             int alpha, int beta)
     {
         NodesVisited++;
-        var rootStartNodes = NodesVisited;
-        long[]? rootMoveNodeCounts = null;
-        if (depthFromRoot == 0)
-        {
-            rootMoveNodeCounts = RootMoveNodeCounts;
-            Array.Clear(rootMoveNodeCounts);
-        }
 
         if (depthFromRoot >= Constants.MaxSearchDepth || currentBoardState->TurnCount == ushort.MaxValue)
         {
@@ -512,7 +505,6 @@ public partial class Searcher
 
             var needsFullSearch = true;
             var score = 0;
-            var nodesBeforeMove = NodesVisited;
 
             if (searchedMoves > 0)
             {
@@ -568,9 +560,6 @@ public partial class Searcher
                 break;
             }
 
-            if (depthFromRoot == 0)
-                rootMoveNodeCounts![moveIndex] = NodesVisited - nodesBeforeMove;
-
             if (score > bestScore)
             {
                 bestScore = score;
@@ -606,9 +595,6 @@ public partial class Searcher
                     score,
                     TranspositionTableFlag.Beta,
                     bestMove);
-
-                if (depthFromRoot == 0)
-                    UpdateRootBestMoveNodeFraction(moves, rootMoveNodeCounts!, psuedoMoveCount, rootStartNodes, bestMove);
 
                 if (m.IsQuiet())
                 {
@@ -668,31 +654,11 @@ public partial class Searcher
             UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
         }
 
-        if (depthFromRoot == 0)
-            UpdateRootBestMoveNodeFraction(moves, rootMoveNodeCounts!, psuedoMoveCount, rootStartNodes, bestMove);
-
         // Cache in transposition table
         StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, alpha,
             evaluationBound, bestMove);
 
         return alpha;
-    }
-
-    private unsafe void UpdateRootBestMoveNodeFraction(uint* moves, long[] nodeCounts, int count,
-        long rootStartNodes, uint bestMove)
-    {
-        long total = 0;
-        long best = 0;
-        for (var i = 0; i < count; i++)
-        {
-            var nodes = nodeCounts[i];
-            total += nodes;
-            if (moves[i] == bestMove)
-                best = nodes;
-        }
-
-        total = Math.Max(total, NodesVisited - rootStartNodes);
-        RootBestMoveNodeFraction = total > 0 ? (double)best / total : 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

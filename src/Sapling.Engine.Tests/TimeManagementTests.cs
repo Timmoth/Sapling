@@ -58,8 +58,8 @@ public class TimeManagementTests
     [Fact]
     public void SoftLimitAdjustment_SpendsLessOnStableMoves()
     {
-        var unstable = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 0, 0, 0.5);
-        var stable = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 5, 0, 0.5);
+        var unstable = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 0, 0);
+        var stable = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 5, 0);
 
         Assert.True(unstable > stable);
     }
@@ -67,8 +67,8 @@ public class TimeManagementTests
     [Fact]
     public void SoftLimitAdjustment_SpendsMoreAfterScoreDrop()
     {
-        var stableScore = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 2, 0, 0.5);
-        var scoreDrop = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 2, 100, 0.5);
+        var stableScore = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 2, 0);
+        var scoreDrop = TimeManagement.AdjustSoftLimit(1_000, 5_000, 10, 2, 100);
 
         Assert.True(scoreDrop > stableScore);
     }
@@ -76,8 +76,9 @@ public class TimeManagementTests
     [Fact]
     public void SoftLimitAdjustment_NeverExceedsHardLimit()
     {
-        var adjusted = TimeManagement.AdjustSoftLimit(10_000, 2_000, 10, 0, 100, 0.1);
+        var adjusted = TimeManagement.AdjustSoftLimit(10_000, 2_000, 10, 0, 100);
 
         Assert.Equal(2_000, adjusted);
     }
+
 }
