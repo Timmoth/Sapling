@@ -158,9 +158,7 @@ public partial class Searcher
             if (staticEval >= beta &&
                 currentAccumulatorState->Move != default &&
                 (transpositionType != TranspositionTableFlag.Alpha || transpositionEvaluation >= beta) &&
-                depth > SpsaOptions.NullMovePruningDepth && currentBoardState->HasMajorPieces() &&
-                ((currentBoardState->Occupancy[Constants.WhiteRook] | currentBoardState->Occupancy[Constants.BlackRook] |
-                  currentBoardState->Occupancy[Constants.WhiteQueen] | currentBoardState->Occupancy[Constants.BlackQueen]) != 0))
+                depth > SpsaOptions.NullMovePruningDepth && currentBoardState->HasMajorPieces())
             {
                 var reduction = *(SpsaOptions.NullMovePruningReductionTable + depth);
 
