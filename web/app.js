@@ -2,15 +2,10 @@
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const PIECE_WORD = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
-const pieceSrc = (color, type) => `./assets/pieces/${color === 'w' ? 'white' : 'black'}_${PIECE_WORD[type]}.png`;
+const pieceSrc = (color, type) => `./assets/pieces/${color === 'w' ? 'white' : 'black'}_${PIECE_WORD[type]}.svg`;
 
-// Think time -> bounded search budgets. Depth accounts for the engine's inclusive-depth
-// off-by-one (requested N completes N-1). These are starting values pending device tuning.
-const DIFFICULTY = {
-  short:  { maxDepth: 5,  sliceNodes: 4000,  totalNodes: 12000,   timeMs: 500 },
-  medium: { maxDepth: 11, sliceNodes: 12000, totalNodes: 150000,  timeMs: 2500 },
-  long:   { maxDepth: 19, sliceNodes: 20000, totalNodes: 1500000, timeMs: 8000 },
-};
+const SEARCH_LIMITS = { maxDepth: 120, sliceNodes: 12000, totalNodes: 10000000, timeMs: 1000 };
+const AI_MOVE_PAUSE_MS = 650;
 
 const el = (id) => document.getElementById(id);
 const boardEl = el('board');
@@ -30,13 +25,22 @@ const state = {
 
 let ready = false;
 let thinking = false;
+let restoring = false;
+let hinting = false;
+let hintMode = false;
 let applyingAiMove = false;
 let humanColor = 'w';
 let orientation = 'w'; // color at the bottom
-let difficulty = 'medium';
 let selectedSq = null;
 let targets = new Map(); // destAlg -> uci (for the selected square)
 let requestId = 0;
+let restoreId = 0;
+let pendingAiMoveTimer = null;
+let activeMoveAnimations = [];
+let moveAnimationTimer = null;
+let redoStack = [];
+let hintScores = new Map();
+let hintId = 0;
 let evalSide = 'w';
 let pendingExport = null; // 'copy' | 'download'
 let history = []; // committed UCI moves, for the move list
@@ -91,7 +95,8 @@ function render() {
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-label', alg(sq));
 
-      if (sq === lastFrom || sq === lastTo) cell.classList.add('last');
+      if (sq === lastFrom) cell.classList.add('last', 'last-from');
+      if (sq === lastTo) cell.classList.add('last', 'last-to');
       if (sq === selectedSq) cell.classList.add('selected');
       if (sq === checkSq) cell.classList.add('check');
 
@@ -106,6 +111,15 @@ function render() {
       }
 
       if (targets.has(alg(sq))) cell.classList.add('valid');
+      const destinationMoves = selectedSq === null ? [] : movesFrom(selectedSq).filter((move) => move.slice(2, 4) === alg(sq));
+      const hint = destinationMoves.map((move) => hintScores.get(move)).filter(Boolean)
+        .sort((a, b) => b.rankScore - a.rankScore)[0];
+      if (hint) {
+        const badge = document.createElement('span');
+        badge.className = 'hint-score';
+        badge.textContent = hint.label;
+        cell.appendChild(badge);
+      }
 
       if (c === 0) {
         const rank2 = document.createElement('span');
@@ -124,7 +138,101 @@ function render() {
       boardEl.appendChild(cell);
     }
   }
+  if (state.lastMove) renderMovePath(lastFrom, lastTo);
   renderMoves();
+}
+
+function renderMovePath(from, to) {
+  const point = (sq) => {
+    const file = sq % 8, rank = Math.floor(sq / 8);
+    const col = orientation === 'w' ? file : 7 - file;
+    const row = orientation === 'w' ? 7 - rank : rank;
+    return { x: (col + 0.5) * 100, y: (row + 0.5) * 100 };
+  };
+  const a = point(from), b = point(to);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('move-path');
+  svg.setAttribute('viewBox', '0 0 800 800');
+  svg.setAttribute('aria-hidden', 'true');
+  const fromAlgSquare = state.lastMove.slice(0, 2);
+  const toAlgSquare = state.lastMove.slice(2, 4);
+  const fileChange = Math.abs(fromAlgSquare.charCodeAt(0) - toAlgSquare.charCodeAt(0));
+  const rankChange = Math.abs(Number(fromAlgSquare[1]) - Number(toAlgSquare[1]));
+  const isKnightMove = (fileChange === 1 && rankChange === 2) || (fileChange === 2 && rankChange === 1);
+  const path = document.createElementNS('http://www.w3.org/2000/svg', isKnightMove ? 'polyline' : 'line');
+  if (isKnightMove) {
+    path.setAttribute('points', `${a.x},${a.y} ${a.x},${b.y} ${b.x},${b.y}`);
+  } else {
+    path.setAttribute('x1', a.x); path.setAttribute('y1', a.y);
+    path.setAttribute('x2', b.x); path.setAttribute('y2', b.y);
+  }
+  svg.appendChild(path);
+  boardEl.appendChild(svg);
+}
+
+function clearMoveAnimations() {
+  clearTimeout(moveAnimationTimer);
+  for (const { image, animation, destination } of activeMoveAnimations) {
+    animation.cancel();
+    image.remove();
+    destination.classList.remove('animating');
+  }
+  activeMoveAnimations = [];
+}
+
+function animateMove(before, from, to) {
+  const piece = before[from];
+  const source = boardEl.querySelector(`[data-sq="${from}"]`);
+  const destination = boardEl.querySelector(`[data-sq="${to}"]`);
+  if (!piece || !source || !destination || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const boardRect = boardEl.getBoundingClientRect();
+  const sourceRect = source.getBoundingClientRect();
+  const destinationRect = destination.getBoundingClientRect();
+  const size = sourceRect.width * 0.8;
+  const startX = sourceRect.left - boardRect.left - boardEl.clientLeft + sourceRect.width * 0.1;
+  const startY = sourceRect.top - boardRect.top - boardEl.clientTop + sourceRect.height * 0.1;
+  const dx = destinationRect.left - sourceRect.left;
+  const dy = destinationRect.top - sourceRect.top;
+  const image = document.createElement('img');
+  image.className = 'move-animation';
+  image.src = pieceSrc(piece.color, piece.type);
+  image.alt = '';
+  image.draggable = false;
+  image.style.left = `${startX}px`;
+  image.style.top = `${startY}px`;
+  image.style.width = `${size}px`;
+  image.style.height = `${size}px`;
+  boardEl.appendChild(image);
+  destination.classList.add('animating');
+
+  const fromAlgSquare = alg(from), toAlgSquare = alg(to);
+  const fileChange = Math.abs(fromAlgSquare.charCodeAt(0) - toAlgSquare.charCodeAt(0));
+  const rankChange = Math.abs(Number(fromAlgSquare[1]) - Number(toAlgSquare[1]));
+  const isKnightMove = (fileChange === 1 && rankChange === 2) || (fileChange === 2 && rankChange === 1);
+  const frames = [{ transform: 'translate(0, 0)' }];
+  if (isKnightMove) frames.push({ transform: `translate(0, ${dy}px)`, offset: 0.67 });
+  frames.push({ transform: `translate(${dx}px, ${dy}px)` });
+  const animation = image.animate(frames, { duration: 360, easing: 'ease-in-out', fill: 'forwards' });
+  activeMoveAnimations.push({ image, animation, destination });
+}
+
+function animateLastMove(before, uci) {
+  if (!uci || uci.length < 4) return;
+  const from = fromAlg(uci.slice(0, 2)), to = fromAlg(uci.slice(2, 4));
+  animateMove(before, from, to);
+
+  const king = before[from];
+  if (king?.type === 'k' && Math.abs((from % 8) - (to % 8)) === 2) {
+    const rank = Math.floor(from / 8);
+    const kingSide = to > from;
+    const rookFrom = rank * 8 + (kingSide ? 7 : 0);
+    const rookTo = rank * 8 + (kingSide ? 5 : 3);
+    animateMove(before, rookFrom, rookTo);
+  }
+  if (activeMoveAnimations.length) {
+    moveAnimationTimer = setTimeout(clearMoveAnimations, 380);
+  }
 }
 
 function renderMoves() {
@@ -139,14 +247,25 @@ function renderMoves() {
     list.appendChild(li);
   }
   list.scrollTop = list.scrollHeight;
+  updateUndoControls();
+}
+
+function updateUndoControls() {
+  el('undo').disabled = !ready || restoring || hinting || history.length === 0;
+  el('redo').disabled = !ready || restoring || hinting || redoStack.length === 0;
+  el('hint-mode').disabled = !ready || restoring || hinting || thinking || state.gameOver || state.sideToMove !== humanColor;
 }
 
 function updateStatusLine() {
-  if (state.gameOver) {
+  if (restoring) {
+    setStatus('Restoring position', 'thinking');
+  } else if (hinting) {
+    setStatus('Scoring moves', 'thinking');
+  } else if (state.gameOver) {
     const map = { '1-0': 'White wins', '0-1': 'Black wins', '1/2-1/2': 'Draw', '*': 'Game over' };
     setStatus((map[state.result] || 'Game over') + ' (' + state.result + ')', 'over');
   } else if (thinking) {
-    setStatus('Sapling is thinking\u2026', 'thinking');
+    setStatus('Sapling is thinking', 'thinking');
   } else if (state.inCheck) {
     setStatus((state.sideToMove === humanColor ? 'Your move' : 'Sapling to move') + ' \u00b7 check', 'check');
   } else {
@@ -157,7 +276,7 @@ function updateStatusLine() {
 
 // ---- input ----
 function onSquare(sq) {
-  if (!ready || thinking || state.gameOver || state.sideToMove !== humanColor) return;
+  if (!ready || thinking || restoring || hinting || state.gameOver || state.sideToMove !== humanColor) return;
 
   if (selectedSq === null) {
     if (movesFrom(sq).length) select(sq);
@@ -180,10 +299,46 @@ function select(sq) {
   selectedSq = sq;
   targets = new Map();
   for (const u of movesFrom(sq)) targets.set(u.slice(2, 4), u);
+  hintScores.clear();
+  render();
+  if (hintMode && targets.size) requestHintScores();
+}
+
+function clearSelection() { selectedSq = null; targets = new Map(); hintScores.clear(); render(); }
+
+function requestHintScores() {
+  const moves = movesFrom(selectedSq);
+  if (!moves.length) return;
+  hinting = true;
+  const id = ++hintId;
+  updateUndoControls();
+  updateStatusLine();
+  worker.postMessage({ type: 'hints', hintId: id, fen: state.fen, moves, history: [...history] });
+}
+
+function updateHintScores(msg) {
+  if (msg.hintId !== hintId) return;
+  const ranked = [...(msg.scores || [])].sort((a, b) => b.rankScore - a.rankScore);
+  hintScores = new Map(ranked.map((score) => [score.move, { ...score, label: formatHintScore(score) }]));
   render();
 }
 
-function clearSelection() { selectedSq = null; targets = new Map(); render(); }
+function formatHintScore(score) {
+  if (score.scoreType === 'mate') return score.score > 0 ? `M${Math.abs(score.score)}` : `-M${Math.abs(score.score)}`;
+  return (score.score >= 0 ? '+' : '') + (score.score / 100).toFixed(1);
+}
+
+function toggleHintMode() {
+  if (hinting || restoring) return;
+  hintMode = !hintMode;
+  const button = el('hint-mode');
+  button.textContent = hintMode ? 'Hints on' : 'Hints off';
+  button.setAttribute('aria-pressed', String(hintMode));
+  button.classList.toggle('selected', hintMode);
+  hintScores.clear();
+  render();
+  if (hintMode && selectedSq !== null && targets.size) requestHintScores();
+}
 
 function showPromotion(cands) {
   const box = el('promotion');
@@ -207,30 +362,36 @@ function showPromotion(cands) {
 
 function commit(uci) {
   clearSelection();
+  redoStack = [];
   history.push(uci);
   worker.postMessage({ type: 'move', uci });
 }
 
 // ---- engine flow ----
 function startAi() {
-  const preset = DIFFICULTY[difficulty] || DIFFICULTY.medium;
   requestId += 1;
   thinking = true;
+  updateUndoControls();
   evalSide = state.sideToMove;
-  el('stop').hidden = false;
   updateStatusLine();
-  worker.postMessage({ type: 'search', requestId, ...preset });
+  worker.postMessage({ type: 'search', requestId, ...SEARCH_LIMITS });
 }
 
 function onCompleted(msg) {
   if (msg.requestId !== requestId) return; // obsolete
-  thinking = false;
-  el('stop').hidden = true;
   if (msg.bestMove) {
-    applyingAiMove = true;
-    history.push(msg.bestMove);
-    worker.postMessage({ type: 'move', uci: msg.bestMove });
+    pendingAiMoveTimer = setTimeout(() => {
+      pendingAiMoveTimer = null;
+      if (msg.requestId !== requestId) return;
+      thinking = false;
+      applyingAiMove = true;
+      redoStack = [];
+      history.push(msg.bestMove);
+      worker.postMessage({ type: 'move', uci: msg.bestMove });
+    }, AI_MOVE_PAUSE_MS);
   } else {
+    thinking = false;
+    updateUndoControls();
     updateStatusLine();
   }
 }
@@ -300,21 +461,40 @@ worker.addEventListener('message', (event) => {
     case 'ready':
       if (!m.ok) { setStatus('Engine init failed: ' + (m.message || m.error), 'error'); return; }
       ready = true;
+      updateUndoControls();
       worker.postMessage({ type: 'position', fen: INITIAL_FEN });
       break;
     case 'position': {
+      if (m.restored && m.restoreId !== restoreId) break;
+      if (m.restored) restoring = false;
       const wasAiApply = applyingAiMove; applyingAiMove = false;
       if (!m.ok) { setStatus(m.message || 'Position error', 'error'); return; }
+      clearMoveAnimations();
+      const previousBoard = parseFen(state.fen);
       Object.assign(state, {
         fen: m.fen, sideToMove: m.sideToMove, legalMoves: m.legalMoves || [],
         lastMove: m.lastMove || '', inCheck: !!m.inCheck, gameOver: !!m.gameOver, result: m.result || '*',
       });
       render();
+      if (!m.restored) animateLastMove(previousBoard, state.lastMove);
       updateStatusLine();
       if (!wasAiApply && !state.gameOver && state.sideToMove !== humanColor && !thinking) startAi();
       break;
     }
     case 'progress': onProgress(m); break;
+    case 'hint-progress': updateHintScores(m); break;
+    case 'hints-done':
+      if (m.hintId !== hintId) break;
+      hinting = false;
+      updateUndoControls();
+      updateStatusLine();
+      break;
+    case 'hint-failed':
+      if (m.hintId !== hintId) break;
+      hinting = false;
+      updateUndoControls();
+      setStatus('Hint failed: ' + (m.message || 'engine error'), 'error');
+      break;
     case 'completed': onCompleted(m); break;
     case 'stopped': break;
     case 'pgn':
@@ -324,7 +504,11 @@ worker.addEventListener('message', (event) => {
       pendingExport = null;
       break;
     case 'failed':
-      thinking = false; el('stop').hidden = true;
+      if (m.restoreId !== undefined && m.restoreId !== restoreId) break;
+      clearTimeout(pendingAiMoveTimer);
+      pendingAiMoveTimer = null;
+      thinking = false; restoring = false;
+      updateUndoControls();
       setStatus('Engine error: ' + (m.message || m.error), 'error');
       break;
   }
@@ -332,15 +516,51 @@ worker.addEventListener('message', (event) => {
 
 // ---- controls ----
 function newGame() {
+  clearTimeout(pendingAiMoveTimer);
+  pendingAiMoveTimer = null;
+  clearMoveAnimations();
+  restoreId += 1;
   requestId += 1;
-  thinking = false; applyingAiMove = false;
-  el('stop').hidden = true;
+  thinking = false; restoring = false; hinting = false; applyingAiMove = false;
+  hintId += 1;
+  hintScores.clear();
   selectedSq = null; targets = new Map();
   history = [];
   el('promotion').hidden = true;
+  redoStack = [];
+  renderMoves();
   ['st-depth', 'st-eval', 'st-time', 'st-nodes', 'st-nps'].forEach((id) => setStat(id, '\u2013'));
   el('st-pv').textContent = '\u2013';
   worker.postMessage({ type: 'newgame' });
+}
+
+function restoreHistory() {
+  clearTimeout(pendingAiMoveTimer);
+  pendingAiMoveTimer = null;
+  clearMoveAnimations();
+  requestId += 1;
+  restoring = true;
+  thinking = false;
+  applyingAiMove = false;
+  selectedSq = null; targets = new Map();
+  el('promotion').hidden = true;
+  renderMoves();
+  updateStatusLine();
+  const id = ++restoreId;
+  worker.postMessage({ type: 'restore', moves: [...history], restoreId: id });
+}
+
+function undo() {
+  if (!history.length || restoring) return;
+  const count = thinking ? 1 : Math.min(2, history.length);
+  redoStack.push(history.splice(history.length - count, count));
+  restoreHistory();
+}
+
+function redo() {
+  if (!redoStack.length || restoring) return;
+  history.push(...redoStack.pop());
+  restoreHistory();
 }
 
 function segmented(id, onChange) {
@@ -358,8 +578,10 @@ function segmented(id, onChange) {
 }
 
 el('new-game').addEventListener('click', newGame);
+el('undo').addEventListener('click', undo);
+el('redo').addEventListener('click', redo);
+el('hint-mode').addEventListener('click', toggleHintMode);
 segmented('side', (v) => { humanColor = v; orientation = v; newGame(); });
-segmented('difficulty', (v) => { difficulty = v; });
 
 const eloSlider = el('human-elo');
 const eloLabel = el('human-elo-label');
@@ -369,8 +591,11 @@ eloSlider.addEventListener('input', () => {
   eloLabel.textContent = eloLabelFor(v);
   worker.postMessage({ type: 'humanelo', elo: v });
 });
-el('flip').addEventListener('click', () => { orientation = orientation === 'w' ? 'b' : 'w'; render(); });
-el('stop').addEventListener('click', () => worker.postMessage({ type: 'stop', requestId }));
+el('flip').addEventListener('click', () => {
+  clearMoveAnimations();
+  orientation = orientation === 'w' ? 'b' : 'w';
+  render();
+});
 el('copy-fen').addEventListener('click', () => copyText(state.fen));
 el('copy-pgn').addEventListener('click', () => { pendingExport = 'copy'; worker.postMessage({ type: 'pgn' }); });
 el('download-pgn').addEventListener('click', () => { pendingExport = 'download'; worker.postMessage({ type: 'pgn' }); });

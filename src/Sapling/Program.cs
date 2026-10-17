@@ -29,6 +29,9 @@ private static void Main(string[] args)
 {
         Console.SetIn(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8, false, 2048 * 4));
 
+        if (TryRunGenfens(args))
+            return;
+
         if (args.Length > 0 && args[0] == "--version")
         {
             // Get the version from the assembly information
@@ -118,6 +121,84 @@ private static void Main(string[] args)
         {
             _logWriter.Flush();
             _logWriter.Close();
+        }
+    }
+
+    private static bool TryRunGenfens(string[] args)
+    {
+        var command = string.Join(' ', args);
+        if (!command.StartsWith("genfens ", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 6 || !int.TryParse(parts[1], out var count) || count < 0 ||
+            !parts[2].Equals("seed", StringComparison.OrdinalIgnoreCase) ||
+            !ulong.TryParse(parts[3], out var seed) ||
+            !parts[4].Equals("book", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Expected: genfens <count> seed <uint64> book <path|None>");
+            Environment.ExitCode = 1;
+            return true;
+        }
+
+        var book = parts[5];
+        var openings = new List<string>();
+        if (!book.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(book))
+            {
+                Console.Error.WriteLine($"Opening book not found: {book}");
+                Environment.ExitCode = 1;
+                return true;
+            }
+
+            foreach (var line in File.ReadLines(book))
+            {
+                var fen = line.Split(';', 2)[0].Trim();
+                var fields = fen.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (fields.Length == 4)
+                    fen += " 0 1";
+                if (fields.Length is 4 or 6 && FenValidator.Validate(fen) is null)
+                    openings.Add(fen);
+            }
+            if (openings.Count == 0)
+            {
+                Console.Error.WriteLine($"Opening book is empty: {book}");
+                Environment.ExitCode = 1;
+                return true;
+            }
+        }
+
+        var random = new GenfensRandom(seed);
+        using var game = GameState.InitialState();
+        for (var i = 0; i < count; i++)
+        {
+            if (openings.Count == 0)
+                game.Reset();
+            else
+                game.ResetToFen(openings[(int)(random.Next() % (uint)openings.Count)]);
+
+            var plies = 4 + (int)(random.Next() % 9);
+            for (var ply = 0; ply < plies && game.LegalMoves.Count > 0; ply++)
+                game.Apply(game.LegalMoves[(int)(random.Next() % (uint)game.LegalMoves.Count)]);
+
+            Console.WriteLine($"info string genfens {game.Board.ToFen()}");
+        }
+
+        return true;
+    }
+
+    private struct GenfensRandom(ulong seed)
+    {
+        private ulong _state = seed;
+
+        public ulong Next()
+        {
+            _state += 0x9E3779B97F4A7C15UL;
+            var value = _state;
+            value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9UL;
+            value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
+            return value ^ (value >> 31);
         }
     }
 

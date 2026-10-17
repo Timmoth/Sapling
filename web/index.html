@@ -96,22 +96,16 @@
         <h2 class="section-label">Play</h2>
         <div class="row">
           <button id="new-game" class="btn primary">New game</button>
+          <button id="undo" class="btn" disabled>Undo</button>
+          <button id="redo" class="btn" disabled>Redo</button>
+          <button id="hint-mode" class="btn" type="button" aria-pressed="false">Hints off</button>
           <button id="flip" class="btn">Flip</button>
-          <button id="stop" class="btn secondary" hidden>Stop</button>
         </div>
         <div class="field" style="margin-top:12px">
           <span>You play</span>
           <div id="side" class="segmented" role="radiogroup" aria-label="You play">
             <button type="button" role="radio" aria-checked="true" class="pill selected" data-value="w">White</button>
             <button type="button" role="radio" aria-checked="false" class="pill" data-value="b">Black</button>
-          </div>
-        </div>
-        <div class="field" style="margin-top:12px">
-          <span>Think</span>
-          <div id="difficulty" class="segmented" role="radiogroup" aria-label="Thinking time">
-            <button type="button" role="radio" aria-checked="false" class="pill" data-value="short">Short</button>
-            <button type="button" role="radio" aria-checked="true" class="pill selected" data-value="medium">Medium</button>
-            <button type="button" role="radio" aria-checked="false" class="pill" data-value="long">Long</button>
           </div>
         </div>
         <div class="field" style="margin-top:12px">

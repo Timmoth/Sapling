@@ -4,6 +4,7 @@
 let host = null;
 const stopFlags = new Set();
 let currentRequest = 0;
+let activeHintId = 0;
 
 function post(msg) { self.postMessage(msg); }
 function parse(s) {
@@ -55,8 +56,34 @@ self.onmessage = async (event) => {
       break;
     }
     case 'newgame': {
+      activeHintId = 0;
       stopFlags.add(currentRequest);
       post({ type: 'position', ...parse(host.NewGame()) });
+      break;
+    }
+    case 'restore': {
+      activeHintId = 0;
+      stopFlags.add(currentRequest);
+      let result = parse(host.NewGame());
+      if (result.ok) {
+        for (const uci of m.moves || []) {
+          result = parse(host.ApplyMove(String(uci)));
+          if (!result.ok) break;
+        }
+      }
+      if (result.ok) {
+        post({ type: 'position', ...result, restored: true, restoreId: m.restoreId });
+      } else {
+        post({ type: 'failed', error: 'restore', message: result.message || result.error, restoreId: m.restoreId });
+      }
+      break;
+    }
+    case 'hints': {
+      if (activeHintId) {
+        post({ type: 'hint-failed', hintId: m.hintId, message: 'A hint search is already running.' });
+      } else {
+        runHints(m);
+      }
       break;
     }
     case 'stop': {
@@ -118,4 +145,55 @@ async function runSearch(req) {
     pv: chosen.pv || [],
     nodesTotal: chosen.nodesTotal || 0,
   });
+}
+
+async function runHints(req) {
+  const id = req.hintId | 0;
+  activeHintId = id;
+  const scores = [];
+  let error = '';
+
+  for (const move of req.moves || []) {
+    if (activeHintId !== id) return;
+    let result = parse(host.SetPosition(String(req.fen || '')));
+    if (result.ok) result = parse(host.ApplyMove(String(move)));
+    if (!result.ok) { error = result.message || result.error || 'Could not apply move.'; break; }
+
+    const searchId = ++currentRequest;
+    stopFlags.delete(searchId);
+    result = parse(host.StartSearch(searchId, 5, 1800, 5000, 45));
+    if (!result.ok) { error = result.message || result.error || 'Could not start analysis.'; break; }
+
+    while (true) {
+      if (activeHintId !== id) return;
+      result = parse(host.SearchSlice(searchId));
+      if (!result.ok || result.done) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    if (!result.ok) { error = result.message || result.error || 'Move analysis failed.'; break; }
+
+    const score = -(result.score || 0);
+    const scoreType = result.scoreType || 'cp';
+    const rankScore = scoreType === 'mate'
+      ? score > 0 ? 100000 - Math.abs(score) : -100000 + Math.abs(score)
+      : score;
+    scores.push({ move, score, scoreType, rankScore });
+    scores.sort((a, b) => b.rankScore - a.rankScore);
+    post({ type: 'hint-progress', hintId: id, scores });
+  }
+
+  if (activeHintId !== id) return;
+  let restored = parse(host.NewGame());
+  if (restored.ok) {
+    for (const move of req.history || []) {
+      restored = parse(host.ApplyMove(String(move)));
+      if (!restored.ok) break;
+    }
+  }
+  activeHintId = 0;
+  if (error || !restored.ok) {
+    post({ type: 'hint-failed', hintId: id, message: error || restored.message || restored.error || 'Could not restore game.' });
+    return;
+  }
+  post({ type: 'hints-done', hintId: id });
 }
