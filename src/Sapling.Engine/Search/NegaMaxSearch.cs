@@ -491,6 +491,12 @@ public partial class Searcher
                 continue;
             }
 
+            if (!pvNode && depthFromRoot > 0 && depth is >= 1 and <= 4 &&
+                !parentInCheck && !newBoardState->InCheck && !isPromotionThreat &&
+                !isInteresting && m.IsCapture() && !m.IsPromotion() &&
+                currentBoardState->StaticExchangeEvaluation(occupancyBitBoards, captures, m) <= -40 * depth)
+                continue;
+
             newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
             if (whiteToMove)
             {
