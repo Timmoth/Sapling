@@ -522,6 +522,12 @@ public partial class Searcher
                     var reduction = isInteresting
                         ? *(SpsaOptions.LateMovePruningInterestingReductionTable + depth * 218 + searchedMoves)
                         : *(SpsaOptions.LateMovePruningReductionTable + depth * 218 + searchedMoves);
+                    if (m.IsQuiet())
+                    {
+                        var moveHistory = *(History + m.GetCounterMoveIndex());
+                        reduction = HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, moveHistory,
+                            SpsaOptions.LateMoveReductionHistoryScale, depth - 1);
+                    }
                     reduction = Math.Min(Math.Max(reduction, 0), depth - 1);
 
                     if (reduction > 0)

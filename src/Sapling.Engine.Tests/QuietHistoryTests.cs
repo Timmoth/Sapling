@@ -34,4 +34,17 @@ public unsafe class QuietHistoryTests
         history[searched[1].GetCounterMoveIndex()].Should().BeNegative("searched quiet gets malus");
         history[notSearched.GetCounterMoveIndex()].Should().Be(0, "unsearched quiet is untouched");
     }
+
+    [Theory]
+    [InlineData(2, 7000, 0.0f, 5, 2)]
+    [InlineData(2, 6000, 0.0001f, 5, 1)]
+    [InlineData(2, -6000, 0.0001f, 5, 3)]
+    [InlineData(3, -10000, 0.0005f, 5, 5)]
+    [InlineData(3, 10000, 0.0005f, 5, 0)]
+    public void HistoryAdjustsQuietMoveReduction(int reduction, int history, float scale, int expectedMaximum,
+        int expected)
+    {
+        HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, history, scale, expectedMaximum)
+            .Should().Be(expected);
+    }
 }

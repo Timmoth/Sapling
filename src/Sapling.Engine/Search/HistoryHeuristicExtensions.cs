@@ -46,4 +46,11 @@ public static unsafe class HistoryHeuristicExtensions
             *(history + quietIndex) += malus - (*(history + quietIndex) * bonus) / SpsaOptions.HistoryHeuristicMaxHistory;
         }
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int AdjustLateMoveReduction(int reduction, int moveHistory, float scale, int maxReduction)
+    {
+        var adjustment = (int)MathF.Round(moveHistory * scale);
+        return Math.Clamp(reduction - adjustment, 0, maxReduction);
+    }
 }
