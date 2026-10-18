@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.IO;
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 using Sapling.Engine.MoveGen;
@@ -16,8 +15,8 @@ public class ViriformatTests
         var move = MoveExtensions.EncodeNormalMove(Constants.WhitePawn, 12, 28); // e2e4
         var encoded = Viriformat.EncodeMove(move, false);
 
-        encoded.Should().Be((ushort)(12 | (28 << 6))); // squares pass through unchanged
-        (encoded & 0xC000).Should().Be(0);
+        Assert.Equal((ushort)(12 | (28 << 6)), encoded); // squares pass through unchanged
+        Assert.Equal(0, (encoded & 0xC000));
     }
 
     [Fact]
@@ -28,29 +27,25 @@ public class ViriformatTests
 
         var from = encoded & 0x3F;
         var to = (encoded >> 6) & 0x3F;
-        from.Should().Be(36);
-        to.Should().Be(40 + 4);
-        (encoded & 0xC000).Should().Be(0x4000);
+        Assert.Equal(36, from);
+        Assert.Equal(40 + 4, to);
+        Assert.Equal(0x4000, (encoded & 0xC000));
     }
 
     [Fact]
     public void EncodeMove_CastleStandard_RemapsKingDestinationToRookSquare()
     {
         var whiteKingSide = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, 4, 6);
-        Viriformat.EncodeMove(whiteKingSide, false)
-            .Should().Be((ushort)(4 | (7 << 6) | 0x8000)); // e1 -> h1 rook square
+        Assert.Equal((ushort)(4 | (7 << 6) | 0x8000), Viriformat.EncodeMove(whiteKingSide, false)); // e1 -> h1 rook square
 
         var whiteQueenSide = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, 4, 2);
-        Viriformat.EncodeMove(whiteQueenSide, false)
-            .Should().Be((ushort)(4 | (0 << 6) | 0x8000)); // e1 -> a1 rook square
+        Assert.Equal((ushort)(4 | (0 << 6) | 0x8000), Viriformat.EncodeMove(whiteQueenSide, false)); // e1 -> a1 rook square
 
         var blackKingSide = MoveExtensions.EncodeCastleMove(Constants.BlackKing, 60, 62);
-        Viriformat.EncodeMove(blackKingSide, false)
-            .Should().Be((ushort)(60 | (63 << 6) | 0x8000)); // e8 -> h8 rook square
+        Assert.Equal((ushort)(60 | (63 << 6) | 0x8000), Viriformat.EncodeMove(blackKingSide, false)); // e8 -> h8 rook square
 
         var blackQueenSide = MoveExtensions.EncodeCastleMove(Constants.BlackKing, 60, 58);
-        Viriformat.EncodeMove(blackQueenSide, false)
-            .Should().Be((ushort)(60 | (56 << 6) | 0x8000)); // e8 -> a8 rook square
+        Assert.Equal((ushort)(60 | (56 << 6) | 0x8000), Viriformat.EncodeMove(blackQueenSide, false)); // e8 -> a8 rook square
     }
 
     [Fact]
@@ -58,19 +53,18 @@ public class ViriformatTests
     {
         // In chess960 mode Sapling already encodes the rook square as the target.
         var move = MoveExtensions.EncodeCastleMove(Constants.WhiteKing, 4, 7);
-        Viriformat.EncodeMove(move, true)
-            .Should().Be((ushort)(4 | (7 << 6) | 0x8000));
+        Assert.Equal((ushort)(4 | (7 << 6) | 0x8000), Viriformat.EncodeMove(move, true));
     }
 
     [Fact]
     public void EncodeMove_Promotions_MapPieceTypesAndSetPromotionFlag()
     {
         var knight = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, 52, 60, Constants.PawnKnightPromotion);
-        (Viriformat.EncodeMove(knight, false) & 0xF000).Should().Be(0x0000 | 0xC000);
+        Assert.Equal(0x0000 | 0xC000, (Viriformat.EncodeMove(knight, false) & 0xF000));
 
         var queen = MoveExtensions.EncodePromotionMove(Constants.WhitePawn, 52, 60, Constants.PawnQueenPromotion);
         var encoded = Viriformat.EncodeMove(queen, false);
-        encoded.Should().Be((ushort)(52 | (60 << 6) | (3 << 12) | 0xC000));
+        Assert.Equal((ushort)(52 | (60 << 6) | (3 << 12) | 0xC000), encoded);
     }
 
     [Fact]
@@ -80,8 +74,7 @@ public class ViriformatTests
         Span<byte> header = stackalloc byte[Viriformat.HeaderSize];
         Viriformat.WriteHeader(header, ref board, Viriformat.WdlDraw);
 
-        BinaryPrimitives.ReadUInt64LittleEndian(header).Should()
-            .Be(0xFFFF00000000FFFF); // symmetric start position, rank-flip invariant
+        Assert.Equal(0xFFFF00000000FFFF, BinaryPrimitives.ReadUInt64LittleEndian(header)); // symmetric start position, rank-flip invariant
 
         var expected = new byte[]
         {
@@ -94,15 +87,15 @@ public class ViriformatTests
         for (var i = 0; i < 32; i++)
         {
             var nibble = (header[8 + (i >> 1)] >> ((i & 1) * 4)) & 0xF;
-            nibble.Should().Be(expected[i], $"piece slot {i}");
+            Assert.True(nibble == expected[i], $"piece slot {i}");
         }
 
-        header[24].Should().Be(64); // white to move, no ep
-        header[25].Should().Be(0);
-        BinaryPrimitives.ReadUInt16LittleEndian(header[26..]).Should().Be(1);
-        BinaryPrimitives.ReadInt16LittleEndian(header[28..]).Should().Be(0);
-        header[30].Should().Be(Viriformat.WdlDraw);
-        header[31].Should().Be(0);
+        Assert.Equal(64, header[24]); // white to move, no ep
+        Assert.Equal(0, header[25]);
+        Assert.Equal(1, BinaryPrimitives.ReadUInt16LittleEndian(header[26..]));
+        Assert.Equal(0, BinaryPrimitives.ReadInt16LittleEndian(header[28..]));
+        Assert.Equal(Viriformat.WdlDraw, header[30]);
+        Assert.Equal(0, header[31]);
     }
 
     [Fact]
@@ -113,7 +106,7 @@ public class ViriformatTests
         Span<byte> header = stackalloc byte[Viriformat.HeaderSize];
         Viriformat.WriteHeader(header, ref board, Viriformat.WdlDraw);
 
-        header[24].Should().Be(64 | 0x80); // black to move, no ep
+        Assert.Equal(64 | 0x80, header[24]); // black to move, no ep
     }
 
     [Fact]
@@ -121,7 +114,7 @@ public class ViriformatTests
     {
         // Back rank: rooks on b1/g1 (files 1/6), king on d1 (file 3) -> Shredder rights "BHbh".
         var board = BoardStateExtensions.CreateBoardFromFen("nrbkqbnr/pppppppp/8/8/8/8/PPPPPPPP/NRBKQBNR w BHbh - 0 1");
-        board.Is960.Should().BeTrue();
+        Assert.True(board.Is960);
 
         Span<byte> header = stackalloc byte[Viriformat.HeaderSize];
         Viriformat.WriteHeader(header, ref board, Viriformat.WdlWhiteWin);
@@ -135,9 +128,9 @@ public class ViriformatTests
         }
 
         // a: knight, b: unmoved rook, c: bishop, d: king, e: queen, f: bishop, g: knight, h: unmoved rook
-        whiteRank.Should().Equal(new byte[] { 1, 6, 2, 5, 4, 2, 1, 6 });
+        Assert.Equal(new byte[] { 1, 6, 2, 5, 4, 2, 1, 6 }, whiteRank);
 
-        header[30].Should().Be(Viriformat.WdlWhiteWin);
+        Assert.Equal(Viriformat.WdlWhiteWin, header[30]);
     }
 
     [Fact]
@@ -156,13 +149,12 @@ public class ViriformatTests
         }
 
         var bytes = stream.ToArray();
-        bytes.Length.Should().Be(Viriformat.HeaderSize + 2 * Viriformat.MoveRecordSize + Viriformat.MoveRecordSize);
+        Assert.Equal(Viriformat.HeaderSize + 2 * Viriformat.MoveRecordSize + Viriformat.MoveRecordSize, bytes.Length);
 
-        BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize, 2))
-            .Should().Be(Viriformat.EncodeMove(moves[0].move, false));
-        BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + 2, 2)).Should().Be(42);
-        BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + Viriformat.MoveRecordSize + 2, 2)).Should().Be(-37);
+        Assert.Equal(Viriformat.EncodeMove(moves[0].move, false), BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize, 2)));
+        Assert.Equal(42, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + 2, 2)));
+        Assert.Equal(-37, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + Viriformat.MoveRecordSize + 2, 2)));
 
-        bytes[^4..].Should().AllSatisfy(b => b.Should().Be(0));
+        Assert.All(bytes[^4..], b => Assert.Equal(0, b));
     }
 }

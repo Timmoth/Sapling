@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using System.Text.Json;
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.WebHost;
 
@@ -15,7 +14,7 @@ public class EngineHostContractTests
     private static long Num(string json, string key)
     {
         var m = Regex.Match(json, "\"" + key + "\":(-?\\d+)");
-        m.Success.Should().BeTrue($"key '{key}' missing in: {json}");
+        Assert.True(m.Success, $"key '{key}' missing in: {json}");
         return long.Parse(m.Groups[1].Value);
     }
 
@@ -28,10 +27,10 @@ public class EngineHostContractTests
 
         var slice = EngineHost.SearchSlice(1);
 
-        slice.Should().Contain("\"ok\":true");
-        slice.Should().Contain("\"done\":true");
-        Num(slice, "nodesTotal").Should().BeLessThan(100, "the slice must be capped to the remaining budget, not run 10000 nodes");
-        slice.Should().NotContain("\"bestMove\":\"\""); // a legal fallback move is preserved
+        Assert.Contains("\"ok\":true", slice);
+        Assert.Contains("\"done\":true", slice);
+        Assert.True(Num(slice, "nodesTotal") < 100, "the slice must be capped to the remaining budget, not run 10000 nodes");
+        Assert.DoesNotContain("\"bestMove\":\"\"", slice); // a legal fallback move is preserved
     }
 
     [Fact]
@@ -39,13 +38,13 @@ public class EngineHostContractTests
     {
         EngineHost.Initialize(1);
         EngineHost.SetPosition("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1");
-        EngineHost.ApplyMove("b1d2").Should().Contain("\"ok\":true");
+        Assert.Contains("\"ok\":true", EngineHost.ApplyMove("b1d2"));
 
         var pgn = EngineHost.Pgn();
 
-        pgn.Should().Contain("Nbd2");
-        pgn.Should().NotContain("bNd2");
-        pgn.Should().Contain("1. Nbd2");
+        Assert.Contains("Nbd2", pgn);
+        Assert.DoesNotContain("bNd2", pgn);
+        Assert.Contains("1. Nbd2", pgn);
     }
 
     [Fact]
@@ -59,27 +58,27 @@ public class EngineHostContractTests
 
         var pgn = EngineHost.Pgn();
 
-        pgn.Should().Contain("1. e4 e5 2. Nf3");
+        Assert.Contains("1. e4 e5 2. Nf3", pgn);
     }
 
     [Fact]
     public void SetPosition_RejectedFen_LeavesStateUnchanged()
     {
         EngineHost.Initialize(1);
-        EngineHost.SetPosition("4k3/8/8/8/8/8/8/4K3 w - - 0 1").Should().Contain("\"ok\":true");
+        Assert.Contains("\"ok\":true", EngineHost.SetPosition("4k3/8/8/8/8/8/8/4K3 w - - 0 1"));
 
-        EngineHost.SetPosition("not a fen").Should().Contain("\"ok\":false");
+        Assert.Contains("\"ok\":false", EngineHost.SetPosition("not a fen"));
 
         var pgn = EngineHost.Pgn();
-        pgn.Should().Contain("\"ok\":true");
-        pgn.Should().Contain("4k3/8/8/8/8/8/8/4K3"); // start FEN preserved, not corrupted
+        Assert.Contains("\"ok\":true", pgn);
+        Assert.Contains("4k3/8/8/8/8/8/8/4K3", pgn); // start FEN preserved, not corrupted
     }
 
     [Fact]
     public void SetPosition_RejectsMissingKingFen()
     {
         EngineHost.Initialize(1);
-        EngineHost.SetPosition("4k3/8/8/8/8/8/8/8 w - - 0 1").Should().Contain("\"ok\":false");
+        Assert.Contains("\"ok\":false", EngineHost.SetPosition("4k3/8/8/8/8/8/8/8 w - - 0 1"));
     }
 
     [Theory]
@@ -93,8 +92,8 @@ public class EngineHostContractTests
 
         using var response = JsonDocument.Parse(EngineHost.SetHumanElo(requested));
 
-        response.RootElement.GetProperty("humanElo").GetInt32().Should().Be(expected);
-        response.RootElement.GetProperty("enabled").GetBoolean().Should().Be(expected != 0);
+        Assert.Equal(expected, response.RootElement.GetProperty("humanElo").GetInt32());
+        Assert.Equal(expected != 0, response.RootElement.GetProperty("enabled").GetBoolean());
     }
 
     [Fact]
@@ -105,9 +104,8 @@ public class EngineHostContractTests
         using var position = JsonDocument.Parse(EngineHost.SetPosition(fen));
         var legalMoves = position.RootElement.GetProperty("legalMoves").EnumerateArray()
             .Select(item => item.GetString()).ToArray();
-        EngineHost.SetHumanElo(1500).Should().Contain("\"enabled\":true");
-        EngineHost.StartSearch(73, maxDepth: 1, sliceNodes: 100, totalNodes: 100, timeMs: 0)
-            .Should().Contain("\"ok\":true");
+        Assert.Contains("\"enabled\":true", EngineHost.SetHumanElo(1500));
+        Assert.Contains("\"ok\":true", EngineHost.StartSearch(73, maxDepth: 1, sliceNodes: 100, totalNodes: 100, timeMs: 0));
 
         string response = "";
         for (var i = 0; i < 10; i++)
@@ -118,8 +116,8 @@ public class EngineHostContractTests
         }
 
         using var result = JsonDocument.Parse(response);
-        result.RootElement.GetProperty("bestMove").GetString().Should().BeOneOf(legalMoves!);
-        result.RootElement.GetProperty("done").GetBoolean().Should().BeTrue();
+        Assert.Contains(result.RootElement.GetProperty("bestMove").GetString(), legalMoves!);
+        Assert.True(result.RootElement.GetProperty("done").GetBoolean());
     }
 
     [Fact]
@@ -130,12 +128,13 @@ public class EngineHostContractTests
 
         using var score = JsonDocument.Parse(EngineHost.ScoreMove("e1d1"));
 
-        score.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
-        score.RootElement.GetProperty("move").GetString().Should().Be("e1d1");
-        score.RootElement.GetProperty("scoreType").GetString().Should().BeOneOf("cp", "mate");
-        score.RootElement.GetProperty("score").GetInt32().Should().BeInRange(-32000, 32000);
-        EngineHost.Pgn().Should().Contain("4k3/8/8/8/8/8/8/4K3").And.NotContain("Kd1");
-        EngineHost.ApplyMove("e1d1").Should().Contain("\"ok\":true");
+        Assert.True(score.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("e1d1", score.RootElement.GetProperty("move").GetString());
+        Assert.Contains(score.RootElement.GetProperty("scoreType").GetString(), new[] { "cp", "mate" });
+        Assert.InRange(score.RootElement.GetProperty("score").GetInt32(), -32000, 32000);
+        Assert.Contains("4k3/8/8/8/8/8/8/4K3", EngineHost.Pgn());
+        Assert.DoesNotContain("Kd1", EngineHost.Pgn());
+        Assert.Contains("\"ok\":true", EngineHost.ApplyMove("e1d1"));
     }
 
     [Fact]
@@ -144,6 +143,7 @@ public class EngineHostContractTests
         EngineHost.Initialize(1);
         EngineHost.SetPosition(Constants.InitialState);
 
-        EngineHost.ScoreMove("e2e5").Should().Contain("\"ok\":false").And.Contain("\"illegal\"");
+        Assert.Contains("\"ok\":false", EngineHost.ScoreMove("e2e5"));
+        Assert.Contains("\"illegal\"", EngineHost.ScoreMove("e2e5"));
     }
 }

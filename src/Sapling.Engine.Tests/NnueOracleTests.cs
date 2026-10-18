@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 using Sapling.Engine.Evaluation;
@@ -88,8 +87,7 @@ public unsafe class NnueOracleTests
     {
         var us = RandomAccumulator(20261012 + bucket);
         var them = RandomAccumulator(999331 + bucket);
-        KernelOutput(us, them, bucket).Should().Be(OracleRawOutput(us, them, bucket),
-            $"bucket {bucket} fixed-seed random accumulators");
+        Assert.True(KernelOutput(us, them, bucket) == OracleRawOutput(us, them, bucket), $"bucket {bucket} fixed-seed random accumulators");
     }
 
     [Theory]
@@ -105,10 +103,8 @@ public unsafe class NnueOracleTests
     {
         var a = RandomAccumulator(555_000 + bucket);
         var b = RandomAccumulator(666_000 + bucket);
-        KernelOutput(a, b, bucket).Should().Be(OracleRawOutput(a, b, bucket),
-            $"bucket {bucket} perspective us=a them=b");
-        KernelOutput(b, a, bucket).Should().Be(OracleRawOutput(b, a, bucket),
-            $"bucket {bucket} perspective us=b them=a");
+        Assert.True(KernelOutput(a, b, bucket) == OracleRawOutput(a, b, bucket), $"bucket {bucket} perspective us=a them=b");
+        Assert.True(KernelOutput(b, a, bucket) == OracleRawOutput(b, a, bucket), $"bucket {bucket} perspective us=b them=a");
     }
 
     [Theory]
@@ -127,8 +123,7 @@ public unsafe class NnueOracleTests
             them[i] = boundary[(i / boundary.Length + i) % boundary.Length];
         }
 
-        KernelOutput(us, them, bucket).Should().Be(OracleRawOutput(us, them, bucket),
-            $"bucket {bucket} boundary-value accumulators");
+        Assert.True(KernelOutput(us, them, bucket) == OracleRawOutput(us, them, bucket), $"bucket {bucket} boundary-value accumulators");
     }
 
     [Fact]
@@ -152,8 +147,7 @@ public unsafe class NnueOracleTests
                 them[i] = 256;
             }
 
-            KernelOutput(us, them, bucket).Should().Be(OracleRawOutput(us, them, bucket),
-                $"trial {trial} bucket {bucket} randomized with short extremes");
+            Assert.True(KernelOutput(us, them, bucket) == OracleRawOutput(us, them, bucket), $"trial {trial} bucket {bucket} randomized with short extremes");
         }
     }
 

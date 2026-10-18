@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-
+﻿
 namespace Sapling.Engine.Tests;
 
 public class SquareHelperTests
@@ -22,14 +21,14 @@ public class SquareHelperTests
                 var downSquare = (byte)(square - 8);
                 var downRight = (byte)(square - 8 + 1);
 
-                square.ShiftUp().Should().Be(upSquare);
-                square.ShiftDown().Should().Be(downSquare);
-                square.ShiftLeft().Should().Be(leftSquare);
-                square.ShiftRight().Should().Be(rightSquare);
-                square.ShiftUpLeft().Should().Be(upLeft);
-                square.ShiftUpRight().Should().Be(upRight);
-                square.ShiftDownLeft().Should().Be(downLeft);
-                square.ShiftDownRight().Should().Be(downRight);
+                Assert.Equal(upSquare, square.ShiftUp());
+                Assert.Equal(downSquare, square.ShiftDown());
+                Assert.Equal(leftSquare, square.ShiftLeft());
+                Assert.Equal(rightSquare, square.ShiftRight());
+                Assert.Equal(upLeft, square.ShiftUpLeft());
+                Assert.Equal(upRight, square.ShiftUpRight());
+                Assert.Equal(downLeft, square.ShiftDownLeft());
+                Assert.Equal(downRight, square.ShiftDownRight());
             }
         }
     }
@@ -101,7 +100,7 @@ public class SquareHelperTests
     [InlineData(63, 7, 7)]
     public void GetSquareRankAndFile(int square, int rank, int file)
     {
-        square.GetRankIndex().Should().Be(rank);
-        square.GetFileIndex().Should().Be(file);
+        Assert.Equal(rank, square.GetRankIndex());
+        Assert.Equal(file, square.GetFileIndex());
     }
 }

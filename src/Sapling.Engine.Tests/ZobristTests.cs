@@ -1,5 +1,4 @@
-﻿//using FluentAssertions;
-//using Sapling.Engine.Pgn;
+﻿//using Sapling.Engine.Pgn;
 
 //namespace Sapling.Engine.Tests;
 
@@ -9,7 +8,7 @@
 //    public void InitialHash_Is_Correct()
 //    {
 //        var board = BoardStateExtensions.CreateBoardFromFen(Constants.InitialState);
-//        board.Hash.Should().Be(10825574554103633524UL);
+//        Assert.Equal(10825574554103633524UL, board.Hash);
 //    }
 
 //    [Theory]
@@ -43,7 +42,7 @@
 //            gameState.Apply(mov);
 //        }
 
-//        gameState.Board.Data.Hash.Should().Be(hash);
+//        Assert.Equal(hash, gameState.Board.Data.Hash);
 //    }
 
 //    [Theory]
@@ -84,6 +83,6 @@
 //            gameState.Apply(mov);
 //        }
 
-//        // gameState.Board.Pieces.ArrayToFen().Should().Be(fen);
+//        // Assert.Equal(fen, gameState.Board.Pieces.ArrayToFen());
 //    }
 //}

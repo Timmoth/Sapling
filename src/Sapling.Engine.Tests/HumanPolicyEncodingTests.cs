@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine.Tests;
@@ -11,7 +10,7 @@ public class HumanPolicyEncodingTests
     {
         using var json = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "human_policy_golden_cases.json")));
-        json.RootElement.GetProperty("schema_version").GetInt32().Should().Be(HumanPolicyEncoding.SchemaVersion);
+        Assert.Equal(HumanPolicyEncoding.SchemaVersion, json.RootElement.GetProperty("schema_version").GetInt32());
 
         foreach (var testCase in json.RootElement.GetProperty("cases").EnumerateArray())
         {
@@ -35,7 +34,7 @@ public class HumanPolicyEncodingTests
 
             var activeBoard = Enumerable.Range(0, encodedBoard.Length)
                 .Where(i => encodedBoard[i] != 0f).ToHashSet();
-            activeBoard.Should().BeEquivalentTo(expectedBoard, testCase.GetProperty("name").GetString());
+            Assert.True(expectedBoard.SetEquals(activeBoard), testCase.GetProperty("name").GetString());
 
             var legalMoves = new List<uint>();
             board.GenerateLegalMoves(legalMoves, captureOnly: false);
@@ -45,8 +44,7 @@ public class HumanPolicyEncodingTests
                 var encodedMove = HumanPolicyEncoding.EncodeMove(move, 0, 0);
                 var activeMove = Enumerable.Range(0, 132)
                     .Where(i => encodedMove[i] != 0f).ToArray();
-                activeMove.Should().Equal(moveCase.Value.EnumerateArray().Select(x => x.GetInt32()),
-                    $"move {moveCase.Name} in {testCase.GetProperty("name").GetString()}");
+                Assert.True(moveCase.Value.EnumerateArray().Select(x => x.GetInt32()).SequenceEqual(activeMove), $"move {moveCase.Name} in {testCase.GetProperty("name").GetString()}");
             }
         }
 
@@ -62,8 +60,8 @@ public class HumanPolicyEncodingTests
                 featureCase.GetProperty("root_score").GetInt32(),
                 featureCase.GetProperty("best_root_score").GetInt32());
             var expected = featureCase.GetProperty("expected").EnumerateArray().Select(x => x.GetDouble()).ToArray();
-            encoded[132].Should().BeApproximately((float)expected[0], 1e-7f);
-            encoded[133].Should().BeApproximately((float)expected[1], 1e-7f);
+            Assert.Equal((float)expected[0], encoded[132], 1e-7f);
+            Assert.Equal((float)expected[1], encoded[133], 1e-7f);
         }
     }
 
@@ -73,7 +71,7 @@ public class HumanPolicyEncodingTests
     [InlineData(2200, 1f)]
     public void RatingEncoder_UsesSpecifiedScale(int rating, float expected)
     {
-        HumanPolicyEncoding.EncodeRating(rating).Should().Be(expected);
+        Assert.Equal(expected, HumanPolicyEncoding.EncodeRating(rating));
     }
 
     [Theory]
@@ -82,6 +80,6 @@ public class HumanPolicyEncodingTests
     public void RatingEncoder_RejectsOutOfRangeValues(int rating)
     {
         var act = () => HumanPolicyEncoding.EncodeRating(rating);
-        act.Should().Throw<ArgumentOutOfRangeException>();
+        Assert.Throws<ArgumentOutOfRangeException>(() => act());
     }
 }

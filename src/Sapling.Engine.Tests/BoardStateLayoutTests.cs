@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Xunit;
 
 namespace Sapling.Engine.Tests;
@@ -11,29 +10,29 @@ public class BoardStateLayoutTests
     [Fact]
     public unsafe void BoardStateData_SizeContract_Holds()
     {
-        sizeof(BoardStateData).Should().Be((int)BoardStateData.BoardStateSize);
-        sizeof(BoardStateData).Should().Be(168);
-        (168 % 8).Should().Be(0, "array elements must stay 8-byte aligned");
+        Assert.Equal((int)BoardStateData.BoardStateSize, sizeof(BoardStateData));
+        Assert.Equal(168, sizeof(BoardStateData));
+        Assert.True((168 % 8) == 0, "array elements must stay 8-byte aligned");
     }
 
     [Fact]
     public void BoardStateData_CriticalFieldOffsets_Hold()
     {
-        Off("Occupancy").Should().Be(0);
-        Off("Hash").Should().Be(120);
-        Off("TurnCount").Should().Be(128);
-        Off("PawnHash").Should().Be(138);
-        Off("WhiteMaterialHash").Should().Be(146);
-        Off("BlackMaterialHash").Should().Be(154);
-        Off("Is960").Should().Be(166);
+        Assert.Equal(0, Off("Occupancy"));
+        Assert.Equal(120, Off("Hash"));
+        Assert.Equal(128, Off("TurnCount"));
+        Assert.Equal(138, Off("PawnHash"));
+        Assert.Equal(146, Off("WhiteMaterialHash"));
+        Assert.Equal(154, Off("BlackMaterialHash"));
+        Assert.Equal(166, Off("Is960"));
     }
 
     [Fact]
     public unsafe void AccumulatorState_SizeContract_Holds()
     {
-        sizeof(AccumulatorState).Should().Be(56);
-        OffAcc("Evaluation").Should().Be(44);
-        OffAcc("Move").Should().Be(48);
+        Assert.Equal(56, sizeof(AccumulatorState));
+        Assert.Equal(44, OffAcc("Evaluation"));
+        Assert.Equal(48, OffAcc("Move"));
     }
 
     private static int Off(string field) => (int)Marshal.OffsetOf(typeof(BoardStateData), field);

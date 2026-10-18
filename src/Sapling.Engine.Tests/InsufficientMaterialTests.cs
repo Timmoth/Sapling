@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-using Sapling.Engine.MoveGen;
+﻿using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine.Tests;
 
@@ -23,7 +22,7 @@ public class InsufficientMaterialTests
     public void ReportsDeadPositionAccordingToPossibleMate(string fen, bool isDeadPosition)
     {
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
-        board.InsufficientMatingMaterial().Should().Be(isDeadPosition);
+        Assert.Equal(isDeadPosition, board.InsufficientMatingMaterial());
     }
 
     [Theory]
@@ -34,7 +33,7 @@ public class InsufficientMaterialTests
     {
         using var game = new GameState(BoardStateExtensions.CreateBoardFromFen(fen));
 
-        game.GameOver().Should().Be(expectedGameOver);
+        Assert.Equal(expectedGameOver, game.GameOver());
     }
 
     [Theory]
@@ -43,14 +42,14 @@ public class InsufficientMaterialTests
     public void CapturingLastPawn_UpdatesPieceCountAndRecognizesDeadMaterial(string fen, string uci)
     {
         using var game = new GameState(BoardStateExtensions.CreateBoardFromFen(fen));
-        game.Board.PieceCount.Should().Be(4);
-        game.GameOver().Should().BeFalse();
+        Assert.Equal(4, game.Board.PieceCount);
+        Assert.False(game.GameOver());
 
         var capture = game.LegalMoves.Single(move => move.ToUciMoveName() == uci);
         game.Apply(capture);
 
-        game.Board.PieceCount.Should().Be(3);
-        game.Board.InsufficientMatingMaterial().Should().BeTrue();
-        game.GameOver().Should().BeTrue();
+        Assert.Equal(3, game.Board.PieceCount);
+        Assert.True(game.Board.InsufficientMatingMaterial());
+        Assert.True(game.GameOver());
     }
 }

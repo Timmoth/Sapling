@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-using Sapling.Engine.MoveGen;
+﻿using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine.Tests;
 
@@ -20,11 +19,11 @@ public class MoveTests
         var move = MoveExtensions.EncodeCapturePromotionMove((byte)movedPiece, fromSquare, (byte)capturedPiece,
             toSquare,
             (byte)moveType);
-        move.GetMovedPiece().Should().Be((byte)movedPiece);
-        move.GetFromSquare().Should().Be(fromSquare);
-        move.GetCapturedPiece().Should().Be((byte)capturedPiece);
-        move.GetToSquare().Should().Be(toSquare);
-        move.GetMoveType().Should().Be((byte)moveType);
+        Assert.Equal((byte)movedPiece, move.GetMovedPiece());
+        Assert.Equal(fromSquare, move.GetFromSquare());
+        Assert.Equal((byte)capturedPiece, move.GetCapturedPiece());
+        Assert.Equal(toSquare, move.GetToSquare());
+        Assert.Equal((byte)moveType, move.GetMoveType());
     }
 
     [Theory]
@@ -44,6 +43,6 @@ public class MoveTests
         var move = MoveExtensions.EncodeCapturePromotionMove((byte)movedPiece, fromSquare, (byte)capturedPiece,
             toSquare,
             (byte)moveType);
-        move.IsQuiet().Should().Be(expected);
+        Assert.Equal(expected, move.IsQuiet());
     }
 }

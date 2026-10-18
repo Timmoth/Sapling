@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-using Sapling.Engine.Evaluation;
+﻿using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
 using Sapling.Engine.Transpositions;
@@ -52,7 +51,7 @@ public class StaticExchangeTests
             expected += i % 2 == 0 ? v : -v;
         }
 
-        seeScore.Should().Be(expected);
+        Assert.Equal(expected, seeScore);
     }
 
     public static byte ChatToPiece(char c)

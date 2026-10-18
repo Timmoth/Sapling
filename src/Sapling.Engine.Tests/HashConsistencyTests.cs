@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Sapling.Engine.Tests;
 
@@ -19,16 +18,16 @@ public class HashConsistencyTests
     private static void AssertHashMatchesRecompute(GameState state, string context)
     {
         var recomputed = Zobrist.CalculateZobristKey(ref state.Board);
-        state.Board.Hash.Should().Be(recomputed, context);
+        Assert.True(state.Board.Hash == recomputed, context);
     }
 
     [Fact]
     public void InitialPosition_HashIsSelfConsistentAndPinned()
     {
         var board = BoardStateExtensions.CreateBoardFromFen(Constants.InitialState);
-        board.Hash.Should().Be(Zobrist.CalculateZobristKey(ref board));
+        Assert.Equal(Zobrist.CalculateZobristKey(ref board), board.Hash);
         // Pins the Zobrist table itself: a changed key set changes this value.
-        board.Hash.Should().Be(5060803636482931868UL);
+        Assert.Equal(5060803636482931868UL, board.Hash);
     }
 
     [Theory]
@@ -49,7 +48,7 @@ public class HashConsistencyTests
 
         foreach (var uci in moves)
         {
-            state.LegalMoves.Should().Contain(m => m.ToUciMoveName() == uci, $"{uci} must be legal");
+            Assert.True(state.LegalMoves.Any(m => m.ToUciMoveName() == uci), $"{uci} must be legal");
             state.Apply(Move(state, uci));
             AssertHashMatchesRecompute(state, $"after {uci}");
         }
@@ -75,6 +74,6 @@ public class HashConsistencyTests
         const string fen = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 5 3";
         var a = BoardStateExtensions.CreateBoardFromFen(fen);
         var b = BoardStateExtensions.CreateBoardFromFen(fen);
-        a.Hash.Should().Be(b.Hash);
+        Assert.Equal(b.Hash, a.Hash);
     }
 }

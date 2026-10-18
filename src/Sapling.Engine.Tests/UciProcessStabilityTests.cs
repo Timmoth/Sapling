@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 
 namespace Sapling.Engine.Tests;
 
@@ -33,7 +32,7 @@ public class UciProcessStabilityTests
     private static UciProcess StartEngine()
     {
         var exe = FindEngine();
-        exe.Should().NotBeNull("the Sapling app must be built (dotnet test on the solution builds it)");
+        Assert.True(exe != null, "the Sapling app must be built (dotnet test on the solution builds it)");
         return new UciProcess(exe!);
     }
 
@@ -59,13 +58,12 @@ public class UciProcessStabilityTests
             "go depth 5",
         })
         {
-            e.Bestmove(go).Should().NotBeEmpty($"go '{go}' must produce a bestmove");
+            Assert.True(e.Bestmove(go).Length > 0, $"go '{go}' must produce a bestmove");
         }
         e.Send("go infinite");
-        e.SawPrefixWithin("bestmove", TimeSpan.FromMilliseconds(300)).Should().BeFalse(
-            "go infinite must keep searching until an explicit stop");
+        Assert.False(e.SawPrefixWithin("bestmove", TimeSpan.FromMilliseconds(300)), "go infinite must keep searching until an explicit stop");
         e.Send("stop");
-        e.Bestmove("").Should().NotBeEmpty("infinite+stop must produce a bestmove");
+        Assert.True(e.Bestmove("").Length > 0, "infinite+stop must produce a bestmove");
     }
 
     [Theory]
@@ -80,7 +78,7 @@ public class UciProcessStabilityTests
         e.Ready();
         e.Send("position startpos");
         var mv = e.Bestmove("go movetime 250");
-        mv.Should().NotBeEmpty($"Threads={threads} must produce a bestmove");
+        Assert.True(mv.Length > 0, $"Threads={threads} must produce a bestmove");
         e.Send($"position startpos moves {mv}");
         e.Ready();
     }
@@ -95,7 +93,7 @@ public class UciProcessStabilityTests
         e.Send($"setoption name Hash value {mb}");
         e.Ready();
         e.Send("position startpos");
-        e.Bestmove("go depth 6").Should().NotBeEmpty($"Hash={mb} must produce a bestmove");
+        Assert.True(e.Bestmove("go depth 6").Length > 0, $"Hash={mb} must produce a bestmove");
     }
 
     [Fact]
@@ -103,8 +101,8 @@ public class UciProcessStabilityTests
     {
         using var e = StartEngine();
         var options = e.ParseOptions();
-        options.Should().ContainKey("Threads");
-        options.Should().ContainKey("Hash");
+        Assert.Contains("Threads", options);
+        Assert.Contains("Hash", options);
         foreach (var (name, (kind, lo, hi, dflt)) in options)
         {
             if (kind == "spin")
@@ -134,7 +132,7 @@ public class UciProcessStabilityTests
             }
         }
         e.Send("position startpos");
-        e.Bestmove("go depth 4").Should().NotBeEmpty("engine must still search after option stress");
+        Assert.True(e.Bestmove("go depth 4").Length > 0, "engine must still search after option stress");
     }
 
     [Fact]
@@ -151,13 +149,13 @@ public class UciProcessStabilityTests
             var mv = e.Bestmove($"go wtime {wtime} btime {btime} winc 4 binc 4");
             var dt = (int)sw.ElapsedMilliseconds;
             if (mv.Length == 0 || mv == "(none)") break;
-            dt.Should().BeLessThan(clock + 500, $"ply {ply} overran its clock");
+            Assert.True(dt < clock + 500, $"ply {ply} overran its clock");
             if (white) wtime = Math.Max(1, wtime - dt + 4); else btime = Math.Max(1, btime - dt + 4);
             moves.Add(mv);
             e.Send("position startpos moves " + string.Join(' ', moves));
         }
         e.Ready();
-        moves.Count.Should().BeGreaterThanOrEqualTo(20);
+        Assert.True(moves.Count >= 20);
         ReplayLegal(string.Join(' ', moves));
     }
 
@@ -166,7 +164,7 @@ public class UciProcessStabilityTests
     {
         using var e = StartEngine();
         e.Send("position fen 6k1/6Q1/6K1/8/8/8/8/8 b - - 0 1");
-        e.Bestmove("go depth 5").Should().Be("(none)", "a mated side must report bestmove (none)");
+        Assert.True(e.Bestmove("go depth 5") == "(none)", "a mated side must report bestmove (none)");
     }
 
     [Fact]
@@ -174,8 +172,8 @@ public class UciProcessStabilityTests
     {
         using var e = StartEngine();
         e.Send("position startpos");
-        e.Bestmove("go wtime 0 btime 5000").Should().NotBeEmpty();
-        e.Bestmove("go wtime -100 btime 5000").Should().NotBeEmpty();
+        Assert.NotEmpty(e.Bestmove("go wtime 0 btime 5000"));
+        Assert.NotEmpty(e.Bestmove("go wtime -100 btime 5000"));
         e.Ready();
     }
 
@@ -184,7 +182,7 @@ public class UciProcessStabilityTests
     {
         using var e = StartEngine();
         e.Send("position startpos moves e2e5");
-        e.Expect(ErrorPrefix).Should().Contain("illegal move");
+        Assert.Contains("illegal move", e.Expect(ErrorPrefix));
         e.Ready();
         e.Send("position");
         e.Expect(ErrorPrefix);
@@ -192,7 +190,7 @@ public class UciProcessStabilityTests
         e.Send("position startpos junk"); // silently ignored (observed); must stay usable
         e.Ready();
         e.Send("position startpos");
-        e.Bestmove("go depth 4").Should().NotBeEmpty();
+        Assert.NotEmpty(e.Bestmove("go depth 4"));
     }
 
     [Fact]
@@ -202,16 +200,16 @@ public class UciProcessStabilityTests
         e.Send("position startpos");
         var (mv, lines) = e.BestmoveWithLines("go depth 10");
         var infos = lines.Where(l => l.StartsWith("info depth ")).ToList();
-        infos.Should().NotBeEmpty();
+        Assert.NotEmpty(infos);
         var last = infos[^1].Split(' ');
         foreach (var field in new[] { "score", "nodes", "nps", "time", "pv" })
-            last.Should().Contain(field, $"info line must carry {field}");
+            Assert.True(last.Contains(field), $"info line must carry {field}");
         var pv = last[(Array.IndexOf(last, "pv") + 1)..];
-        pv.Should().NotBeEmpty();
-        pv[0].Should().Be(mv, "pv head must equal bestmove");
+        Assert.NotEmpty(pv);
+        Assert.True(pv[0] == mv, "pv head must equal bestmove");
         var depths = infos.Select(l => int.Parse(l.Split()[2])).ToList();
-        depths.Should().BeInAscendingOrder();
-        depths[^1].Should().Be(10, "go depth 10 must reach depth 10");
+        Assert.Equal(depths.OrderBy(x => x), depths);
+        Assert.True(depths[^1] == 10, "go depth 10 must reach depth 10");
     }
 
     [Fact]
@@ -223,12 +221,12 @@ public class UciProcessStabilityTests
             e.Send("ucinewgame");
             e.Ready();
             e.Send("position startpos");
-            e.Bestmove("go depth 6").Should().NotBeEmpty($"game {game}");
+            Assert.True(e.Bestmove("go depth 6").Length > 0, $"game {game}");
         }
         e.Send("position startpos");
         e.Send("go depth 90");
         e.Send("stop");
-        e.Bestmove("").Should().NotBeEmpty("stop racing search start must still answer");
+        Assert.True(e.Bestmove("").Length > 0, "stop racing search start must still answer");
     }
 
     [Fact]
@@ -261,14 +259,14 @@ public class UciProcessStabilityTests
         e.Ready();
         e.Send("position startpos");
         var mv = e.Bestmove("go movetime 200");
-        mv.Should().NotBeEmpty();
+        Assert.NotEmpty(mv);
         e.Send($"position startpos moves {mv}");
         e.Ready();
         e.Send("setoption name HumanElo value 0");
         e.Send("setoption name Ponder value true");
         e.Ready();
         e.Send("position startpos");
-        e.Bestmove("go wtime 2000 btime 2000").Should().NotBeEmpty();
+        Assert.NotEmpty(e.Bestmove("go wtime 2000 btime 2000"));
     }
 
     [Fact]
@@ -282,14 +280,13 @@ public class UciProcessStabilityTests
         e.Ready();
         e.Send("position startpos");
         e.Send("go ponder wtime 5000 btime 5000");
-        e.SawPrefixWithin("bestmove", TimeSpan.FromMilliseconds(250)).Should().BeFalse(
-            "ponder search should continue until ponderhit or stop");
+        Assert.False(e.SawPrefixWithin("bestmove", TimeSpan.FromMilliseconds(250)), "ponder search should continue until ponderhit or stop");
         e.Send("ponderhit");
         var mv = e.Bestmove("");
-        mv.Should().NotBeEmpty("ponderhit must release the completed ponder result");
+        Assert.True(mv.Length > 0, "ponderhit must release the completed ponder result");
         e.Send($"position startpos moves {mv}");
         e.Ready();
-        e.Bestmove("go wtime 5000 btime 5000").Should().NotBeEmpty();
+        Assert.NotEmpty(e.Bestmove("go wtime 5000 btime 5000"));
     }
 
     [Fact]
@@ -298,9 +295,9 @@ public class UciProcessStabilityTests
         using var e = StartEngine();
         e.Send("uci");
         var dump = e.ReadUntil("uciok", TimeSpan.FromSeconds(10));
-        var hashLine = dump.Should().ContainSingle(l => l.StartsWith("option name Hash")).Subject;
+        var hashLine = Assert.Single(dump, l => l.StartsWith("option name Hash"));
         var max = int.Parse(hashLine.Split("max")[1].Trim());
-        max.Should().BeLessThanOrEqualTo(1_000_000);
+        Assert.True(max <= 1_000_000);
         e.Send($"setoption name Hash value {max}");
         e.Ready();
     }

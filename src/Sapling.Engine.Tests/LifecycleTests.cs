@@ -1,5 +1,4 @@
 using System;
-using FluentAssertions;
 using Sapling.Engine.Search;
 using Xunit;
 
@@ -98,15 +97,15 @@ public class LifecycleTests
         var ps = new ParallelSearcher(1024);
         try
         {
-            ps.Searchers.Count.Should().Be(1);
+            Assert.Equal(1, ps.Searchers.Count);
 
             // Grow and shrink worker pool; removed searchers must be disposed without leaking.
             // SetThreads clamps to Environment.ProcessorCount, so target the max this host allows.
             var grow = Math.Min(4, Environment.ProcessorCount);
             ps.SetThreads(grow);
-            ps.Searchers.Count.Should().Be(grow);
+            Assert.Equal(grow, ps.Searchers.Count);
             ps.SetThreads(1);
-            ps.Searchers.Count.Should().Be(1);
+            Assert.Equal(1, ps.Searchers.Count);
         }
         finally
         {
@@ -153,10 +152,10 @@ public class LifecycleTests
 
             s.ClearCorrectionHistory();
 
-            s.PawnCorrHist[0].Should().Be(0);
-            s.WhiteMaterialCorrHist[0].Should().Be(0);
-            s.BlackMaterialCorrHist[Searcher.TableSize].Should().Be(0);
-            s.PreviousMoveCorrHist[17].Should().Be(0);
+            Assert.Equal(0, s.PawnCorrHist[0]);
+            Assert.Equal(0, s.WhiteMaterialCorrHist[0]);
+            Assert.Equal(0, s.BlackMaterialCorrHist[Searcher.TableSize]);
+            Assert.Equal(0, s.PreviousMoveCorrHist[17]);
         }
         finally
         {
@@ -195,7 +194,7 @@ public class LifecycleTests
         try
         {
             var (move, _, _, _, _) = ps.DepthBoundSearch(state, 3);
-            move.Should().NotBeEmpty("a legal move must be returned for a high-fullmove position");
+            Assert.True(move.Count > 0, "a legal move must be returned for a high-fullmove position");
         }
         finally
         {

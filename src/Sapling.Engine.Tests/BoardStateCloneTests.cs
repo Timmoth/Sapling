@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine.Tests;
@@ -28,8 +27,8 @@ public class BoardStateCloneTests
         var copy = default(BoardStateData);
         source.CloneTo(ref copy);
 
-        copy.Hash.Should().Be(source.Hash);
-        LegalNames(ref copy).Should().BeEquivalentTo(LegalNames(ref source));
+        Assert.Equal(source.Hash, copy.Hash);
+        Assert.Equal(LegalNames(ref source), LegalNames(ref copy));
     }
 
     [Fact]
@@ -43,10 +42,10 @@ public class BoardStateCloneTests
         var copy = default(BoardStateData);
         state.Board.CloneTo(ref copy);
 
-        copy.Hash.Should().Be(state.Board.Hash);
-        copy.WhiteToMove.Should().Be(state.Board.WhiteToMove);
-        copy.CastleRights.Should().Be(state.Board.CastleRights);
-        copy.EnPassantFile.Should().Be(state.Board.EnPassantFile);
-        LegalNames(ref copy).Should().BeEquivalentTo(LegalNames(ref state.Board));
+        Assert.Equal(state.Board.Hash, copy.Hash);
+        Assert.Equal(state.Board.WhiteToMove, copy.WhiteToMove);
+        Assert.Equal(state.Board.CastleRights, copy.CastleRights);
+        Assert.Equal(state.Board.EnPassantFile, copy.EnPassantFile);
+        Assert.Equal(LegalNames(ref state.Board), LegalNames(ref copy));
     }
 }

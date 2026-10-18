@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Sapling.Engine.Search;
 using Xunit;
 
@@ -71,7 +70,7 @@ public class AllocationFaultInjectionTests
         {
             lock (_gate)
             {
-                _outstanding.Add(p).Should().BeTrue("allocation pointer unexpectedly reused before free");
+                Assert.True(_outstanding.Add(p), "allocation pointer unexpectedly reused before free");
             }
         }
 
@@ -98,7 +97,7 @@ public class AllocationFaultInjectionTests
         tracker.ResetCounter();
         new Searcher(table, 1024).Dispose();
         var sites = tracker.AllocationCount;
-        sites.Should().BeGreaterThan(10);
+        Assert.True(sites > 10);
 
         for (var k = 1; k <= sites; k++)
         {
@@ -107,13 +106,12 @@ public class AllocationFaultInjectionTests
             Assert.Throws<OutOfMemoryException>(() => new Searcher(table, 1024));
             GC.Collect();
             GC.WaitForPendingFinalizers();
-            tracker.Outstanding.Should().Be(tracker.Baseline + 1,
-                $"construction fault {k}/{sites} must leave only the caller's table");
+            Assert.True(tracker.Outstanding == tracker.Baseline + 1, $"construction fault {k}/{sites} must leave only the caller's table");
         }
 
         MemoryHelpers.FreeAligned(table); // free while hooks are still observing
-        tracker.DoubleFreeViolations.Should().Be(0);
-        tracker.Outstanding.Should().Be(tracker.Baseline);
+        Assert.Equal(0, tracker.DoubleFreeViolations);
+        Assert.Equal(tracker.Baseline, tracker.Outstanding);
     }
 
     [Fact]
@@ -125,9 +123,8 @@ public class AllocationFaultInjectionTests
         Assert.Throws<OutOfMemoryException>(() => new ParallelSearcher(1024));
         GC.Collect();
         GC.WaitForPendingFinalizers();
-        tracker.Outstanding.Should().Be(tracker.Baseline,
-            "the owned table must be released when worker construction fails");
-        tracker.DoubleFreeViolations.Should().Be(0);
+        Assert.True(tracker.Outstanding == tracker.Baseline, "the owned table must be released when worker construction fails");
+        Assert.Equal(0, tracker.DoubleFreeViolations);
     }
 
     [Fact]
@@ -139,8 +136,8 @@ public class AllocationFaultInjectionTests
         owner.Dispose();
         GC.Collect();
         GC.WaitForPendingFinalizers();
-        tracker.Outstanding.Should().Be(tracker.Baseline);
-        tracker.DoubleFreeViolations.Should().Be(0);
+        Assert.Equal(tracker.Baseline, tracker.Outstanding);
+        Assert.Equal(0, tracker.DoubleFreeViolations);
     }
 
     [NativeFinalizerFact]
@@ -152,9 +149,8 @@ public class AllocationFaultInjectionTests
         GC.WaitForPendingFinalizers();
         GC.Collect();
         GC.WaitForPendingFinalizers();
-        tracker.Outstanding.Should().Be(tracker.Baseline,
-            "child finalizers must free child buffers without the parent");
-        tracker.DoubleFreeViolations.Should().Be(0, "parent finalizer must not double-free child buffers");
+        Assert.True(tracker.Outstanding == tracker.Baseline, "child finalizers must free child buffers without the parent");
+        Assert.True(tracker.DoubleFreeViolations == 0, "parent finalizer must not double-free child buffers");
         return;
 
         static void CreateAndDrop()
@@ -174,24 +170,23 @@ public class AllocationFaultInjectionTests
         {
             // TT(1) + exactly one worker at creation.
             var perWorker = tracker.Outstanding - tracker.Baseline - 1;
-            perWorker.Should().BeGreaterThan(10);
+            Assert.True(perWorker > 10);
             for (var cycle = 0; cycle < 5; cycle++)
             {
                 for (var threads = 2; threads <= 4; threads++)
                     owner.SetThreads(threads);
                 for (var threads = 3; threads >= 1; threads--)
                     owner.SetThreads(threads);
-                tracker.Outstanding.Should().Be(tracker.Baseline + 1 + owner.Searchers.Count * perWorker,
-                    "resize cycles must not leak or double-free worker buffers");
+                Assert.True(tracker.Outstanding == tracker.Baseline + 1 + owner.Searchers.Count * perWorker, "resize cycles must not leak or double-free worker buffers");
             }
-            tracker.DoubleFreeViolations.Should().Be(0);
+            Assert.Equal(0, tracker.DoubleFreeViolations);
         }
         finally
         {
             owner.Dispose();
         }
-        tracker.Outstanding.Should().Be(tracker.Baseline);
-        tracker.DoubleFreeViolations.Should().Be(0);
+        Assert.Equal(tracker.Baseline, tracker.Outstanding);
+        Assert.Equal(0, tracker.DoubleFreeViolations);
     }
 
     [NativeThreadsFact]
@@ -269,17 +264,16 @@ public class AllocationFaultInjectionTests
 
             Thread.Sleep(2000);
             Volatile.Write(ref stop, true);
-            Task.WaitAll(tasks.ToArray(), TimeSpan.FromSeconds(15)).Should().BeTrue("stress tasks must finish");
-            failures.Should().BeEmpty();
-            completedSearches.Should().BePositive("stress must actually complete searches");
+            Assert.True(Task.WaitAll(tasks.ToArray(), TimeSpan.FromSeconds(15)), "stress tasks must finish");
+            Assert.Empty(failures);
+            Assert.True(completedSearches > 0);
 
             owner.Dispose();
             GC.Collect();
             GC.WaitForPendingFinalizers();
             // state is still alive here: its HashHistory block is expected outstanding.
-            tracker.Outstanding.Should().Be(tracker.Baseline + 1,
-                "stress must return allocations to baseline");
-            tracker.DoubleFreeViolations.Should().Be(0);
+            Assert.True(tracker.Outstanding == tracker.Baseline + 1, "stress must return allocations to baseline");
+            Assert.Equal(0, tracker.DoubleFreeViolations);
         }
         finally
         {

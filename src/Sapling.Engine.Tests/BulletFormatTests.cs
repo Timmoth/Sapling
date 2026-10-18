@@ -1,5 +1,4 @@
 using System.IO;
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 using Xunit;
@@ -60,7 +59,7 @@ public class BulletFormatTests
         var roundTripped = new BulletFormat();
         roundTripped.Read(reader);
 
-        BulletFormat.IsEqual(original, roundTripped).Should().BeTrue();
+        Assert.True(BulletFormat.IsEqual(original, roundTripped));
     }
 
     [Fact]
@@ -74,7 +73,7 @@ public class BulletFormatTests
         // Two pieces fill only the first nibble pair (byte 0); bytes 1..15 must be zero.
         for (var i = 1; i < 16; i++)
         {
-            packed.Pieces[i].Should().Be(0, $"piece byte {i} must be zero for a two-piece board");
+            Assert.True(packed.Pieces[i] == 0, $"piece byte {i} must be zero for a two-piece board");
         }
     }
 
@@ -98,7 +97,7 @@ public class BulletFormatTests
         {
             var nibble = (packed.Pieces[i >> 1] >> (4 * (i & 1))) & 0xF;
             decoded[i] = nibbleToPiece[nibble];
-            decoded[i].Should().BePositive($"piece slot {i} holds an invalid nibble (uncleared buffer?)");
+            Assert.True(decoded[i] > 0);
         }
 
         // Occupancy is scanned LSB-first (a1=0). Piece codes: white even (P=2..K=12), black odd (p=1..k=11).
@@ -109,6 +108,6 @@ public class BulletFormatTests
             1, 1, 1, 1, 1, 1, 1, 1, // a7..h7 black pawns
             7, 3, 5, 9, 11, 5, 3, 7 // a8..h8: r n b q k b n r
         };
-        decoded.Should().Equal(expected);
+        Assert.Equal(expected, decoded);
     }
 }

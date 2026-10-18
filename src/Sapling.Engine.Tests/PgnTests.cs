@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-using Sapling.Engine.Pgn;
+﻿using Sapling.Engine.Pgn;
 
 namespace Sapling.Engine.Tests;
 
@@ -72,6 +71,6 @@ public class PgnTests
     [InlineData(63, "h8")]
     public void ConvertPosition(byte position, string expected)
     {
-        PgnSplitter.ConvertPosition(position).Should().Be(expected);
+        Assert.Equal(expected, PgnSplitter.ConvertPosition(position));
     }
 }

@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-
+﻿
 namespace Sapling.Engine.Tests;
 
 public class BitboardHelperTests
@@ -28,14 +27,14 @@ public class BitboardHelperTests
                     ? BitboardHelpers.RankFileToBitboard(rank - 1, file + 1)
                     : 0;
 
-                bitboard.ShiftUp().PeekLSB().Should().Be(upSquare.PeekLSB());
-                bitboard.ShiftDown().PeekLSB().Should().Be(downSquare.PeekLSB());
-                bitboard.ShiftLeft().PeekLSB().Should().Be(leftSquare.PeekLSB());
-                bitboard.ShiftRight().PeekLSB().Should().Be(rightSquare.PeekLSB());
-                bitboard.ShiftUpLeft().PeekLSB().Should().Be(upLeft.PeekLSB());
-                bitboard.ShiftUpRight().PeekLSB().Should().Be(upRight.PeekLSB());
-                bitboard.ShiftDownLeft().PeekLSB().Should().Be(downLeft.PeekLSB());
-                bitboard.ShiftDownRight().PeekLSB().Should().Be(downRight.PeekLSB());
+                Assert.Equal(upSquare.PeekLSB(), bitboard.ShiftUp().PeekLSB());
+                Assert.Equal(downSquare.PeekLSB(), bitboard.ShiftDown().PeekLSB());
+                Assert.Equal(leftSquare.PeekLSB(), bitboard.ShiftLeft().PeekLSB());
+                Assert.Equal(rightSquare.PeekLSB(), bitboard.ShiftRight().PeekLSB());
+                Assert.Equal(upLeft.PeekLSB(), bitboard.ShiftUpLeft().PeekLSB());
+                Assert.Equal(upRight.PeekLSB(), bitboard.ShiftUpRight().PeekLSB());
+                Assert.Equal(downLeft.PeekLSB(), bitboard.ShiftDownLeft().PeekLSB());
+                Assert.Equal(downRight.PeekLSB(), bitboard.ShiftDownRight().PeekLSB());
             }
         }
     }

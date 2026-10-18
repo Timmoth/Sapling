@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.DataGen;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
@@ -38,9 +37,8 @@ public unsafe class QuiescenceMoveOrderingTests
         var otherScore = Searcher.ScoreQuiescenceMove(ref board, higherValueCapture, ttMove,
             occupancy, captures, history);
 
-        ttScore.Should().Be(SpsaOptions.MoveOrderingBestMoveBias);
-        ttScore.Should().BeGreaterThan(otherScore,
-            "TT priority must survive the capture/SEE scoring branches");
+        Assert.Equal(SpsaOptions.MoveOrderingBestMoveBias, ttScore);
+        Assert.True(ttScore > otherScore, "TT priority must survive the capture/SEE scoring branches");
     }
 
     [Fact]
@@ -56,8 +54,8 @@ public unsafe class QuiescenceMoveOrderingTests
             if (pseudoMoves[i].ToUciMoveName() == "a6b7")
                 illegalTtMove = pseudoMoves[i];
         }
-        illegalTtMove.Should().NotBe(0);
-        state.LegalMoves.Should().NotContain(illegalTtMove);
+        Assert.NotEqual(0u, illegalTtMove);
+        Assert.DoesNotContain(illegalTtMove, state.LegalMoves);
 
         var table = Bench.AllocateTranspositions(TableSize);
         try
@@ -73,7 +71,7 @@ public unsafe class QuiescenceMoveOrderingTests
             var score = searcher.QuiescenceSearch(searcher.Boards, searcher.Accumulators, 0,
                 Constants.MinScore, Constants.MaxScore);
 
-            score.Should().Be(0, "the TT move is pseudo-legal but exposes the king, and the position is stalemate");
+            Assert.True(score == 0, "the TT move is pseudo-legal but exposes the king, and the position is stalemate");
         }
         finally
         {

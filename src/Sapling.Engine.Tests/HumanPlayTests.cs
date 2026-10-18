@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
@@ -14,7 +13,7 @@ public class HumanPlayTests
     {
         using var fixture = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "human_policy_inference_golden.json")));
-        fixture.RootElement.GetProperty("schema_version").GetInt32().Should().Be(1);
+        Assert.Equal(1, fixture.RootElement.GetProperty("schema_version").GetInt32());
 
         foreach (var testCase in fixture.RootElement.GetProperty("cases").EnumerateArray())
         {
@@ -40,13 +39,11 @@ public class HumanPlayTests
             for (var i = 0; i < legalMoves.Count; i++)
                 expected[i] = expectedByMove.GetProperty(legalMoves[i].ToUciMoveName()).GetSingle();
 
-            Softmax(actual).Should().NotBeNull();
+            Assert.NotNull(Softmax(actual));
             var actualProbability = Softmax(actual);
             var expectedProbability = Softmax(expected);
-            actualProbability.Zip(expectedProbability).Sum(pair => Math.Abs(pair.First - pair.Second))
-                .Should().BeLessThanOrEqualTo(0.002f, testCase.GetProperty("name").GetString());
-            Array.IndexOf(actual, actual.Max()).Should().Be(Array.IndexOf(expected, expected.Max()),
-                testCase.GetProperty("name").GetString());
+            Assert.True(actualProbability.Zip(expectedProbability).Sum(pair => Math.Abs(pair.First - pair.Second)) <= 0.002f, testCase.GetProperty("name").GetString());
+            Assert.True(Array.IndexOf(actual, actual.Max()) == Array.IndexOf(expected, expected.Max()), testCase.GetProperty("name").GetString());
         }
     }
 
@@ -59,8 +56,8 @@ public class HumanPlayTests
         var ranked = searcher.RankRootMoves(state, 2);
         var board = state.Board;
 
-        HumanPlay.PickMove(new Random(1), ref board, ranked, out var probability).Should().Be(0);
-        probability.Should().Be(1f);
+        Assert.Equal(0, HumanPlay.PickMove(new Random(1), ref board, ranked, out var probability));
+        Assert.Equal(1f, probability);
     }
 
     [Fact]
@@ -77,9 +74,10 @@ public class HumanPlayTests
         for (var i = 0; i < 100; i++)
         {
             var selected = HumanPlay.PickMove(rng, ref board, ranked, out var probability);
-            selected.Should().BeInRange(0, ranked.Count - 1);
-            state.LegalMoves.Should().Contain(ranked[selected].Move);
-            probability.Should().BeGreaterThan(0f).And.BeLessThanOrEqualTo(1f);
+            Assert.InRange(selected, 0, ranked.Count - 1);
+            Assert.Contains(ranked[selected].Move, state.LegalMoves);
+            Assert.True(probability > 0f);
+            Assert.True(probability <= 1f);
         }
     }
 
@@ -103,8 +101,8 @@ public class HumanPlayTests
         var neutralLogits = HumanMovePolicy.ScoreCandidates(boardFeatures, neutralMoves, legalMoves.Count, 1500);
         var scoredLogits = HumanMovePolicy.ScoreCandidates(boardFeatures, scoredMoves, legalMoves.Count, 1500);
 
-        Softmax(neutralLogits).Zip(Softmax(scoredLogits))
-            .Sum(pair => Math.Abs(pair.First - pair.Second)).Should().BeGreaterThan(1e-6f);
+        Assert.True(Softmax(neutralLogits).Zip(Softmax(scoredLogits))
+            .Sum(pair => Math.Abs(pair.First - pair.Second)) > 1e-6f);
     }
 
     [Fact]
@@ -122,8 +120,8 @@ public class HumanPlayTests
         var lowRating = HumanMovePolicy.ScoreCandidates(boardFeatures, moveFeatures, legalMoves.Count, 800);
         var highRating = HumanMovePolicy.ScoreCandidates(boardFeatures, moveFeatures, legalMoves.Count, 2200);
 
-        Softmax(lowRating).Zip(Softmax(highRating))
-            .Sum(pair => Math.Abs(pair.First - pair.Second)).Should().BeGreaterThan(1e-6f);
+        Assert.True(Softmax(lowRating).Zip(Softmax(highRating))
+            .Sum(pair => Math.Abs(pair.First - pair.Second)) > 1e-6f);
     }
 
     [Fact]
@@ -145,9 +143,9 @@ public class HumanPlayTests
         var repeated = HumanMovePolicy.Sample(new Random(8128), boardFeatures, moveFeatures,
             legalMoves.Count, 1500, out var repeatedProbability);
 
-        selected.Should().Be(repeated);
-        probability.Should().BeApproximately(repeatedProbability, 1e-7f);
-        probability.Should().BeApproximately(expectedProbabilities[selected], 1e-6f);
+        Assert.Equal(repeated, selected);
+        Assert.Equal(repeatedProbability, probability, 1e-7f);
+        Assert.Equal(expectedProbabilities[selected], probability, 1e-6f);
     }
 
     [Fact]
@@ -160,9 +158,9 @@ public class HumanPlayTests
         var wrongMoveCount = () => HumanMovePolicy.ScoreCandidates(board, moves, 2, 1500);
         var invalidRating = () => HumanMovePolicy.ScoreCandidates(board, moves, 1, 799);
 
-        shortBoard.Should().Throw<ArgumentException>();
-        wrongMoveCount.Should().Throw<ArgumentException>();
-        invalidRating.Should().Throw<ArgumentOutOfRangeException>();
+        Assert.Throws<ArgumentException>(shortBoard);
+        Assert.Throws<ArgumentException>(wrongMoveCount);
+        Assert.Throws<ArgumentOutOfRangeException>(invalidRating);
     }
 
     [Theory]
@@ -175,8 +173,8 @@ public class HumanPlayTests
     public void HumanElo_MapsToTheTrainedPolicyRange(int requested, int expected)
     {
         HumanPlay.SetElo(requested);
-        HumanPlay.Elo.Should().Be(expected);
-        HumanPlay.Enabled.Should().Be(expected != 0);
+        Assert.Equal(expected, HumanPlay.Elo);
+        Assert.Equal(expected != 0, HumanPlay.Enabled);
         HumanPlay.Reset();
     }
 
@@ -190,12 +188,12 @@ public class HumanPlayTests
 
         var ranked = searcher.RankRootMoves(state, 2);
 
-        ranked.Should().NotBeEmpty();
-        ranked.Count.Should().Be(state.LegalMoves.Count);
-        ranked[0].Score.Should().BeGreaterThan(1000);
-        state.LegalMoves.Should().Contain(ranked[0].Move);
+        Assert.NotEmpty(ranked);
+        Assert.Equal(state.LegalMoves.Count, ranked.Count);
+        Assert.True(ranked[0].Score > 1000);
+        Assert.Contains(ranked[0].Move, state.LegalMoves);
         for (var i = 1; i < ranked.Count; i++)
-            ranked[i - 1].Score.Should().BeGreaterThanOrEqualTo(ranked[i].Score);
+            Assert.True(ranked[i - 1].Score >= ranked[i].Score);
     }
 
     private static float[] Softmax(float[] logits)

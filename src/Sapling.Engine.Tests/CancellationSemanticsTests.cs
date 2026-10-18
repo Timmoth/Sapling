@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Sapling.Engine.Search;
 using Sapling.Engine.Transpositions;
 using Xunit;
@@ -52,13 +51,11 @@ public class CancellationSemanticsTests
         var first = Run();
         var second = Run();
 
-        first.nodes.Should().Be(second.nodes, "node-limited single-worker search must be deterministic");
-        first.pv.Should().Equal(second.pv);
-        first.score.Should().Be(second.score);
-        first.nodes.Should().BeGreaterThanOrEqualTo(nodeLimit,
-            "the contract stops when NodesVisited >= nodeLimit, not >");
-        first.nodes.Should().BeLessThanOrEqualTo(nodeLimit + 1,
-            "single-thread search checks the limit at every node, so only the boundary node may overshoot");
+        Assert.True(first.nodes == second.nodes, "node-limited single-worker search must be deterministic");
+        Assert.Equal(second.pv, first.pv);
+        Assert.Equal(second.score, first.score);
+        Assert.True(first.nodes >= nodeLimit, "the contract stops when NodesVisited >= nodeLimit, not >");
+        Assert.True(first.nodes <= nodeLimit + 1, "single-thread search checks the limit at every node, so only the boundary node may overshoot");
     }
 
     [Fact]
@@ -69,8 +66,8 @@ public class CancellationSemanticsTests
         try
         {
             var (pv, _, _, _, _) = owner.NodeBoundSearch(state, nodeLimit: 1);
-            pv.Should().NotBeEmpty("a legal fallback is required at very small limits");
-            state.LegalMoves.Should().Contain(pv[0]);
+            Assert.True(pv.Count > 0, "a legal fallback is required at very small limits");
+            Assert.Contains(pv[0], state.LegalMoves);
         }
         finally
         {
@@ -90,8 +87,7 @@ public class CancellationSemanticsTests
 
             ref var entry = ref owner.Transpositions[state.Board.Hash & worker.TtMask];
             var snapshot = TranspositionTableExtensions.Probe(ref entry, shared: false);
-            snapshot.FullHash.Should().NotBe(state.Board.Hash,
-                "an interrupted iteration must not publish a root TT entry with a garbage score");
+            Assert.True(snapshot.FullHash != state.Board.Hash, "an interrupted iteration must not publish a root TT entry with a garbage score");
         }
         finally
         {
@@ -121,10 +117,9 @@ public class CancellationSemanticsTests
                 Assert.True(search.Wait(TimeSpan.FromSeconds(5)), "stop must terminate the search promptly");
 
                 var (pv, depth, _, _, _) = search.Result;
-                pv.Should().NotBeEmpty();
-                state.LegalMoves.Should().Contain(pv[0]);
-                depth.Should().BeGreaterThanOrEqualTo(1,
-                    "the reported depth must come from a completed iteration");
+                Assert.NotEmpty(pv);
+                Assert.Contains(pv[0], state.LegalMoves);
+                Assert.True(depth >= 1, "the reported depth must come from a completed iteration");
             }
             finally
             {
@@ -149,10 +144,9 @@ public class CancellationSemanticsTests
             var (pv, _, _, _, _) = owner.TimeBoundSearch(state, 30);
             sw.Stop();
 
-            pv.Should().NotBeEmpty();
-            state.LegalMoves.Should().Contain(pv[0]);
-            sw.ElapsedMilliseconds.Should().BeLessThan(2000,
-                "the monotonic hard deadline must be enforced inside the search, not only between iterations");
+            Assert.NotEmpty(pv);
+            Assert.Contains(pv[0], state.LegalMoves);
+            Assert.True(sw.ElapsedMilliseconds < 2000, "the monotonic hard deadline must be enforced inside the search, not only between iterations");
         }
         finally
         {

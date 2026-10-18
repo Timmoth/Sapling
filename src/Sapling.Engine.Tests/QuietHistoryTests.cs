@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
 
@@ -17,7 +16,7 @@ public unsafe class QuietHistoryTests
     {
         using var state = GameState.InitialState();
         var quiets = state.LegalMoves.Where(m => m.IsQuiet()).Take(4).ToList();
-        quiets.Count.Should().Be(4);
+        Assert.Equal(4, quiets.Count);
 
         var winner = quiets[0];
         var searched = new[] { quiets[1], quiets[2] };
@@ -29,10 +28,10 @@ public unsafe class QuietHistoryTests
         fixed (uint* sq = searched)
             HistoryHeuristicExtensions.UpdateMovesHistory(history, sq, searched.Length, winner, 5);
 
-        history[winner.GetCounterMoveIndex()].Should().BePositive("cutoff move gets the bonus");
-        history[searched[0].GetCounterMoveIndex()].Should().BeNegative("searched quiet gets malus");
-        history[searched[1].GetCounterMoveIndex()].Should().BeNegative("searched quiet gets malus");
-        history[notSearched.GetCounterMoveIndex()].Should().Be(0, "unsearched quiet is untouched");
+        Assert.True(history[winner.GetCounterMoveIndex()] > 0);
+        Assert.True(history[searched[0].GetCounterMoveIndex()] < 0);
+        Assert.True(history[searched[1].GetCounterMoveIndex()] < 0);
+        Assert.True(history[notSearched.GetCounterMoveIndex()] == 0, "unsearched quiet is untouched");
     }
 
     [Theory]
@@ -44,7 +43,6 @@ public unsafe class QuietHistoryTests
     public void HistoryAdjustsQuietMoveReduction(int reduction, int history, float scale, int expectedMaximum,
         int expected)
     {
-        HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, history, scale, expectedMaximum)
-            .Should().Be(expected);
+        Assert.Equal(expected, HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, history, scale, expectedMaximum));
     }
 }

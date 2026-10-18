@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Sapling.Engine.Tests;
 
@@ -16,7 +15,7 @@ public class FenValidatorTests
     [InlineData("4k3/8/8/8/8/8/PPPPPPPP/PPPPK3 w - - 0 1", "too many white pieces")]
     public void Rejects_illegal_census(string fen, string because)
     {
-        FenValidator.Validate(fen).Should().NotBeNull(because);
+        Assert.True(FenValidator.Validate(fen) != null, because);
     }
 
     [Theory]
@@ -25,6 +24,6 @@ public class FenValidatorTests
     [InlineData("4k3/8/8/8/8/8/QQQQQQQQ/Q3K3 w - - 0 1")] // nine queens + king: promoted, census legal
     public void Accepts_legal_census(string fen)
     {
-        FenValidator.Validate(fen).Should().BeNull();
+        Assert.Null(FenValidator.Validate(fen));
     }
 }

@@ -3,7 +3,6 @@ using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
 using Sapling.Engine.Transpositions;
-using FluentAssertions;
 
 namespace Sapling.Engine.Tests;
 
@@ -31,12 +30,12 @@ public unsafe class SearchTerminalRegressionTests
 
             if (isMate)
             {
-                MoveScoring.IsMateScore(score).Should().BeTrue();
-                score.Should().Be(-Constants.ImmediateMateScore + 1);
+                Assert.True(MoveScoring.IsMateScore(score));
+                Assert.Equal(-Constants.ImmediateMateScore + 1, score);
             }
             else
             {
-                score.Should().Be(0);
+                Assert.Equal(0, score);
             }
         }
         finally
@@ -64,12 +63,12 @@ public unsafe class SearchTerminalRegressionTests
 
             if (isMate)
             {
-                MoveScoring.IsMateScore(score).Should().BeTrue();
-                score.Should().Be(-Constants.ImmediateMateScore + 1);
+                Assert.True(MoveScoring.IsMateScore(score));
+                Assert.Equal(-Constants.ImmediateMateScore + 1, score);
             }
             else
             {
-                score.Should().Be(0);
+                Assert.Equal(0, score);
             }
         }
         finally
@@ -85,7 +84,7 @@ public unsafe class SearchTerminalRegressionTests
     public void HasAnyLegalMove_DistinguishesStalemateMateAndOrdinaryPlay(string fen, bool expected)
     {
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
-        board.HasAnyLegalMove().Should().Be(expected);
+        Assert.Equal(expected, board.HasAnyLegalMove());
     }
 
     [Fact]
@@ -110,7 +109,7 @@ public unsafe class SearchTerminalRegressionTests
             var actual = searcher.NegaMaxSearch(searcher.Boards + 1,
                 searcher.Accumulators + 1, 1, -1, eval, eval + 1);
 
-            actual.Should().Be(expected);
+            Assert.Equal(expected, actual);
         }
         finally
         {
@@ -133,7 +132,7 @@ public unsafe class SearchTerminalRegressionTests
             var score = searcher.NegaMaxSearch(searcher.Boards, searcher.Accumulators,
                 depthFromRoot: 1, depth: 0, alpha: staticEval - 1, beta: staticEval);
 
-            score.Should().Be(0, "a depth-zero pruning shortcut must preserve the stalemate draw");
+            Assert.True(score == 0, "a depth-zero pruning shortcut must preserve the stalemate draw");
         }
         finally
         {

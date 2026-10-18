@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
 
@@ -32,9 +31,8 @@ public class SearchStabilityTests
 
         var result = searcher.DepthBoundSearch(state, 8);
 
-        result.move.Should().NotBeEmpty();
-        state.LegalMoves.Should().Contain(result.move[0],
-            $"best move {result.move[0].ToUciMoveName()} must be legal in {fen}");
+        Assert.NotEmpty(result.move);
+        Assert.True(state.LegalMoves.Contains(result.move[0]), $"best move {result.move[0].ToUciMoveName()} must be legal in {fen}");
     }
 
     [Fact]
@@ -50,9 +48,9 @@ public class SearchStabilityTests
         using var searcherB = new ParallelSearcher(4096);
         var second = searcherB.DepthBoundSearch(stateB, 9);
 
-        first.move[0].Should().Be(second.move[0]);
-        first.score.Should().Be(second.score);
-        first.depthSearched.Should().Be(second.depthSearched);
+        Assert.Equal(second.move[0], first.move[0]);
+        Assert.Equal(second.score, first.score);
+        Assert.Equal(second.depthSearched, first.depthSearched);
     }
 
     [Theory]
@@ -68,13 +66,13 @@ public class SearchStabilityTests
 
         var result = searcher.DepthBoundSearch(state, 6);
 
-        result.move.Should().NotBeEmpty();
-        MoveScoring.IsMateScore(result.score).Should().BeTrue();
-        result.score.Should().BePositive("the side to move is the one delivering mate");
+        Assert.NotEmpty(result.move);
+        Assert.True(MoveScoring.IsMateScore(result.score));
+        Assert.True(result.score > 0);
 
         state.Apply(result.move[0]);
-        state.Board.InCheck.Should().BeTrue("the mating move must give check");
-        state.LegalMoves.Should().BeEmpty("the opponent must be checkmated");
+        Assert.True(state.Board.InCheck, "the mating move must give check");
+        Assert.True(state.LegalMoves.Count == 0, "the opponent must be checkmated");
     }
 
     [Fact]
@@ -85,10 +83,9 @@ public class SearchStabilityTests
 
         var result = searcher.TimeBoundSearch(state, 150);
 
-        result.pv.Should().NotBeEmpty();
-        state.LegalMoves.Should().Contain(result.pv[0]);
-        result.duration.Should().BeLessThan(TimeSpan.FromSeconds(3),
-            "a 150ms budget must not run away");
+        Assert.NotEmpty(result.pv);
+        Assert.Contains(result.pv[0], state.LegalMoves);
+        Assert.True(result.duration < TimeSpan.FromSeconds(3), "a 150ms budget must not run away");
     }
 
     [Fact]
@@ -99,10 +96,9 @@ public class SearchStabilityTests
 
         var result = searcher.NodeBoundSearch(state, nodeLimit: 5000);
 
-        result.pv.Should().NotBeEmpty();
-        state.LegalMoves.Should().Contain(result.pv[0]);
-        result.nodes.Should().BeLessThanOrEqualTo(5001,
-            "single-thread node limits are checked at each recursive node and should overshoot by at most one");
+        Assert.NotEmpty(result.pv);
+        Assert.Contains(result.pv[0], state.LegalMoves);
+        Assert.True(result.nodes <= 5001, "single-thread node limits are checked at each recursive node and should overshoot by at most one");
     }
 
     [Theory]
@@ -116,8 +112,8 @@ public class SearchStabilityTests
 
         var result = searcher.DepthBoundSearch(state, 8);
 
-        result.move.Should().NotBeEmpty();
-        state.LegalMoves.Should().Contain(result.move[0]);
+        Assert.NotEmpty(result.move);
+        Assert.Contains(result.move[0], state.LegalMoves);
     }
 
     [Fact]
@@ -126,12 +122,12 @@ public class SearchStabilityTests
         // Black king on h8 is stalemated: no legal moves, not in check.
         using var state = StateFromFen("7k/8/6Q1/8/8/8/8/K7 b - - 0 1");
 
-        state.LegalMoves.Should().BeEmpty();
-        state.Board.InCheck.Should().BeFalse();
+        Assert.Empty(state.LegalMoves);
+        Assert.False(state.Board.InCheck);
 
         using var searcher = new ParallelSearcher(1024);
         var act = () => searcher.DepthBoundSearch(state, 5);
-        act.Should().NotThrow();
+        Assert.Null(Record.Exception(() => act()));
     }
 
     [Fact]
@@ -144,7 +140,7 @@ public class SearchStabilityTests
 
         for (var ply = 0; ply < 60 && !state.GameOver(); ply++)
         {
-            state.LegalMoves.Should().NotBeEmpty("a non-terminal position must have a legal move");
+            Assert.True(state.LegalMoves.Count > 0, "a non-terminal position must have a legal move");
 
             var move = state.LegalMoves[rng.Next(state.LegalMoves.Count)];
             state.Apply(move);
@@ -152,9 +148,8 @@ public class SearchStabilityTests
             if (ply % 12 == 0)
             {
                 var result = searcher.DepthBoundSearch(state, 6);
-                result.move.Should().NotBeEmpty();
-                state.LegalMoves.Should().Contain(result.move[0],
-                    $"after {ply + 1} random plies the engine must still return a legal move");
+                Assert.NotEmpty(result.move);
+                Assert.True(state.LegalMoves.Contains(result.move[0]), $"after {ply + 1} random plies the engine must still return a legal move");
             }
         }
     }

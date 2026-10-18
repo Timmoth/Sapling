@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 
@@ -13,7 +12,7 @@ public class DataGeneratorBehaviorTests
     [InlineData(DataGenerator.RandomMoves + 1, false)]
     public void RandomOpening_UsesExactlyTheConfiguredNumberOfPlies(int randomMoveCount, bool expected)
     {
-        DataGenerator.IsRandomOpeningPly(randomMoveCount).Should().Be(expected);
+        Assert.Equal(expected, DataGenerator.IsRandomOpeningPly(randomMoveCount));
     }
 
     [Fact]
@@ -21,9 +20,9 @@ public class DataGeneratorBehaviorTests
     {
         var board = DataGenerator.CreateInitialBoard(useChess960: true, chess960Index: 0);
 
-        board.Is960.Should().BeTrue();
-        board.WhiteToMove.Should().BeTrue();
-        board.CastleRights.Should().NotBe(0);
+        Assert.True(board.Is960);
+        Assert.True(board.WhiteToMove);
+        Assert.NotEqual(CastleRights.None, board.CastleRights);
     }
 
     [Fact]
@@ -31,8 +30,8 @@ public class DataGeneratorBehaviorTests
     {
         var board = DataGenerator.CreateInitialBoard(useChess960: false);
 
-        board.Is960.Should().BeFalse();
-        board.WhiteToMove.Should().BeTrue();
+        Assert.False(board.Is960);
+        Assert.True(board.WhiteToMove);
     }
 
     [Theory]
@@ -41,7 +40,7 @@ public class DataGeneratorBehaviorTests
     [InlineData(2, Viriformat.WdlWhiteWin)]
     public void GameOutcome_MapsToViriformatWdl(byte outcome, byte expectedWdl)
     {
-        DataGenerator.ToViriformatWdl(outcome).Should().Be(expectedWdl);
+        Assert.Equal(expectedWdl, DataGenerator.ToViriformatWdl(outcome));
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class DataGeneratorBehaviorTests
     {
         var act = () => DataGenerator.ToViriformatWdl(3);
 
-        act.Should().Throw<ArgumentOutOfRangeException>();
+        Assert.Throws<ArgumentOutOfRangeException>(() => act());
     }
 
     [Theory]
@@ -60,7 +59,7 @@ public class DataGeneratorBehaviorTests
     public void Adjudication_MapsPreMoveSideToMoveScoreToTheCorrectWinner(
         bool whiteToMoveAfterMove, int score, byte expectedOutcome)
     {
-        DataGenerator.GetAdjudicatedOutcome(whiteToMoveAfterMove, score).Should().Be(expectedOutcome);
+        Assert.Equal(expectedOutcome, DataGenerator.GetAdjudicatedOutcome(whiteToMoveAfterMove, score));
     }
 
     [Theory]
@@ -71,7 +70,7 @@ public class DataGeneratorBehaviorTests
     {
         using var game = new GameState(BoardStateExtensions.CreateBoardFromFen(fen));
 
-        game.WinDrawLoose().Should().Be(expectedOutcome);
+        Assert.Equal(expectedOutcome, game.WinDrawLoose());
     }
 
     [Fact]
@@ -79,7 +78,7 @@ public class DataGeneratorBehaviorTests
     {
         foreach (var fen in Chess960.Fens)
         {
-            DataGenerator.MirrorFen(DataGenerator.MirrorFen(fen)).Should().Be(fen);
+            Assert.Equal(fen, DataGenerator.MirrorFen(DataGenerator.MirrorFen(fen)));
         }
     }
 
@@ -90,7 +89,7 @@ public class DataGeneratorBehaviorTests
 
         var mirrored = DataGenerator.MirrorFen(fen);
 
-        mirrored.Should().Be("rbnkqbnr/pppppppp/8/8/8/8/PPPPPPPP/RBNKQBNR b BHbh - 0 1");
+        Assert.Equal("rbnkqbnr/pppppppp/8/8/8/8/PPPPPPPP/RBNKQBNR b BHbh - 0 1", mirrored);
     }
 
     [Fact]
@@ -101,9 +100,9 @@ public class DataGeneratorBehaviorTests
             var mirrored = DataGenerator.MirrorFen(fen);
             using var game = new GameState(BoardStateExtensions.CreateBoardFromFen(mirrored));
 
-            game.Board.WhiteToMove.Should().BeFalse();
-            game.Board.CastleRights.Should().NotBe(0);
-            game.LegalMoves.Count.Should().BeGreaterThan(0);
+            Assert.False(game.Board.WhiteToMove);
+            Assert.NotEqual(CastleRights.None, game.Board.CastleRights);
+            Assert.True(game.LegalMoves.Count > 0);
         }
     }
 
@@ -112,6 +111,6 @@ public class DataGeneratorBehaviorTests
     {
         var mirrored = DataGenerator.MirrorFen(Constants.InitialState);
 
-        mirrored.Should().Be("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1");
+        Assert.Equal("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1", mirrored);
     }
 }

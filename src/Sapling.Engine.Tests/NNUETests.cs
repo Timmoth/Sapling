@@ -1,5 +1,4 @@
-﻿//using FluentAssertions;
-//using Sapling.Engine.Evaluation;
+﻿//using Sapling.Engine.Evaluation;
 //using Sapling.Engine.MoveGen;
 //using Sapling.Engine.Search;
 //using Sapling.Engine.Transpositions;
@@ -25,7 +24,7 @@
 //        Apply(board, moveList, 0);
 
 //        // Then
-//        board.Data.ToFen().Should().Be(fen);
+//        Assert.Equal(fen, board.Data.ToFen());
 //    }
 
 

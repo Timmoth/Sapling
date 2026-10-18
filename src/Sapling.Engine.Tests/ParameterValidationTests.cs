@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.Tuning;
 using Sapling.Engine.Search;
 using System.Globalization;
@@ -60,9 +59,9 @@ public unsafe class ParameterValidationTests
             [nameof(SpsaOptions.AsperationWindowE)] = "2785"
         };
 
-        SpsaTuner.TuningParameters.Should().HaveCount(defaults.Count);
+        Assert.Equal(defaults.Count, SpsaTuner.TuningParameters.Count());
         foreach (var (name, value) in defaults)
-            SpsaTuner.TuningParameters[name.ToLowerInvariant()].DefaultValue.Should().Be(value, name);
+            Assert.True(SpsaTuner.TuningParameters[name.ToLowerInvariant()].DefaultValue == value, name);
     }
 
     [Fact]
@@ -70,16 +69,16 @@ public unsafe class ParameterValidationTests
     {
         var before = SpsaOptions.RazorMarginB; // bounds 250..400
         SpsaTuner.SetParameterValue(Cmd("RazorMarginB", "500"));
-        SpsaOptions.RazorMarginB.Should().Be(before, "out-of-range rejected, no mutation");
+        Assert.True(SpsaOptions.RazorMarginB == before, "out-of-range rejected, no mutation");
         SpsaTuner.SetParameterValue(Cmd("RazorMarginB", "10"));
-        SpsaOptions.RazorMarginB.Should().Be(before);
+        Assert.Equal(before, SpsaOptions.RazorMarginB);
     }
 
     [Fact]
     public void AcceptsInRangeInt()
     {
         SpsaTuner.SetParameterValue(Cmd("RazorMarginB", "300"));
-        SpsaOptions.RazorMarginB.Should().Be(300);
+        Assert.Equal(300, SpsaOptions.RazorMarginB);
         SpsaTuner.SetParameterValue(Cmd("RazorMarginB", "378")); // restore default
     }
 
@@ -88,11 +87,11 @@ public unsafe class ParameterValidationTests
     {
         var before = SpsaOptions.LateMoveReductionB;
         SpsaTuner.SetParameterValue(Cmd("LateMoveReductionB", "NaN"));
-        SpsaOptions.LateMoveReductionB.Should().Be(before);
+        Assert.Equal(before, SpsaOptions.LateMoveReductionB);
         SpsaTuner.SetParameterValue(Cmd("LateMoveReductionB", "Infinity"));
-        SpsaOptions.LateMoveReductionB.Should().Be(before);
+        Assert.Equal(before, SpsaOptions.LateMoveReductionB);
         SpsaTuner.SetParameterValue(Cmd("LateMoveReductionB", "-Infinity"));
-        SpsaOptions.LateMoveReductionB.Should().Be(before);
+        Assert.Equal(before, SpsaOptions.LateMoveReductionB);
     }
 
     [Fact]
@@ -102,15 +101,15 @@ public unsafe class ParameterValidationTests
         // not coerced to a different value.
         var before = SpsaOptions.LateMoveReductionB;
         SpsaTuner.SetParameterValue(Cmd("LateMoveReductionB", "0"));
-        SpsaOptions.LateMoveReductionB.Should().Be(before);
+        Assert.Equal(before, SpsaOptions.LateMoveReductionB);
     }
 
     [Fact]
     public void RejectsZeroNullMoveDenominator()
     {
         var before = SpsaOptions.NullMovePruningReductionB;
-        SpsaTuner.SetParameterValue(Cmd("NullMovePruningReductionB", "0")).Should().BeFalse();
-        SpsaOptions.NullMovePruningReductionB.Should().Be(before);
+        Assert.False(SpsaTuner.SetParameterValue(Cmd("NullMovePruningReductionB", "0")));
+        Assert.Equal(before, SpsaOptions.NullMovePruningReductionB);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public unsafe class ParameterValidationTests
         var before = SpsaOptions.RazorMarginB;
         SpsaTuner.SetParameterValue(new[] { "setoption", "name", "RazorMarginB" }); // too short
         SpsaTuner.SetParameterValue(new[] { "setoption", "name", "NoSuchParam", "value", "1" });
-        SpsaOptions.RazorMarginB.Should().Be(before);
+        Assert.Equal(before, SpsaOptions.RazorMarginB);
     }
 
     [Fact]
@@ -130,8 +129,8 @@ public unsafe class ParameterValidationTests
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
             SpsaTuner.SetParameterValue(Cmd("LateMoveReductionB", "2.5"));
-            SpsaOptions.LateMoveReductionB.Should().Be(2.5f);
-            SpsaTuner.PrintSPSAParams().Should().Contain(x => x.Contains("2.5"));
+            Assert.Equal(2.5f, SpsaOptions.LateMoveReductionB);
+            Assert.Contains(SpsaTuner.PrintSPSAParams(), x => x.Contains("2.5"));
         }
         finally
         {
@@ -144,17 +143,17 @@ public unsafe class ParameterValidationTests
     public void ValidUpdatesRefreshDerivedTables()
     {
         SpsaTuner.SetParameterValue(Cmd("NullMovePruningReductionB", "5"));
-        SpsaOptions.NullMovePruningReductionTable[10].Should().Be(4);
+        Assert.Equal(4, SpsaOptions.NullMovePruningReductionTable[10]);
         SpsaTuner.SetParameterValue(Cmd("NullMovePruningReductionB", "4"));
 
         SpsaTuner.SetParameterValue(Cmd("HistoryHeuristicBonusMax", "450"));
-        HistoryHeuristicExtensions.BonusTable[10].Should().Be(450);
+        Assert.Equal(450, HistoryHeuristicExtensions.BonusTable[10]);
         SpsaTuner.SetParameterValue(Cmd("HistoryHeuristicBonusMax", "406"));
 
         var before = SpsaOptions.LateMovePruningReductionTable[10 * 218 + 10];
         SpsaTuner.SetParameterValue(Cmd("LateMoveReductionA", "2"));
-        SpsaOptions.LateMovePruningReductionTable[10 * 218 + 10].Should().Be((int)Math.Round(2 + Math.Log(10) * Math.Log(10) / SpsaOptions.LateMoveReductionB));
-        SpsaOptions.LateMovePruningReductionTable[10 * 218 + 10].Should().NotBe(before);
+        Assert.Equal((int)Math.Round(2 + Math.Log(10) * Math.Log(10) / SpsaOptions.LateMoveReductionB), SpsaOptions.LateMovePruningReductionTable[10 * 218 + 10]);
+        Assert.NotEqual(before, SpsaOptions.LateMovePruningReductionTable[10 * 218 + 10]);
         SpsaTuner.SetParameterValue(Cmd("LateMoveReductionA", "1.315961"));
     }
 }

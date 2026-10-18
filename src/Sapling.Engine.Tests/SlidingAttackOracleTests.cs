@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine.Tests;
@@ -21,10 +20,8 @@ public unsafe class SlidingAttackOracleTests
             foreach (var occupancy in Subsets(mask))
             {
                 var expected = RookRayWalk(square, occupancy);
-                AttackTables.RookAttacks(occupancy, square)
-                    .Should().Be(expected, $"PEXT rook square={square} occupancy={occupancy}");
-                AttackTables.RookMagics[square].GetMoves(occupancy)
-                    .Should().Be(expected, $"magic rook square={square} occupancy={occupancy}");
+                Assert.True(AttackTables.RookAttacks(occupancy, square) == expected, $"PEXT rook square={square} occupancy={occupancy}");
+                Assert.True(AttackTables.RookMagics[square].GetMoves(occupancy) == expected, $"magic rook square={square} occupancy={occupancy}");
             }
         }
     }
@@ -38,10 +35,8 @@ public unsafe class SlidingAttackOracleTests
             foreach (var occupancy in Subsets(mask))
             {
                 var expected = BishopRayWalk(square, occupancy);
-                AttackTables.BishopAttacks(occupancy, square)
-                    .Should().Be(expected, $"PEXT bishop square={square} occupancy={occupancy}");
-                AttackTables.BishopMagics[square].GetMoves(occupancy)
-                    .Should().Be(expected, $"magic bishop square={square} occupancy={occupancy}");
+                Assert.True(AttackTables.BishopAttacks(occupancy, square) == expected, $"PEXT bishop square={square} occupancy={occupancy}");
+                Assert.True(AttackTables.BishopMagics[square].GetMoves(occupancy) == expected, $"magic bishop square={square} occupancy={occupancy}");
             }
         }
     }

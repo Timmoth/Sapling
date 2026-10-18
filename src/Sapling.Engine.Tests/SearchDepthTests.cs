@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.Search;
 
 namespace Sapling.Engine.Tests;
@@ -21,8 +20,8 @@ public class SearchDepthTests
 
         var result = searcher.DepthBoundSearch(state, depth);
 
-        result.depthSearched.Should().Be(depth);
-        result.move.Should().NotBeEmpty();
+        Assert.Equal(depth, result.depthSearched);
+        Assert.NotEmpty(result.move);
     }
 
     [Fact]
@@ -34,8 +33,8 @@ public class SearchDepthTests
 
         var result = searcher.DepthBoundSearch(state, Constants.MaxSearchDepth);
 
-        result.depthSearched.Should().Be(Constants.MaxSearchDepth);
-        result.move.Count.Should().BeLessThanOrEqualTo(Constants.MaxSearchDepth);
+        Assert.Equal(Constants.MaxSearchDepth, result.depthSearched);
+        Assert.True(result.move.Count <= Constants.MaxSearchDepth);
     }
 
     [Fact]

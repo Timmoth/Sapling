@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
@@ -24,8 +23,8 @@ public unsafe class SeePinReproTests
             }
         }
 
-        move.Should().NotBe(0, $"move {uciMove} must be pseudo-legal in {fen}");
-        state.LegalMoves.Should().Contain(move, $"SEE inputs must be legal chess moves in {fen}");
+        Assert.True(move != 0, $"move {uciMove} must be pseudo-legal in {fen}");
+        Assert.True(state.LegalMoves.Contains(move), $"SEE inputs must be legal chess moves in {fen}");
 
         var occ = stackalloc ulong[8]
         {
@@ -82,7 +81,7 @@ public unsafe class SeePinReproTests
     {
         var movingSide = board.WhiteToMove;
         var applied = movingSide ? board.PartialApplyWhite(move) : board.PartialApplyBlack(move);
-        applied.Should().BeTrue("the independent exchange oracle only applies legal moves");
+        Assert.True(applied, "the independent exchange oracle only applies legal moves");
         board.WhiteToMove = !movingSide;
         board.UpdateCheckStatus();
         return board;
@@ -97,7 +96,7 @@ public unsafe class SeePinReproTests
     [InlineData("k3r3/8/8/3q4/4P3/8/4R3/4K3 b - - 0 1", "d5e4")]
     public void SeeMatchesIndependentLegalExchangeTree(string fen, string uciMove)
     {
-        See(fen, uciMove).Should().Be(LegalExchangeOracle(fen, uciMove));
+        Assert.Equal(LegalExchangeOracle(fen, uciMove), See(fen, uciMove));
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public unsafe class SeePinReproTests
         // Black Nxc5 wins a clean pawn: the only white recapturer (Rd5) is pinned
         // by Qd8 against Kd1 and cannot legally recapture.
         var see = See("k2q4/1n6/8/2PR4/8/8/8/3K4 b - - 0 1", "b7c5");
-        see.Should().Be(100, "pinned rook cannot recapture: free pawn");
+        Assert.True(see == 100, "pinned rook cannot recapture: free pawn");
     }
 
     [Fact]
@@ -115,7 +114,7 @@ public unsafe class SeePinReproTests
         // Same position with the white king off the d-file: the rook recapture is
         // legal, so the exchange loses the knight for a pawn.
         var see = See("k2q4/1n6/8/2PR4/8/8/4K3/8 b - - 0 1", "b7c5");
-        see.Should().Be(-350, "unpinned rook recapture is legal: knight loses to pawn+rook");
+        Assert.True(see == -350, "unpinned rook recapture is legal: knight loses to pawn+rook");
     }
 
     [Fact]
@@ -124,7 +123,7 @@ public unsafe class SeePinReproTests
     // Pinned pawn recapturer: the d2 pawn is pinned by Qd8 against Kd1, so
         // black Nxc3 wins a clean pawn.
         var see = See("3q3k/8/8/3n4/8/2P5/3P4/3K4 b - - 0 1", "d5c3");
-        see.Should().Be(100, "pinned pawn cannot recapture: free pawn");
+        Assert.True(see == 100, "pinned pawn cannot recapture: free pawn");
     }
 
     [Fact]
@@ -135,9 +134,8 @@ public unsafe class SeePinReproTests
         // between the king and the pinning rook. Re8 can then recapture.
         const string fen = "k3r3/8/8/3q4/4P3/8/4R3/4K3 b - - 0 1";
         var expected = LegalExchangeOracle(fen, "d5e4");
-        expected.Should().Be(Constants.PawnValue - Constants.QueenValue + Constants.RookValue);
-        See(fen, "d5e4").Should().Be(expected,
-            "both the legal pin-ray recapture and the later rook recapture must be counted");
+        Assert.Equal(Constants.PawnValue - Constants.QueenValue + Constants.RookValue, expected);
+        Assert.True(See(fen, "d5e4") == expected, "both the legal pin-ray recapture and the later rook recapture must be counted");
     }
 
     [Fact]
@@ -163,30 +161,28 @@ public unsafe class SeePinReproTests
             if (pseudoMoves[i].ToUciMoveName() == "a4b3")
                 illegalRecapture = pseudoMoves[i];
         }
-        illegalRecapture.Should().NotBe(0);
+        Assert.NotEqual(0u, illegalRecapture);
         var legalAfterSequence = new List<uint>();
         board.GenerateLegalMoves(legalAfterSequence, captureOnly: true);
-        legalAfterSequence.Should().NotContain(illegalRecapture);
+        Assert.DoesNotContain(illegalRecapture, legalAfterSequence);
 
         var oracle = LegalExchangeOracle(fen, "c4b3");
-        oracle.Should().Be(Constants.PawnValue,
-            "the side can decline its losing first recapture; the later pinned bishop is illegal");
-        See(fen, "c4b3").Should().Be(oracle);
+        Assert.True(oracle == Constants.PawnValue, "the side can decline its losing first recapture; the later pinned bishop is illegal");
+        Assert.Equal(oracle, See(fen, "c4b3"));
     }
 
     [Fact]
     public void KingRecapture_IsRejectedWhenTargetIsDefended()
     {
         var see = See("8/8/4k3/3p4/3Q4/8/8/K2R4 w - - 0 1", "d4d5");
-        see.Should().Be(100, "the rook protects d5, so Kxd5 is illegal");
+        Assert.True(see == 100, "the rook protects d5, so Kxd5 is illegal");
     }
 
     [Fact]
     public void KingRecapture_IsCountedWhenTargetIsSafe()
     {
         var see = See("8/8/4k3/3p4/3Q4/8/8/K7 w - - 0 1", "d4d5");
-        see.Should().Be(Constants.PawnValue - Constants.QueenValue,
-            "the king can safely capture the queen on d5");
+        Assert.True(see == Constants.PawnValue - Constants.QueenValue, "the king can safely capture the queen on d5");
     }
 
     [Fact]
@@ -196,24 +192,22 @@ public unsafe class SeePinReproTests
         // legal recapture after B a3xc5, so White loses the bishop for a pawn.
         const string fen = "r2qkbBr/7p/Pn3np1/2p4P/p3p1b1/B2p1NP1/2PQ1P2/3RK1R1 w - - 0 73";
         var expected = LegalExchangeOracle(fen, "a3c5");
-        expected.Should().Be(Constants.PawnValue - Constants.BishopValue);
-        See(fen, "a3c5").Should().Be(expected);
+        Assert.Equal(Constants.PawnValue - Constants.BishopValue, expected);
+        Assert.Equal(expected, See(fen, "a3c5"));
     }
 
     [Fact]
     public void EnPassantCapture_HasFiniteCapturedPawnValue()
     {
         var see = See("7k/8/8/3pP3/8/8/8/K7 w - d6 0 1", "e5d6");
-        see.Should().Be(Constants.PawnValue,
-            "en passant is a pawn capture; search move ordering handles it without SEE");
+        Assert.True(see == Constants.PawnValue, "en passant is a pawn capture; search move ordering handles it without SEE");
     }
 
     [Fact]
     public void PromotionCapture_UsesPawnAsInitialMoverForSee()
     {
         var see = See("k6r/6P1/8/8/8/8/8/K7 w - - 0 1", "g7h8q");
-        see.Should().Be(Constants.RookValue,
-            "the captured rook is gained; promotion value is handled separately by move ordering");
+        Assert.True(see == Constants.RookValue, "the captured rook is gained; promotion value is handled separately by move ordering");
     }
 
     [Fact]
@@ -221,8 +215,7 @@ public unsafe class SeePinReproTests
     {
         // The capturing knight survives, so its value is not subtracted from the
         // captured queen when no legal recapture exists.
-        See("7k/8/8/8/1n6/8/2Q5/K7 b - - 0 1", "b4c2")
-            .Should().Be(Constants.QueenValue);
+        Assert.Equal(Constants.QueenValue, See("7k/8/8/8/1n6/8/2Q5/K7 b - - 0 1", "b4c2"));
     }
 
     [Fact]
@@ -232,9 +225,8 @@ public unsafe class SeePinReproTests
         // the rook. The exact balance is +100 - 1250 + 650 = -500.
         const string fen = "k3r3/8/8/3q4/4P3/8/4R3/4K3 b - - 0 1";
         var expected = LegalExchangeOracle(fen, "d5e4");
-        expected.Should().Be(Constants.PawnValue - Constants.QueenValue + Constants.RookValue);
-        See(fen, "d5e4").Should().Be(expected,
-            "SEE must continue through the legal second recapture rather than stop early");
+        Assert.Equal(Constants.PawnValue - Constants.QueenValue + Constants.RookValue, expected);
+        Assert.True(See(fen, "d5e4") == expected, "SEE must continue through the legal second recapture rather than stop early");
     }
 
 }

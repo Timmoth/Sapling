@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Sapling.Engine.Transpositions;
 using Xunit;
 
@@ -112,12 +111,12 @@ public unsafe class TranspositionTableTests
             ref var entry = ref tt[7];
             WriteSeed(ref entry, 1234);
             var s = TranspositionTableExtensions.Probe(ref entry);
-            s.Valid.Should().BeTrue();
-            s.Move.Should().Be(1234);
-            s.Evaluation.Should().Be(1234);
-            s.Depth.Should().Be(1234 & 0xFF);
-            s.Flag.Should().Be((TranspositionTableFlag)(1234 & 3));
-            s.FullHash.Should().Be(1234UL * SlotStride);
+            Assert.True(s.Valid);
+            Assert.Equal(1234u, s.Move);
+            Assert.Equal(1234, s.Evaluation);
+            Assert.Equal(1234 & 0xFF, s.Depth);
+            Assert.Equal((TranspositionTableFlag)(1234 & 3), s.Flag);
+            Assert.Equal(1234UL * SlotStride, s.FullHash);
         }
         finally
         {
@@ -145,14 +144,14 @@ public unsafe class TranspositionTableTests
 
                 var prod = TranspositionTableExtensions.Probe(ref raw[hash & 1023]);
                 var expected = reference.Probe(hash);
-                prod.Valid.Should().Be(expected.Valid);
+                Assert.Equal(expected.Valid, prod.Valid);
                 if (prod.Valid)
                 {
-                    prod.FullHash.Should().Be(expected.FullHash);
-                    prod.Evaluation.Should().Be(expected.Evaluation);
-                    prod.Depth.Should().Be(expected.Depth);
-                    prod.Flag.Should().Be(expected.Flag);
-                    prod.Move.Should().Be(expected.Move);
+                    Assert.Equal(expected.FullHash, prod.FullHash);
+                    Assert.Equal(expected.Evaluation, prod.Evaluation);
+                    Assert.Equal(expected.Depth, prod.Depth);
+                    Assert.Equal(expected.Flag, prod.Flag);
+                    Assert.Equal(expected.Move, prod.Move);
                 }
             }
         }
@@ -181,9 +180,8 @@ public unsafe class TranspositionTableTests
             }
         });
 
-        misses.Should().Be(0,
-            "stable reads should not contend with one another or mutate the entry sequence");
-        (entry[0].Version & 1).Should().Be(0);
+        Assert.True(misses == 0, "stable reads should not contend with one another or mutate the entry sequence");
+        Assert.Equal(0, (entry[0].Version & 1));
     }
 
     [NativeThreadsFact]
@@ -244,8 +242,8 @@ public unsafe class TranspositionTableTests
             Task.WaitAll(tasks.ToArray());
             Volatile.Write(ref stop, true);
 
-            torn.Should().Be(0, "the access guard must never expose a mixed (torn) snapshot");
-            hits.Should().BePositive("readers must observe published entries, not only misses");
+            Assert.True(torn == 0, "the access guard must never expose a mixed (torn) snapshot");
+            Assert.True(hits > 0);
         }
         finally
         {

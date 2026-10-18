@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-using Sapling.Engine.MoveGen;
+﻿using Sapling.Engine.MoveGen;
 using Sapling.Engine.Search;
 using Sapling.Engine.Transpositions;
 
@@ -23,6 +22,6 @@ public class PromotionThreatTests
         var actual = move.IsPromotionThreat();
 
         // Then
-        actual.Should().Be(expected);
+        Assert.Equal(expected, actual);
     }
 }

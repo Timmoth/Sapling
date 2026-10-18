@@ -1,5 +1,4 @@
 using System.IO;
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 using Sapling.Engine.MoveGen;
@@ -77,7 +76,7 @@ public class ViriformatRoundTripTests
             Span<(uint move, short eval)> moves = stackalloc (uint move, short eval)[DataGenerator.MaxTurnCount];
             var (result, moveCount) = generator.RunGame(gameState, searcher, moves);
 
-            moveCount.Should().BeGreaterThan(10);
+            Assert.True(moveCount > 10);
 
             var startBoard = BoardStateExtensions.CreateBoardFromFen(Chess960.Fens[0]);
             using var stream = new MemoryStream();
@@ -87,7 +86,7 @@ public class ViriformatRoundTripTests
             }
 
             var bytes = stream.ToArray();
-            bytes.Length.Should().Be(Viriformat.HeaderSize + (moveCount + 1) * Viriformat.MoveRecordSize);
+            Assert.Equal(Viriformat.HeaderSize + (moveCount + 1) * Viriformat.MoveRecordSize, bytes.Length);
 
             // Replay from the written header using the engine's own move application.
             var replay = BoardStateExtensions.CreateBoardFromFen(Chess960.Fens[0]);
@@ -95,15 +94,15 @@ public class ViriformatRoundTripTests
             {
                 var offset = Viriformat.HeaderSize + i * Viriformat.MoveRecordSize;
                 var encoded = BitConverter.ToUInt16(bytes, offset);
-                encoded.Should().NotBe(0);
+                Assert.NotEqual(0, encoded);
 
                 var move = DecodeMove(encoded, replay);
                 var legal = replay.WhiteToMove ? replay.PartialApplyWhite(move) : replay.PartialApplyBlack(move);
-                legal.Should().BeTrue($"ply {i} move {encoded:X4} must replay legally");
+                Assert.True(legal, $"ply {i} move {encoded:X4} must replay legally");
             }
 
             var terminator = BitConverter.ToUInt32(bytes, Viriformat.HeaderSize + moveCount * Viriformat.MoveRecordSize);
-            terminator.Should().Be(0);
+            Assert.Equal(0u, terminator);
         }
         finally
         {
@@ -142,7 +141,7 @@ public class ViriformatRoundTripTests
                 var encoded = BitConverter.ToUInt16(bytes, offset);
                 var move = DecodeMove(encoded, replay);
                 var legal = replay.WhiteToMove ? replay.PartialApplyWhite(move) : replay.PartialApplyBlack(move);
-                legal.Should().BeTrue($"960 ply {i} move {encoded:X4} must replay legally");
+                Assert.True(legal, $"960 ply {i} move {encoded:X4} must replay legally");
             }
         }
         finally

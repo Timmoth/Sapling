@@ -1,5 +1,4 @@
 using System;
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 using Sapling.Engine.MoveGen;
@@ -65,7 +64,7 @@ public unsafe class NnueUpdateCoverageTests
                         // before PartialApply; FinishApply flips the side flag.
                         var whiteToMove = parent->WhiteToMove;
                         var ok = whiteToMove ? board->PartialApplyWhite(move) : board->PartialApplyBlack(move);
-                        ok.Should().BeTrue("legal moves must partially apply");
+                        Assert.True(ok, "legal moves must partially apply");
                         board->UpdateCheckStatus();
 
                         var accumulator = searcher.Accumulators + ply;
@@ -83,8 +82,7 @@ public unsafe class NnueUpdateCoverageTests
 
                         var eval = searcher.Evaluate(board, accumulator, ply);
                         var expected = NnueOracle.OracleEvalFromScratch(board);
-                        eval.Should().Be(expected,
-                            $"incremental accumulation must equal full refresh: {fen} seed {seed} ply {ply} move {move.ToUciMoveName()} type {moveType}");
+                        Assert.True(eval == expected, $"incremental accumulation must equal full refresh: {fen} seed {seed} ply {ply} move {move.ToUciMoveName()} type {moveType}");
                         plies++;
                     }
                 }
@@ -97,10 +95,10 @@ public unsafe class NnueUpdateCoverageTests
             }
         }
 
-        plies.Should().BeGreaterThan(300);
-        promotions.Should().BeGreaterThan(0, "corpus must exercise promotions");
-        castles.Should().BeGreaterThan(0, "corpus must exercise castling");
-        bucketCrossings.Should().BeGreaterThan(0, "corpus must exercise king-bucket crossings");
+        Assert.True(plies > 300);
+        Assert.True(promotions > 0, "corpus must exercise promotions");
+        Assert.True(castles > 0, "corpus must exercise castling");
+        Assert.True(bucketCrossings > 0, "corpus must exercise king-bucket crossings");
     }
 
     [Fact]
@@ -143,8 +141,7 @@ public unsafe class NnueUpdateCoverageTests
             var child = searcher.Boards + 1;
             parent->CloneTo(ref *child);
             var whiteToMove = parent->WhiteToMove;
-            (whiteToMove ? child->PartialApplyWhite(move) : child->PartialApplyBlack(move))
-                .Should().BeTrue();
+            Assert.True((whiteToMove ? child->PartialApplyWhite(move) : child->PartialApplyBlack(move)));
             child->UpdateCheckStatus();
 
             var accumulator = searcher.Accumulators + 1;
@@ -159,11 +156,11 @@ public unsafe class NnueUpdateCoverageTests
 
             var expectedWhite = NnueOracle.OracleApply(ReadAcc((short*)searcher.WhiteAccumulators[0]), child,
                 expectedUpdates.Select(u => (u.piece, u.square, u.sign, true)).ToArray());
-            ReadAcc((short*)searcher.WhiteAccumulators[1]).Should().Equal(expectedWhite, $"white-view update: {fen} {moveType}");
+            Assert.True(expectedWhite.SequenceEqual(ReadAcc((short*)searcher.WhiteAccumulators[1])), $"white-view update: {fen} {moveType}");
 
             var expectedBlack = NnueOracle.OracleApply(ReadAcc((short*)searcher.BlackAccumulators[0]), child,
                 expectedUpdates.Select(u => (u.piece, u.square, u.sign, false)).ToArray());
-            ReadAcc((short*)searcher.BlackAccumulators[1]).Should().Equal(expectedBlack, $"black-view update: {fen} {moveType}");
+            Assert.True(expectedBlack.SequenceEqual(ReadAcc((short*)searcher.BlackAccumulators[1])), $"black-view update: {fen} {moveType}");
         }
         finally
         {
@@ -190,33 +187,33 @@ public unsafe class NnueUpdateCoverageTests
         fixed (short* source = sourceArr, sub1 = sub1Arr, sub2 = sub2Arr, add1 = add1Arr, add2 = add2Arr, dest = destArr)
         {
             Searcher.SimdCopy(dest, source);
-            Read(dest).Should().Equal(Read(source), "SimdCopy");
+            Assert.True(Read(source).SequenceEqual(Read(dest)), "SimdCopy");
 
             Searcher.Sub(source, dest, sub1);
-            Read(dest).Should().Equal(ExpectSub(source, sub1, null), "Sub");
+            Assert.True(ExpectSub(source, sub1, null).SequenceEqual(Read(dest)), "Sub");
 
             Searcher.Add(source, dest, add1);
-            Read(dest).Should().Equal(ExpectAdd(source, add1), "Add");
+            Assert.True(ExpectAdd(source, add1).SequenceEqual(Read(dest)), "Add");
 
             Searcher.SubAdd(source, dest, sub1, add1);
-            Read(dest).Should().Equal(ExpectSubAdd(source, sub1, add1), "SubAdd");
+            Assert.True(ExpectSubAdd(source, sub1, add1).SequenceEqual(Read(dest)), "SubAdd");
 
             Searcher.SubSubAdd(source, dest, sub1, sub2, add1);
-            Read(dest).Should().Equal(ExpectSubSubAdd(source, sub1, sub2, add1), "SubSubAdd");
+            Assert.True(ExpectSubSubAdd(source, sub1, sub2, add1).SequenceEqual(Read(dest)), "SubSubAdd");
 
             Searcher.SubSubAddAdd(source, dest, sub1, sub2, add1, add2);
-            Read(dest).Should().Equal(ExpectSubSubAddAdd(source, sub1, sub2, add1, add2), "SubSubAddAdd");
+            Assert.True(ExpectSubSubAddAdd(source, sub1, sub2, add1, add2).SequenceEqual(Read(dest)), "SubSubAddAdd");
 
             // Aliasing contract: feature pointers may alias each other (element-wise ops);
             // sub == add must be an identity on the source.
             Searcher.SubAdd(source, dest, sub1, sub1);
-            Read(dest).Should().Equal(Read(source), "SubAdd with aliased feature pointers is identity");
+            Assert.True(Read(source).SequenceEqual(Read(dest)), "SubAdd with aliased feature pointers is identity");
             Searcher.SubSubAddAdd(source, dest, sub1, sub2, sub2, sub1);
-            Read(dest).Should().Equal(Read(source), "SubSubAddAdd with fully crossed feature aliasing is identity");
+            Assert.True(Read(source).SequenceEqual(Read(dest)), "SubSubAddAdd with fully crossed feature aliasing is identity");
 
             // AddWeights is documented in-place (accumulator += feature).
             Searcher.AddWeights(dest, add1);
-            Read(dest).Should().Equal(ExpectAdd(source, add1), "AddWeights in-place");
+            Assert.True(ExpectAdd(source, add1).SequenceEqual(Read(dest)), "AddWeights in-place");
         }
     }
 
@@ -271,14 +268,14 @@ public unsafe class NnueUpdateCoverageTests
             var parent = searcher.Boards;
             var child = searcher.Boards + 1;
             parent->CloneTo(ref *child);
-            child->PartialApplyWhite(move).Should().BeTrue();
+            Assert.True(child->PartialApplyWhite(move));
             child->UpdateCheckStatus();
 
             var accumulator = searcher.Accumulators + 1;
             accumulator->UpdateToParent(searcher.Accumulators, child);
             child->FinishApplyWhite(ref *accumulator, move, parent->EnPassantFile, Zobrist.GetEnPassantHashFile(ref *parent), parent->CastleRights);
 
-            accumulator->ChangeType.Should().Be(AccumulatorChangeType.SubSubAddAdd, "castling must use the four-feature update");
+            Assert.True(accumulator->ChangeType == AccumulatorChangeType.SubSubAddAdd, "castling must use the four-feature update");
 
             searcher.ApplyWhiteUpdate(1, accumulator);
             searcher.ApplyBlackUpdate(1, accumulator);
@@ -287,12 +284,12 @@ public unsafe class NnueUpdateCoverageTests
             var expectedWhite = NnueOracle.OracleApply(ReadAcc((short*)searcher.WhiteAccumulators[0]), child,
                 (Constants.WhiteKing, 4, -1, true), (Constants.WhiteRook, 7, -1, true),
                 (Constants.WhiteKing, 6, +1, true), (Constants.WhiteRook, 5, +1, true));
-            ReadAcc((short*)searcher.WhiteAccumulators[1]).Should().Equal(expectedWhite, "white castle SubSubAddAdd");
+            Assert.True(expectedWhite.SequenceEqual(ReadAcc((short*)searcher.WhiteAccumulators[1])), "white castle SubSubAddAdd");
 
             var expectedBlack = NnueOracle.OracleApply(ReadAcc((short*)searcher.BlackAccumulators[0]), child,
                 (Constants.WhiteKing, 4, -1, false), (Constants.WhiteRook, 7, -1, false),
                 (Constants.WhiteKing, 6, +1, false), (Constants.WhiteRook, 5, +1, false));
-            ReadAcc((short*)searcher.BlackAccumulators[1]).Should().Equal(expectedBlack, "black-view castle SubSubAddAdd");
+            Assert.True(expectedBlack.SequenceEqual(ReadAcc((short*)searcher.BlackAccumulators[1])), "black-view castle SubSubAddAdd");
         }
         finally
         {

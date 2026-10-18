@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.Transpositions;
 using Xunit;
@@ -41,10 +40,10 @@ public class AllocationHelperTests
         int* block = MemoryHelpers.Allocate<int>(count);
         try
         {
-            ((nuint)block % 64).Should().Be(0);
+            Assert.Equal((nuint)0, ((nuint)block % 64));
             for (var i = 0; i < count; i++)
             {
-                block[i].Should().Be(0);
+                Assert.Equal(0, block[i]);
             }
         }
         finally
@@ -60,10 +59,10 @@ public class AllocationHelperTests
         int* block = MemoryHelpers.AllocateMultiThreaded<int>(count);
         try
         {
-            ((nuint)block % 64).Should().Be(0);
+            Assert.Equal((nuint)0, ((nuint)block % 64));
             for (var i = 0; i < count; i++)
             {
-                block[i].Should().Be(0);
+                Assert.Equal(0, block[i]);
             }
         }
         finally
@@ -78,11 +77,11 @@ public class AllocationHelperTests
         foreach (var mb in new[] { 1L, 2, 3, 4, 8, 64, 256, 1024 })
         {
             var count = TranspositionTableExtensions.CalculateTranspositionTableSize(mb);
-            count.Should().BePositive($"{mb} MB");
-            BitOperations.IsPow2((ulong)count).Should().BeTrue($"{mb} MB must support mask indexing");
+            Assert.True(count > 0);
+            Assert.True(BitOperations.IsPow2((ulong)count), $"{mb} MB must support mask indexing");
             // Entry count must stay within a factor of two of the requested bytes / entry size.
             long estimated = mb * 1024 * 1024 / 20;
-            count.Should().BeInRange(estimated / 2, estimated * 2, $"{mb} MB");
+            Assert.True(count >= estimated / 2 && count <= estimated * 2, $"{mb} MB");
         }
     }
 
@@ -99,7 +98,7 @@ public class AllocationHelperTests
         {
             var count = TranspositionTableExtensions.CalculateTranspositionTableSize(mb);
             var inverted = TranspositionTableExtensions.CalculateSizeInMb((uint)count);
-            TranspositionTableExtensions.CalculateTranspositionTableSize(inverted).Should().Be(count);
+            Assert.Equal(count, TranspositionTableExtensions.CalculateTranspositionTableSize(inverted));
         }
     }
 

@@ -1,5 +1,4 @@
-﻿using FluentAssertions;
-using Sapling.Engine.Search;
+﻿using Sapling.Engine.Search;
 
 namespace Sapling.Engine.Tests;
 
@@ -27,6 +26,6 @@ public class PerftTests
             sum += nodes;
         }
 
-        sum.Should().Be(expectedNodes);
+        Assert.Equal(expectedNodes, sum);
     }
 }

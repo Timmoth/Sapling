@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.Transpositions;
 
 namespace Sapling.Engine.Tests;
@@ -19,12 +18,12 @@ public class TranspositionMoveIdentityTests
     {
         var entry = default(Transposition);
         TranspositionTableExtensions.Set(ref entry, HashA, 8, 0, 10, TranspositionTableFlag.Exact, 1234, shared: false);
-        entry.Move.Should().Be(1234);
+        Assert.Equal(1234u, entry.Move);
 
         // Different position, move-less store: must not keep A's move.
         TranspositionTableExtensions.Set(ref entry, HashB, 8, 0, 20, TranspositionTableFlag.Exact, 0, shared: false);
-        entry.FullHash.Should().Be(HashB);
-        entry.Move.Should().Be(0u);
+        Assert.Equal(HashB, entry.FullHash);
+        Assert.Equal(0u, entry.Move);
     }
 
     [Fact]
@@ -35,8 +34,8 @@ public class TranspositionMoveIdentityTests
 
         // Same position, move-less store: keep the incumbent move.
         TranspositionTableExtensions.Set(ref entry, HashA, 8, 0, 20, TranspositionTableFlag.Exact, 0, shared: false);
-        entry.FullHash.Should().Be(HashA);
-        entry.Move.Should().Be(1234u);
+        Assert.Equal(HashA, entry.FullHash);
+        Assert.Equal(1234u, entry.Move);
     }
 
     [Fact]
@@ -45,7 +44,7 @@ public class TranspositionMoveIdentityTests
         var entry = default(Transposition);
         TranspositionTableExtensions.Set(ref entry, HashA, 8, 0, 10, TranspositionTableFlag.Exact, 1234, shared: false);
         TranspositionTableExtensions.Set(ref entry, HashB, 8, 0, 20, TranspositionTableFlag.Exact, 5678, shared: false);
-        entry.Move.Should().Be(5678u);
+        Assert.Equal(5678u, entry.Move);
     }
 
     [Fact]
@@ -56,9 +55,9 @@ public class TranspositionMoveIdentityTests
 
         // Same position, shallower, non-exact: replacement policy rejects, entry untouched.
         TranspositionTableExtensions.Set(ref entry, HashA, 4, 0, 20, TranspositionTableFlag.Alpha, 0, shared: false);
-        entry.Depth.Should().Be(8);
-        entry.Flag.Should().Be(TranspositionTableFlag.Exact);
-        entry.Move.Should().Be(1234u);
+        Assert.Equal(8, entry.Depth);
+        Assert.Equal(TranspositionTableFlag.Exact, entry.Flag);
+        Assert.Equal(1234u, entry.Move);
     }
 
     [Fact]
@@ -69,9 +68,9 @@ public class TranspositionMoveIdentityTests
 
         // PV/exact data always replaces; a move-less exact store keeps the same-position incumbent.
         TranspositionTableExtensions.Set(ref entry, HashA, 4, 0, 20, TranspositionTableFlag.Exact, 0, shared: false);
-        entry.Depth.Should().Be(4);
-        entry.Flag.Should().Be(TranspositionTableFlag.Exact);
-        entry.Move.Should().Be(1234u);
+        Assert.Equal(4, entry.Depth);
+        Assert.Equal(TranspositionTableFlag.Exact, entry.Flag);
+        Assert.Equal(1234u, entry.Move);
     }
 
     [Fact]
@@ -81,8 +80,8 @@ public class TranspositionMoveIdentityTests
         TranspositionTableExtensions.Set(ref entry, HashA, 4, 0, 10, TranspositionTableFlag.Exact, 1234, shared: true);
         TranspositionTableExtensions.Set(ref entry, HashA, 8, 0, 20, TranspositionTableFlag.Exact, 0, shared: true);
 
-        entry.Move.Should().Be(1234u);
-        entry.Depth.Should().Be(8);
-        (entry.Version & 1).Should().Be(0, "the shared store must publish a stable even version");
+        Assert.Equal(1234u, entry.Move);
+        Assert.Equal(8, entry.Depth);
+        Assert.True((entry.Version & 1) == 0, "the shared store must publish a stable even version");
     }
 }

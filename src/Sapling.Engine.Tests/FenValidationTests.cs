@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine.MoveGen;
 
 namespace Sapling.Engine.Tests;
@@ -27,7 +26,7 @@ public class FenValidationTests
     [InlineData("4k3/8/8/8/8/8/8/4K3 w KQkq - 0 1 extra")]
     public void InvalidFens_AreRejectedWithAReason(string fen)
     {
-        FenValidator.Validate(fen).Should().NotBeNull();
+        Assert.NotNull(FenValidator.Validate(fen));
     }
 
     [Theory]
@@ -40,7 +39,7 @@ public class FenValidationTests
     [InlineData("r3k2r/1bp2pP1/5n2/1P1Q4/1pPq4/5N2/1B1P2p1/R1R1K2R b KQkq c3 0 1")]
     public void ValidFens_AreAccepted(string fen)
     {
-        FenValidator.Validate(fen).Should().BeNull();
+        Assert.Null(FenValidator.Validate(fen));
     }
 
     [Fact]
@@ -55,9 +54,9 @@ public class FenValidationTests
     {
         var board = BoardStateExtensions.CreateBoardFromFen("4k3/8/8/8/8/8/8/4K3 w - - 0 65535");
 
-        board.TurnCount.Should().Be(ushort.MaxValue);
+        Assert.Equal(ushort.MaxValue, board.TurnCount);
         var moves = new List<uint>();
         board.GenerateLegalMoves(moves, false);
-        moves.Should().NotBeEmpty();
+        Assert.NotEmpty(moves);
     }
 }

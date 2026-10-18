@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Sapling.Engine;
 using Sapling.Engine.Evaluation;
 using Sapling.Engine.MoveGen;
@@ -32,8 +31,8 @@ public unsafe class EnPassantMechanicsTests
             }
         }
 
-        move.Should().NotBe(0, "e5d6 en passant must be generated");
-        move.IsEnPassant().Should().BeTrue();
+        Assert.True(move != 0, "e5d6 en passant must be generated");
+        Assert.True(move.IsEnPassant());
 
         var occ = stackalloc ulong[8]
         {
@@ -49,7 +48,7 @@ public unsafe class EnPassantMechanicsTests
         var scratch = stackalloc short[board.PieceCount];
 
         var see = board.StaticExchangeEvaluation(occ, scratch, move);
-        see.Should().Be(100, "the captured d5 pawn must be removed from the exchange occupancy so Rd4 defends d6");
+        Assert.True(see == 100, "the captured d5 pawn must be removed from the exchange occupancy so Rd4 defends d6");
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public unsafe class EnPassantMechanicsTests
         var withEp = BoardStateExtensions.CreateBoardFromFen("r6k/8/8/8/4P3/8/8/R1K5 b - e3 0 1");
         var noEp = BoardStateExtensions.CreateBoardFromFen("r6k/8/8/8/4P3/8/8/R1K5 b - - 0 1");
 
-        withEp.EnPassantFile.CanEnPassant().Should().BeTrue();
+        Assert.True(withEp.EnPassantFile.CanEnPassant());
 
         var epCapturePossible = false;
         var moves = new List<uint>();
@@ -73,9 +72,8 @@ public unsafe class EnPassantMechanicsTests
             }
         }
 
-        epCapturePossible.Should().BeFalse("black has no pawn able to capture en passant");
-        withEp.Hash.Should().Be(noEp.Hash,
-            "positions differing only in an unusable ep file must hash equal (repetition/TT correctness)");
+        Assert.False(epCapturePossible, "black has no pawn able to capture en passant");
+        Assert.True(withEp.Hash == noEp.Hash, "positions differing only in an unusable ep file must hash equal (repetition/TT correctness)");
     }
 
     [Fact]
@@ -84,9 +82,8 @@ public unsafe class EnPassantMechanicsTests
         var withEp = BoardStateExtensions.CreateBoardFromFen("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
         var noEp = BoardStateExtensions.CreateBoardFromFen("4k3/8/8/3pP3/8/8/8/4K3 w - - 0 1");
 
-        Zobrist.GetEnPassantHashFile(ref withEp).Should().Be(withEp.EnPassantFile);
-        withEp.Hash.Should().NotBe(noEp.Hash,
-            "a legal en-passant capture changes the available moves and therefore position identity");
+        Assert.Equal(withEp.EnPassantFile, Zobrist.GetEnPassantHashFile(ref withEp));
+        Assert.True(withEp.Hash != noEp.Hash, "a legal en-passant capture changes the available moves and therefore position identity");
     }
 
     [Fact]
@@ -97,10 +94,9 @@ public unsafe class EnPassantMechanicsTests
         var legalMoves = new List<uint>();
         withEp.GenerateLegalMoves(legalMoves, false);
 
-        legalMoves.Should().NotContain(m => m.IsEnPassant(), "g5xf6 would uncover the rook attack on Kh5");
-        Zobrist.GetEnPassantHashFile(ref withEp).Should().Be(8);
-        withEp.Hash.Should().Be(noEp.Hash,
-            "a pinned pawn cannot legally capture en passant, so the positions have the same legal moves");
+        Assert.False(legalMoves.Any(m => m.IsEnPassant()), "g5xf6 would uncover the rook attack on Kh5");
+        Assert.Equal(8, Zobrist.GetEnPassantHashFile(ref withEp));
+        Assert.True(withEp.Hash == noEp.Hash, "a pinned pawn cannot legally capture en passant, so the positions have the same legal moves");
     }
 
     [Theory]
@@ -109,13 +105,12 @@ public unsafe class EnPassantMechanicsTests
     public void NullMove_LeavesHashConsistent_WhenClearingEnPassant(string fen)
     {
         var board = BoardStateExtensions.CreateBoardFromFen(fen);
-        board.Hash.Should().Be(Zobrist.CalculateZobristKey(ref board), "the parsed hash is the reference");
+        Assert.True(board.Hash == Zobrist.CalculateZobristKey(ref board), "the parsed hash is the reference");
 
         board.ApplyNullMove();
 
-        board.EnPassantFile.Should().Be(8);
-        board.Hash.Should().Be(Zobrist.CalculateZobristKey(ref board),
-            "null move must remove the EP hash component only when it was actually present");
+        Assert.Equal(8, board.EnPassantFile);
+        Assert.True(board.Hash == Zobrist.CalculateZobristKey(ref board), "null move must remove the EP hash component only when it was actually present");
     }
 
     [Fact]
@@ -135,9 +130,8 @@ public unsafe class EnPassantMechanicsTests
             state.Apply(move);
         }
 
-        state.HashHistory[1].Should().Be(state.HashHistory[5], "the first and second matching positions should hash equally");
-        state.HashHistory[5].Should().Be(state.HashHistory[9], "the second and third matching positions should hash equally");
-        RepetitionDetector.IsThreefoldRepetition(state.Board.TurnCount, state.Board.HalfMoveClock, state.HashHistory)
-            .Should().BeTrue("the position occurred three times; the first occurrence only differs by an unusable ep file");
+        Assert.True(state.HashHistory[1] == state.HashHistory[5], "the first and second matching positions should hash equally");
+        Assert.True(state.HashHistory[5] == state.HashHistory[9], "the second and third matching positions should hash equally");
+        Assert.True(RepetitionDetector.IsThreefoldRepetition(state.Board.TurnCount, state.Board.HalfMoveClock, state.HashHistory), "the position occurred three times; the first occurrence only differs by an unusable ep file");
     }
 }
