@@ -174,3 +174,11 @@ Data: 2bn positions (400m FRC)
 WDL: 0.3
 LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
 SuperBatches: 300
+
+----------------------------------
+21_(768x4-1024)x2-8
+----------------------------------
+Data: 1.396bn positions (standard + FRC)
+WDL: 0.3
+LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
+SuperBatches: 100
