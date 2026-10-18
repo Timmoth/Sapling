@@ -77,7 +77,7 @@ namespace Sapling.Engine.DataGen
             MemoryHelpers.Allocate<Transposition>(checked((long)items));
 
 
-        public static unsafe void Run(int depth = 14)
+        public static unsafe void Run(int depth = 12)
         {
             var transpositionSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
             var transpositions = AllocateTranspositions((nuint)transpositionSize);
