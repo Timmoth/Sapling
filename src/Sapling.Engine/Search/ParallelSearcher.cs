@@ -263,7 +263,7 @@ public unsafe class ParallelSearcher : IDisposable
 
     /// <summary>
     /// Root ranking for human-like difficulty. Single worker, direct table access. Only reached
-    /// when HumanPlay is enabled with a loaded distribution; the normal search paths are unaffected.
+    /// when HumanPlay is enabled; the normal search paths are unaffected.
     /// </summary>
     public List<(uint Move, int Score, int Feat)> RankRootMoves(GameState state, int depth)
     {

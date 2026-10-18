@@ -120,8 +120,8 @@ public class UciEngine : IDisposable
             case "humanelo":
                 if (tokens[3] == "value" && int.TryParse(tokens[4], out var humanElo))
                 {
-                    HumanPlay.SetElo(Math.Clamp(humanElo, 0, 3000));
-                    LogToFile($"[Debug] Set HumanElo '{humanElo}'");
+                    HumanPlay.SetElo(humanElo);
+                    LogToFile($"[Debug] Set HumanElo '{HumanPlay.Elo}'");
                 }
 
                 break;
@@ -204,7 +204,7 @@ public class UciEngine : IDisposable
                 Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                 Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
                 Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max {MaxHashMb()}");
-                Respond("option name HumanElo type spin default 0 min 0 max 3000");
+                Respond($"option name HumanElo type spin default 0 min 0 max {HumanPlay.MaxElo}");
                 // UCI_Chess960 is deliberately not advertised: castling is only verified for
                 // standard chess, so advertising it would let GUIs start unsupported games.
 #if OpenBench
@@ -606,9 +606,8 @@ public class UciEngine : IDisposable
         return (int)Math.Max(MinSearchTimeMs, Math.Ceiling(think));
     }
     /// <summary>
-    /// Human-like difficulty override. Inert unless HumanPlay is enabled AND a rank distribution
-    /// is loaded, so normal play is byte-for-byte unchanged. When active it ranks the root moves at
-    /// a fixed depth and samples which rank to play; rank 0 keeps the engine's own best move.
+    /// Human-like difficulty override. Inert unless HumanPlay is enabled, so normal play remains
+    /// unchanged. When active, the embedded policy samples from fixed-depth root candidates.
     /// </summary>
     private (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) ApplyHumanLevel(
         (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) result)
@@ -620,14 +619,8 @@ public class UciEngine : IDisposable
         if (ranked.Count == 0)
             return result;
 
-        var scores = new int[ranked.Count];
-        var feats = new int[ranked.Count];
-        for (var i = 0; i < ranked.Count; i++)
-        {
-            scores[i] = ranked[i].Score;
-            feats[i] = ranked[i].Feat;
-        }
-        var rank = HumanPlay.PickRank(_humanRng, scores, feats);
+        var board = _gameState.Board;
+        var rank = HumanPlay.PickMove(_humanRng, ref board, ranked, out _);
         if (rank <= 0)
             return result; // play the engine's own best move (keeps PV + ponder)
 

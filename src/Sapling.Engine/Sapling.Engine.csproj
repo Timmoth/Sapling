@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	  <Platforms>AnyCPU;x64</Platforms>
@@ -55,6 +55,8 @@
 
 	<ItemGroup>
 		<EmbeddedResource Include="Resources\sapling.nnue" />
+		<EmbeddedResource Include="Resources\human_policy_v1.weights"
+		                  LogicalName="Sapling.Engine.HumanPolicy.weights" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -1,0 +1,7 @@
+python-chess>=1.999
+zstandard>=0.22
+numpy>=1.26
+PyYAML>=6.0
+torch>=2.3
+onnx>=1.16
+onnxruntime>=1.18

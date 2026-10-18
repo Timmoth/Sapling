@@ -102,10 +102,11 @@
           <button id="flip" class="btn">Flip</button>
         </div>
         <div class="field" style="margin-top:12px">
-          <span>Human-style level <em id="human-elo-label">Off</em></span>
-          <input id="human-elo" class="slider" type="range" min="0" max="3000" step="10" value="0"
+          <span>Human-style level <em id="human-elo-label">3000+ · Full engine</em></span>
+          <input id="human-elo" class="slider" type="range" min="0" max="141" step="1" value="141"
+            aria-valuetext="3000+ (full engine strength)"
             aria-label="Human-style play level" />
-          <div class="slider-scale"><span>10</span><span>3000</span></div>
+          <div class="slider-scale"><span>800</span><span>3000+</span></div>
         </div>
         <div class="field" style="margin-top:12px">
           <span>You play</span>
@@ -118,6 +119,16 @@
 
       <section class="group" aria-label="Moves">
         <h2 class="section-label">Moves</h2>
+        <div class="move-chart-wrap">
+          <div class="move-chart-label move-chart-label-white" aria-hidden="true">White advantage</div>
+          <svg id="move-eval-chart" class="move-eval-chart" viewBox="0 0 280 64" role="img"
+            aria-label="Move evaluation graph. White advantage is above the center line and Black advantage is below. The line follows moves from first played to latest. Evaluations appear after moves are analyzed." preserveAspectRatio="none">
+            <line class="move-eval-zero" x1="7" y1="32" x2="273" y2="32"></line>
+            <path id="move-eval-path" class="move-eval-path" d=""></path>
+            <circle id="move-eval-current" class="move-eval-current" cx="7" cy="32" r="3.5" visibility="hidden"></circle>
+          </svg>
+          <div class="move-chart-label move-chart-label-black" aria-hidden="true">Black advantage</div>
+        </div>
         <ol id="moves" class="moves"></ol>
       </section>
 

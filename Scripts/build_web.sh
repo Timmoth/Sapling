@@ -16,7 +16,13 @@ done
 suffix="simd"; [[ "$WSIMD" == "false" ]] && suffix="nosimd"
 [[ "$WAOT" == "true" ]] && suffix="$suffix-aot" || suffix="$suffix-jit"
 
+if [[ ! -x web/node_modules/.bin/esbuild ]]; then
+  echo "Installing web build dependencies from web/package-lock.json..."
+  npm --prefix web ci
+fi
+
 artifacts="$PWD/src/Sapling.WebHost/bin/webdist-$suffix"
+rm -rf "$artifacts"
 echo "Publishing Sapling.WebHost (WasmEnableSIMD=$WSIMD, RunAOTCompilation=$WAOT)..."
 dotnet publish src/Sapling.WebHost -c Release --artifacts-path "$artifacts" \
   -p:WasmEnableSIMD="$WSIMD" -p:RunAOTCompilation="$WAOT" -v quiet
@@ -35,9 +41,12 @@ rm -f "$dist/smoke.mjs"
 # referenced by the runtime asset manifest and must be kept.)
 find "$dist" -type f -name '*.map' -delete
 
-# Application assets.
-cp web/index.html web/app.js web/worker.js web/styles.css "$dist/"
-[[ -d web/assets ]] && cp -R web/assets "$dist/assets"
+# Application assets. The human-policy weights and inference code are embedded in the engine
+# assembly and compiled with Sapling; no separate model or inference runtime is shipped.
+cp web/index.html web/app.js web/ui-model.js web/styles.css "$dist/"
+cp -R web/assets "$dist/assets"
+web/node_modules/.bin/esbuild web/worker.js --bundle --format=esm --platform=browser \
+  --external:./_framework/dotnet.js --outfile="$dist/worker.js"
 [[ -f web/ASSET-MANIFEST.md ]] && cp web/ASSET-MANIFEST.md "$dist/"
 
 echo
