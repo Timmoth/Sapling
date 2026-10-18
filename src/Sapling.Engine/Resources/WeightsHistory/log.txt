@@ -182,3 +182,19 @@ Data: 1.4bn positions (standard + FRC, eval orientation corrected)
 WDL: 0.3
 LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3 * 0.3
 SuperBatches: 100
+Activation: SCReLU (engine switched from CReLU in the same commit)
+Trainer: temp/training/sapling28.rs
+
+Two pipeline bugs were fixed before this net:
+  * The bullet save format applied .transpose() to l1w. Bullet's raw l1 tensor is
+    already [hidden][bucket], which is the order NnueWeights.cs reads before doing
+    its own transpose, so the output layer was scrambled on load. Nets trained that
+    way evaluated the start position near -800cp and lost every game of an SPRT
+    (OpenBench test 34: W0 L288 D0, -1199 Elo).
+  * The training corpus mixed side-to-move-relative and White-relative evals.
+    viriformat requires White-relative throughout; see DataGen/Viriformat.cs.
+    Correcting it took the training loss from 0.0351 to 0.0072.
+
+A CReLU net trained identically (same data, schedule and 100 superbatches) reached
+0.0071999 against this net's 0.0072011, i.e. the activation change is loss-neutral
+here and has to be judged by SPRT rather than by training loss.
