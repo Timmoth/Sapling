@@ -8,7 +8,7 @@ public static unsafe class NnueWeights
     public const int InputSize = 768;
     public const int Layer1Size = 1024;
 
-    public const byte InputBuckets = 4;
+    public const byte InputBuckets = 8;
     public const byte OutputBuckets = 8;
     public static readonly unsafe short* FeatureWeights;
     public static readonly unsafe short* FeatureBiases;
@@ -18,30 +18,21 @@ public static unsafe class NnueWeights
     public static readonly byte* BucketLayout;
 
 
-    //public static byte[] BucketLayout = new byte[64]
-    //{
-    //    0, 1, 2, 3, 3, 2, 1, 0,
-    //    4, 4, 5, 5, 5, 5, 4, 4,
-    //    6, 6, 6, 6, 6, 6, 6, 6,
-    //    6, 6, 6, 6, 6, 6, 6, 6,
-    //    7, 7, 7, 7, 7, 7, 7, 7,
-    //    7, 7, 7, 7, 7, 7, 7, 7,
-    //    7, 7, 7, 7, 7, 7, 7, 7,
-    //    7, 7, 7, 7, 7, 7, 7, 7,
-    //};
-
     static unsafe NnueWeights()
     {
+        // 8 king buckets, a1=0, horizontally mirrored (file e..h folds onto d..a).
+        // Must stay identical to the table the trainer feeds ChessBucketsMirrored;
+        // NnueTrainerLayoutTests pins the two together.
         var kingBuckets = new byte[64]
         {
-            0, 0, 1, 1, 1, 1, 0, 0,
-            2, 2, 2, 2, 2, 2, 2, 2,
-            3, 3, 3, 3, 3, 3, 3, 3,
-            3, 3, 3, 3, 3, 3, 3, 3,
-            3, 3, 3, 3, 3, 3, 3, 3,
-            3, 3, 3, 3, 3, 3, 3, 3,
-            3, 3, 3, 3, 3, 3, 3, 3,
-            3, 3, 3, 3, 3, 3, 3, 3,
+            0, 1, 2, 3, 3, 2, 1, 0,
+            4, 4, 5, 5, 5, 5, 4, 4,
+            6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6,
+            7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7,
         };
 
         BucketLayout = AlignedAllocZeroedByte(64);
