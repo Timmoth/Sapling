@@ -48,6 +48,7 @@ let evalSide = 'w';
 let pendingExport = null; // 'copy' | 'download'
 let history = []; // committed UCI moves, for the move list
 let historyScores = []; // evaluation after each move, normalized to White's perspective
+let historyCaptures = []; // captured piece after each move, aligned with history
 
 const worker = new Worker('./worker.js', { type: 'module' });
 
@@ -78,6 +79,59 @@ function kingSquare(board, color) {
     if (p && p.type === 'k' && p.color === color) return sq;
   }
   return -1;
+}
+
+function capturedByMove(board, uci) {
+  if (!uci || uci.length < 4) return null;
+  const from = fromAlg(uci.slice(0, 2));
+  const to = fromAlg(uci.slice(2, 4));
+  let captured = board[to];
+  // En passant captures the pawn beside the destination square.
+  if (!captured && board[from]?.type === 'p' && from % 8 !== to % 8) {
+    captured = board[to + (board[from].color === 'w' ? -8 : 8)];
+  }
+  return captured ? { color: captured.color, type: captured.type } : null;
+}
+
+function renderMaterial() {
+  const byColor = { w: [], b: [] };
+  for (const capture of historyCaptures) {
+    if (capture) byColor[capture.color].push(capture.type);
+  }
+  const opponentColor = humanColor === 'w' ? 'b' : 'w';
+  const rows = [
+    { id: 'opponent-material', color: opponentColor, pieces: byColor[opponentColor] },
+    { id: 'you-material', color: humanColor, pieces: byColor[humanColor] },
+  ];
+  for (const row of rows) {
+    const container = el(row.id);
+    container.textContent = '';
+    if (!row.pieces.length) {
+      const empty = document.createElement('span');
+      empty.className = 'material-empty';
+      empty.textContent = '—';
+      empty.setAttribute('aria-label', 'No pieces lost');
+      container.appendChild(empty);
+      continue;
+    }
+    for (const type of row.pieces) {
+      const img = document.createElement('img');
+      img.className = 'material-piece';
+      img.src = pieceSrc(row.color, type);
+      img.alt = PIECE_WORD[type];
+      img.title = PIECE_WORD[type][0].toUpperCase() + PIECE_WORD[type].slice(1);
+      container.appendChild(img);
+    }
+  }
+  const value = (pieces) => pieces.reduce((sum, type) => sum + ({ p: 1, n: 3, b: 3, r: 5, q: 9 }[type] || 0), 0);
+  const difference = value(byColor[opponentColor]) - value(byColor[humanColor]);
+  el('move-count').textContent = `${history.length} ${history.length === 1 ? 'move' : 'moves'}`;
+  const balance = el('material-balance');
+  balance.textContent = difference === 0 ? 'Material even'
+    : difference > 0 ? `You +${difference}` : `Opponent +${Math.abs(difference)}`;
+  balance.dataset.edge = difference === 0 ? 'even' : difference > 0 ? 'you' : 'opponent';
+  el('opponent-material-label').textContent = 'Sapling';
+  el('you-material-label').textContent = 'You';
 }
 
 // ---- rendering ----
@@ -143,6 +197,7 @@ function render() {
     }
   }
   if (state.lastMove) renderMovePath(lastFrom, lastTo);
+  renderMaterial();
   renderMoves();
 }
 
@@ -384,7 +439,8 @@ function toggleHintMode() {
   if (hinting || restoring) return;
   hintMode = !hintMode;
   const button = el('hint-mode');
-  button.textContent = hintMode ? 'Hints on' : 'Hints off';
+  el('hint-mode-state').textContent = hintMode ? 'On' : 'Off';
+  button.setAttribute('aria-label', hintMode ? 'Move hints on. Turn off' : 'Move hints off. Turn on');
   button.setAttribute('aria-pressed', String(hintMode));
   button.classList.toggle('selected', hintMode);
   hintScores.clear();
@@ -413,6 +469,7 @@ function showPromotion(cands) {
 }
 
 function commit(uci) {
+  historyCaptures.push(capturedByMove(parseFen(state.fen), uci));
   clearSelection();
   redoStack = [];
   history.push(uci);
@@ -440,6 +497,7 @@ function onCompleted(msg) {
       applyingAiMove = true;
       redoStack = [];
       history.push(msg.bestMove);
+      historyCaptures.push(capturedByMove(parseFen(state.fen), msg.bestMove));
       historyScores.push(null);
       worker.postMessage({ type: 'move', uci: msg.bestMove, moveSide: evalSide, scoreType: msg.scoreType, score: msg.score });
     }, AI_MOVE_PAUSE_MS);
@@ -584,6 +642,7 @@ function newGame() {
   hintScores.clear();
   selectedSq = null; targets = new Map();
   history = [];
+  historyCaptures = [];
   historyScores = [];
   el('promotion').hidden = true;
   redoStack = [];
@@ -615,6 +674,7 @@ function undo() {
   redoStack.push({
     moves: history.splice(history.length - count, count),
     scores: historyScores.splice(historyScores.length - count, count),
+    captures: historyCaptures.splice(historyCaptures.length - count, count),
   });
   restoreHistory();
 }
@@ -624,6 +684,7 @@ function redo() {
   const restored = redoStack.pop();
   history.push(...restored.moves);
   historyScores.push(...restored.scores);
+  historyCaptures.push(...restored.captures);
   restoreHistory();
 }
 
@@ -640,6 +701,54 @@ function segmented(id, onChange) {
     onChange(btn.dataset.value);
   });
 }
+
+const mobileMenuToggle = el('mobile-menu-toggle');
+const mobileMenuBackdrop = el('mobile-menu-backdrop');
+const menuPanel = el('menu-panel');
+let mobileMenuOpen = false;
+
+function setMobileMenuOpen(open, returnFocus = true) {
+  mobileMenuOpen = open;
+  menuPanel.classList.toggle('mobile-menu-open', open);
+  mobileMenuBackdrop.hidden = !open;
+  mobileMenuToggle.setAttribute('aria-expanded', String(open));
+  mobileMenuToggle.setAttribute('aria-label', open ? 'Close game menu' : 'Open game menu');
+  if (open) {
+    const firstControl = menuPanel.querySelector('button:not(:disabled), input:not(:disabled), summary');
+    firstControl?.focus();
+  } else if (returnFocus) {
+    mobileMenuToggle.focus();
+  }
+}
+
+mobileMenuToggle.addEventListener('click', () => setMobileMenuOpen(!mobileMenuOpen));
+mobileMenuBackdrop.addEventListener('click', () => setMobileMenuOpen(false));
+menuPanel.addEventListener('click', (event) => {
+  if (mobileMenuOpen && event.target.closest('button')) setMobileMenuOpen(false);
+});
+document.addEventListener('keydown', (event) => {
+  if (!mobileMenuOpen) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setMobileMenuOpen(false);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const controls = [...menuPanel.querySelectorAll('button:not(:disabled), input:not(:disabled), summary')]
+    .filter((control) => control.getClientRects().length > 0);
+  if (!controls.length) return;
+  const first = controls[0], last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+window.matchMedia('(min-width: 900px)').addEventListener('change', (event) => {
+  if (event.matches && mobileMenuOpen) setMobileMenuOpen(false, false);
+});
 
 el('new-game').addEventListener('click', newGame);
 el('undo').addEventListener('click', undo);
