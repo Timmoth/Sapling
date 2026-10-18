@@ -1,10 +1,10 @@
 // Browser worker for the Wasm engine. Sliced searches yield so stop and new-game messages
 // can run; interrupted iterations restart from the root with a warm transposition table.
-
 let host = null;
 const stopFlags = new Set();
 let currentRequest = 0;
 let activeHintId = 0;
+let currentHumanElo = 0;
 
 function post(msg) { self.postMessage(msg); }
 function parse(s) {
@@ -44,7 +44,14 @@ self.onmessage = async (event) => {
       break;
     }
     case 'move': {
-      post({ type: 'position', ...parse(host.ApplyMove(String(m.uci || ''))) });
+      let moveScore;
+      if (m.scoreType && Number.isFinite(m.score)) {
+        moveScore = { scoreType: m.scoreType, score: m.score, side: m.moveSide || 'w' };
+      } else {
+        const scored = parse(host.ScoreMove(String(m.uci || '')));
+        if (scored.ok) moveScore = { scoreType: scored.scoreType, score: scored.score, side: m.moveSide || 'w' };
+      }
+      post({ type: 'position', ...parse(host.ApplyMove(String(m.uci || ''))), moveScore });
       break;
     }
     case 'pgn': {
@@ -52,7 +59,9 @@ self.onmessage = async (event) => {
       break;
     }
     case 'humanelo': {
-      post({ type: 'humanelo', ...parse(host.SetHumanElo(m.elo | 0)) });
+      const result = parse(host.SetHumanElo(m.elo | 0));
+      if (result.ok) currentHumanElo = result.humanElo | 0;
+      post({ type: 'humanelo', ...result });
       break;
     }
     case 'newgame': {
@@ -133,7 +142,10 @@ async function runSearch(req) {
   }
 
   const fin = parse(host.Stop(id));
-  const chosen = best || fin;
+  // The host applies the Human Elo override when the search finalizes. Its terminal
+  // response is authoritative; an earlier progress message may still contain the
+  // unmodified full-engine move.
+  const chosen = fin.bestMove ? fin : best || fin;
   post({
     type: 'completed',
     requestId: id,
@@ -150,50 +162,67 @@ async function runSearch(req) {
 async function runHints(req) {
   const id = req.hintId | 0;
   activeHintId = id;
-  const scores = [];
-  let error = '';
-
-  for (const move of req.moves || []) {
-    if (activeHintId !== id) return;
-    let result = parse(host.SetPosition(String(req.fen || '')));
-    if (result.ok) result = parse(host.ApplyMove(String(move)));
-    if (!result.ok) { error = result.message || result.error || 'Could not apply move.'; break; }
-
-    const searchId = ++currentRequest;
-    stopFlags.delete(searchId);
-    result = parse(host.StartSearch(searchId, 5, 1800, 5000, 45));
-    if (!result.ok) { error = result.message || result.error || 'Could not start analysis.'; break; }
-
-    while (true) {
-      if (activeHintId !== id) return;
-      result = parse(host.SearchSlice(searchId));
-      if (!result.ok || result.done) break;
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    if (!result.ok) { error = result.message || result.error || 'Move analysis failed.'; break; }
-
-    const score = -(result.score || 0);
-    const scoreType = result.scoreType || 'cp';
-    const rankScore = scoreType === 'mate'
-      ? score > 0 ? 100000 - Math.abs(score) : -100000 + Math.abs(score)
-      : score;
-    scores.push({ move, score, scoreType, rankScore });
-    scores.sort((a, b) => b.rankScore - a.rankScore);
-    post({ type: 'hint-progress', hintId: id, scores });
-  }
-
-  if (activeHintId !== id) return;
-  let restored = parse(host.NewGame());
-  if (restored.ok) {
-    for (const move of req.history || []) {
-      restored = parse(host.ApplyMove(String(move)));
-      if (!restored.ok) break;
-    }
-  }
-  activeHintId = 0;
-  if (error || !restored.ok) {
-    post({ type: 'hint-failed', hintId: id, message: error || restored.message || restored.error || 'Could not restore game.' });
+  // Hint scores are evaluations, so bypass the Human Elo move-selection override.
+  const previousHumanElo = currentHumanElo;
+  const disabled = parse(host.SetHumanElo(0));
+  if (!disabled.ok) {
+    activeHintId = 0;
+    post({ type: 'hint-failed', hintId: id, message: disabled.message || disabled.error || 'Could not disable Human Elo for move scoring.' });
     return;
   }
-  post({ type: 'hints-done', hintId: id });
+  currentHumanElo = 0;
+
+  try {
+    const scores = [];
+    let error = '';
+
+    for (const move of req.moves || []) {
+      if (activeHintId !== id) return;
+      let result = parse(host.SetPosition(String(req.fen || '')));
+      if (result.ok) result = parse(host.ApplyMove(String(move)));
+      if (!result.ok) { error = result.message || result.error || 'Could not apply move.'; break; }
+
+      const searchId = ++currentRequest;
+      stopFlags.delete(searchId);
+      result = parse(host.StartSearch(searchId, 5, 1800, 5000, 45));
+      if (!result.ok) { error = result.message || result.error || 'Could not start analysis.'; break; }
+
+      while (true) {
+        if (activeHintId !== id) return;
+        result = parse(host.SearchSlice(searchId));
+        if (!result.ok || result.done) break;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      if (!result.ok) { error = result.message || result.error || 'Move analysis failed.'; break; }
+
+      const score = -(result.score || 0);
+      const scoreType = result.scoreType || 'cp';
+      const rankScore = scoreType === 'mate'
+        ? score > 0 ? 100000 - Math.abs(score) : -100000 + Math.abs(score)
+        : score;
+      scores.push({ move, score, scoreType, rankScore });
+      scores.sort((a, b) => b.rankScore - a.rankScore);
+      post({ type: 'hint-progress', hintId: id, scores });
+    }
+
+    if (activeHintId !== id) return;
+    let restored = parse(host.NewGame());
+    if (restored.ok) {
+      for (const move of req.history || []) {
+        restored = parse(host.ApplyMove(String(move)));
+        if (!restored.ok) break;
+      }
+    }
+    activeHintId = 0;
+    if (error || !restored.ok) {
+      post({ type: 'hint-failed', hintId: id, message: error || restored.message || restored.error || 'Could not restore game.' });
+      return;
+    }
+    post({ type: 'hints-done', hintId: id });
+  } finally {
+    if (host) {
+      const restoredElo = parse(host.SetHumanElo(previousHumanElo));
+      if (restoredElo.ok) currentHumanElo = restoredElo.humanElo | 0;
+    }
+  }
 }

@@ -1,5 +1,8 @@
 // Web UI controller; chess rules and game history come from the engine.
 
+import { eloFromSliderValue, eloLabelForSliderValue, formatEngineEval, formatMoveScore,
+  FULL_ENGINE_SLIDER_VALUE } from './ui-model.js';
+
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const PIECE_WORD = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 const pieceSrc = (color, type) => `./assets/pieces/${color === 'w' ? 'white' : 'black'}_${PIECE_WORD[type]}.svg`;
@@ -44,6 +47,7 @@ let hintId = 0;
 let evalSide = 'w';
 let pendingExport = null; // 'copy' | 'download'
 let history = []; // committed UCI moves, for the move list
+let historyScores = []; // evaluation after each move, normalized to White's perspective
 
 const worker = new Worker('./worker.js', { type: 'module' });
 
@@ -241,19 +245,67 @@ function renderMoves() {
   for (let i = 0; i < history.length; i += 2) {
     const li = document.createElement('li');
     const no = document.createElement('span'); no.className = 'no'; no.textContent = (i / 2 + 1) + '.';
-    const w = document.createElement('span'); w.className = 'san'; w.textContent = history[i];
-    li.append(no, w);
-    if (history[i + 1]) { const b = document.createElement('span'); b.className = 'san'; b.textContent = history[i + 1]; li.append(b); }
+    li.append(no, renderMoveEntry(history[i], historyScores[i]));
+    if (history[i + 1]) li.append(renderMoveEntry(history[i + 1], historyScores[i + 1]));
     list.appendChild(li);
   }
   list.scrollTop = list.scrollHeight;
+  renderMoveChart();
   updateUndoControls();
+}
+
+function renderMoveEntry(move, score) {
+  const entry = document.createElement('span'); entry.className = 'move-entry';
+  const san = document.createElement('span'); san.className = 'san'; san.textContent = move;
+  const evalBadge = document.createElement('span');
+  evalBadge.className = 'move-eval';
+  evalBadge.textContent = score ? formatMoveScore(score) : '\u2013';
+  evalBadge.title = score ? `Position after this move; ${score.scoreType === 'mate' ? 'mate' : 'evaluation'} from White's perspective` : 'Move evaluation unavailable';
+  evalBadge.setAttribute('aria-label', evalBadge.title + ': ' + evalBadge.textContent);
+  entry.append(san, evalBadge);
+  return entry;
+}
+
+function renderMoveChart() {
+  const path = el('move-eval-path');
+  const marker = el('move-eval-current');
+  const chart = el('move-eval-chart');
+  const width = 280, height = 64, padding = 7, mid = height / 2, amplitude = 24;
+  const available = historyScores
+    .map((score, index) => score ? { score, index } : null)
+    .filter(Boolean);
+  if (!available.length) {
+    path.setAttribute('d', '');
+    marker.setAttribute('cx', String(padding));
+    marker.setAttribute('cy', String(mid));
+    marker.setAttribute('visibility', 'hidden');
+    chart.setAttribute('aria-label', 'Move evaluation graph. Evaluations appear after moves are analyzed.');
+    return;
+  }
+
+  const xFor = (index) => history.length <= 1
+    ? width - padding
+    : padding + index / (history.length - 1) * (width - 2 * padding);
+  const yFor = (score) => {
+    const pawns = score.scoreType === 'mate' ? Math.sign(score.score || 1) * 5 : score.score / 100;
+    return mid - Math.max(-5, Math.min(5, pawns)) / 5 * amplitude;
+  };
+  const points = available.map(({ score, index }) => [xFor(index), yFor(score)]);
+  path.setAttribute('d', points.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' '));
+  const [lastX, lastY] = points[points.length - 1];
+  marker.setAttribute('cx', lastX.toFixed(1));
+  marker.setAttribute('cy', lastY.toFixed(1));
+  marker.setAttribute('visibility', 'visible');
+  const lastScore = available[available.length - 1].score;
+  const label = formatMoveScore(lastScore);
+  chart.setAttribute('aria-label', `Move evaluation graph. White's perspective, range plus or minus 5 pawns. Latest evaluation ${label}.`);
 }
 
 function updateUndoControls() {
   el('undo').disabled = !ready || restoring || hinting || history.length === 0;
   el('redo').disabled = !ready || restoring || hinting || redoStack.length === 0;
   el('hint-mode').disabled = !ready || restoring || hinting || thinking || state.gameOver || state.sideToMove !== humanColor;
+  el('human-elo').disabled = !ready || restoring || hinting || thinking;
 }
 
 function updateStatusLine() {
@@ -364,7 +416,8 @@ function commit(uci) {
   clearSelection();
   redoStack = [];
   history.push(uci);
-  worker.postMessage({ type: 'move', uci });
+  historyScores.push(null);
+  worker.postMessage({ type: 'move', uci, moveSide: state.sideToMove });
 }
 
 // ---- engine flow ----
@@ -387,7 +440,8 @@ function onCompleted(msg) {
       applyingAiMove = true;
       redoStack = [];
       history.push(msg.bestMove);
-      worker.postMessage({ type: 'move', uci: msg.bestMove });
+      historyScores.push(null);
+      worker.postMessage({ type: 'move', uci: msg.bestMove, moveSide: evalSide, scoreType: msg.scoreType, score: msg.score });
     }, AI_MOVE_PAUSE_MS);
   } else {
     thinking = false;
@@ -399,18 +453,11 @@ function onCompleted(msg) {
 function onProgress(msg) {
   if (msg.requestId !== requestId) return;
   setStat('st-depth', msg.bestDepth ?? '\u2013');
-  setStat('st-eval', formatEval(msg.scoreType, msg.score, evalSide));
+  setStat('st-eval', formatEngineEval(msg.scoreType, msg.score, evalSide));
   setStat('st-time', ((msg.timeMs || 0) / 1000).toFixed(1) + 's');
   setStat('st-nodes', (msg.nodesTotal || 0).toLocaleString());
   setStat('st-nps', (msg.nps || 0).toLocaleString());
   el('st-pv').textContent = (msg.pv && msg.pv.length) ? msg.pv.join(' ') : '\u2013';
-}
-
-function formatEval(type, score, side) {
-  if (score === undefined || score === null) return '\u2013';
-  const whiteScore = side === 'w' ? score : -score;
-  if (type === 'mate') return (whiteScore > 0 ? 'M' : 'M-') + Math.abs(whiteScore);
-  return (whiteScore / 100).toFixed(2);
 }
 
 function setStat(id, value) { el(id).textContent = String(value); }
@@ -475,12 +522,22 @@ worker.addEventListener('message', (event) => {
         fen: m.fen, sideToMove: m.sideToMove, legalMoves: m.legalMoves || [],
         lastMove: m.lastMove || '', inCheck: !!m.inCheck, gameOver: !!m.gameOver, result: m.result || '*',
       });
+      if (m.moveScore && historyScores.length === history.length && historyScores.length) {
+        const sign = m.moveScore.side === 'b' ? -1 : 1;
+        historyScores[historyScores.length - 1] = {
+          scoreType: m.moveScore.scoreType || 'cp',
+          score: sign * (m.moveScore.score || 0),
+        };
+      }
       render();
       if (!m.restored) animateLastMove(previousBoard, state.lastMove);
       updateStatusLine();
       if (!wasAiApply && !state.gameOver && state.sideToMove !== humanColor && !thinking) startAi();
       break;
     }
+    case 'humanelo':
+      if (!m.ok) setStatus('Could not change Human-style level: ' + (m.message || m.error), 'error');
+      break;
     case 'progress': onProgress(m); break;
     case 'hint-progress': updateHintScores(m); break;
     case 'hints-done':
@@ -497,6 +554,7 @@ worker.addEventListener('message', (event) => {
       break;
     case 'completed': onCompleted(m); break;
     case 'stopped': break;
+    case 'disposed': break;
     case 'pgn':
       if (!m.ok) { setStatus('PGN failed: ' + (m.message || m.error), 'error'); break; }
       if (pendingExport === 'download') downloadText(m.pgn, 'sapling-game.pgn');
@@ -526,6 +584,7 @@ function newGame() {
   hintScores.clear();
   selectedSq = null; targets = new Map();
   history = [];
+  historyScores = [];
   el('promotion').hidden = true;
   redoStack = [];
   renderMoves();
@@ -553,13 +612,18 @@ function restoreHistory() {
 function undo() {
   if (!history.length || restoring) return;
   const count = thinking ? 1 : Math.min(2, history.length);
-  redoStack.push(history.splice(history.length - count, count));
+  redoStack.push({
+    moves: history.splice(history.length - count, count),
+    scores: historyScores.splice(historyScores.length - count, count),
+  });
   restoreHistory();
 }
 
 function redo() {
   if (!redoStack.length || restoring) return;
-  history.push(...redoStack.pop());
+  const restored = redoStack.pop();
+  history.push(...restored.moves);
+  historyScores.push(...restored.scores);
   restoreHistory();
 }
 
@@ -585,11 +649,15 @@ segmented('side', (v) => { humanColor = v; orientation = v; newGame(); });
 
 const eloSlider = el('human-elo');
 const eloLabel = el('human-elo-label');
-const eloLabelFor = (v) => (v <= 0 ? 'Off' : '\u2248' + v + ' Elo');
 eloSlider.addEventListener('input', () => {
-  const v = +eloSlider.value;
-  eloLabel.textContent = eloLabelFor(v);
-  worker.postMessage({ type: 'humanelo', elo: v });
+  const sliderValue = +eloSlider.value;
+  const elo = eloFromSliderValue(sliderValue);
+  const label = eloLabelForSliderValue(sliderValue);
+  eloLabel.textContent = label;
+  eloSlider.setAttribute('aria-valuetext', sliderValue === FULL_ENGINE_SLIDER_VALUE
+    ? '3000+ (full engine strength)'
+    : `${elo} Elo`);
+  worker.postMessage({ type: 'humanelo', elo });
 });
 el('flip').addEventListener('click', () => {
   clearMoveAnimations();

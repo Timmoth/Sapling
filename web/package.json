@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check worker.js && node --check ui-model.js && node --test",
+    "test": "node --test",
+    "test:integration": "node ../Scripts/test_web_runtime.mjs && node ../Scripts/test_web_worker.mjs",
+    "test:all": "npm run check && npm run test:integration"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

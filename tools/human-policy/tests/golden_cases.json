@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "square_mapping": "a1=0, b1=1, ..., h8=7, a2=8, ..., h8=63; row=square//8, col=square%8",
+  "engine_feature_cases": [
+    {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "move": "e2e4", "root_score": 0, "best_root_score": 0, "expected": [0.0, 0.0]},
+    {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "move": "e2e4", "root_score": -1000, "best_root_score": 0, "expected": [-0.7615941559557649, 0.7615941559557649]},
+    {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "move": "e2e4", "root_score": 500, "best_root_score": 500, "expected": [0.46211715726000974, 0.0]},
+    {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "move": "e2e4", "root_score": 250, "best_root_score": 500, "expected": [0.24491866240370913, 0.24491866240370913]}
+  ],
+  "cases": [
+    {
+      "name": "initial-position",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "piece_squares": {"0": [8,9,10,11,12,13,14,15], "1": [1,6], "2": [2,5], "3": [0,7], "4": [3], "5": [4], "6": [48,49,50,51,52,53,54,55], "7": [57,62], "8": [58,61], "9": [56,63], "10": [59], "11": [60]},
+      "full_planes": [12,13,14,15,16],
+      "ep_square": null,
+      "moves": {"e2e4": [12,92], "g1f3": [6,85]}
+    },
+    {
+      "name": "black-to-move-en-passant",
+      "fen": "4k3/8/8/8/3pP3/8/8/4K3 b - e3 0 1",
+      "piece_squares": {"0": [28], "5": [4], "6": [27], "11": [60]},
+      "full_planes": [],
+      "ep_square": 20,
+      "moves": {"d4e3": [27,84]}
+    },
+    {
+      "name": "standard-castling-rights",
+      "fen": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+      "piece_squares": {"3": [0,7], "5": [4], "9": [56,63], "11": [60]},
+      "full_planes": [12,13,14,15,16],
+      "ep_square": null,
+      "moves": {"e1g1": [4,70], "e1c1": [4,66]}
+    },
+    {
+      "name": "all-promotions",
+      "fen": "4k3/P7/8/8/8/8/8/4K3 w - - 0 1",
+      "piece_squares": {"0": [48], "5": [4], "11": [60]},
+      "full_planes": [12],
+      "ep_square": null,
+      "moves": {"a7a8q": [48,120,128], "a7a8r": [48,120,129], "a7a8b": [48,120,130], "a7a8n": [48,120,131]}
+    },
+    {
+      "name": "uncapturable-fen-en-passant-target",
+      "fen": "4k3/8/8/8/3P4/8/8/4K3 b - d3 0 1",
+      "piece_squares": {"0": [27], "5": [4], "11": [60]},
+      "full_planes": [],
+      "ep_square": 19,
+      "moves": {"e8f8": [60,125]}
+    }
+  ]
+}
