@@ -13,9 +13,14 @@ public partial class Searcher
     // evaluations or beta must not operate on them.
     private const int MateScoreLimit = Constants.ImmediateMateScore - Constants.MaxSearchDepth;
 
+    // cutNode marks a node where a fail-high is expected: the children of a node whose
+    // sibling search already failed low. It alternates down the tree (a cut node's child is
+    // an all node and vice versa) and is independent of pvNode, which only records whether
+    // the window is wide. Reductions are stronger and internal iterative deepening is more
+    // aggressive where a cutoff is expected but no transposition move is available.
     public unsafe int
         NegaMaxSearch(BoardStateData* currentBoardState, AccumulatorState* currentAccumulatorState, int depthFromRoot, int depth,
-            int alpha, int beta)
+            int alpha, int beta, bool cutNode = false)
     {
         NodesVisited++;
 
@@ -164,7 +169,7 @@ public partial class Searcher
 
                 var nullMoveScore = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1,
                     Math.Max(depth - reduction - 1, 0), -beta,
-                    -beta + 1);
+                    -beta + 1, !cutNode);
 
                 if (Interrupted())
                     return 0;
@@ -211,6 +216,13 @@ public partial class Searcher
         {
             // Internal iterative deepening
             depth--;
+
+            // A cut node with no transposition move has nothing to order on and is still
+            // expected to fail high, so the shallower search is worth more here.
+            if (cutNode && depth > SpsaOptions.InternalIterativeDeepeningDepth)
+            {
+                depth--;
+            }
         }
 
         var whiteToMove = currentBoardState->WhiteToMove;
@@ -393,7 +405,7 @@ public partial class Searcher
                 if (score >= probBeta)
                 {
                     score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - SpsaOptions.ProbCutMinDepth,
-                        -probBeta, -probBeta + 1);
+                        -probBeta, -probBeta + 1, !cutNode);
 
                 }
 
@@ -520,12 +532,20 @@ public partial class Searcher
                         reduction = HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, moveHistory,
                             SpsaOptions.LateMoveReductionHistoryScale, depth - 1);
                     }
+                    // A cutoff is expected here, so late moves are even less likely to be best.
+                    if (cutNode)
+                    {
+                        reduction++;
+                    }
+
                     reduction = Math.Min(Math.Max(reduction, 0), depth - 1);
 
                     if (reduction > 0)
                     {
+                        // The reduced null-window search is always a cut node: we expect it to
+                        // fail low here, i.e. fail high from the child's point of view.
                         score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - reduction - 1,
-                            -alpha - 1, -alpha);
+                            -alpha - 1, -alpha, true);
                         if (Interrupted())
                             return 0;
                         needsFullSearch = score > alpha;
@@ -535,7 +555,7 @@ public partial class Searcher
                 if (needsFullSearch)
                 {
                     // PVS
-                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha);
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha, !cutNode);
                     if (Interrupted())
                         return 0;
                     needsFullSearch = score > alpha && score < beta;
@@ -545,7 +565,8 @@ public partial class Searcher
             if (needsFullSearch)
             {
                 // Full search
-                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -beta, -alpha);
+                // A re-search with the full window is a PV node, never a cut node.
+                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -beta, -alpha, false);
             }
 
             // Revert the move
