@@ -88,7 +88,7 @@ public static partial class EngineHost
     public static string SetHumanElo(int elo)
     {
         if (_state == HostState.Disposed) return Fail("disposed", "Host has been disposed.");
-        HumanPlay.SetElo(Math.Clamp(elo, 0, 3000));
+        HumanPlay.SetElo(elo);
         var j = new Json();
         j.Start();
         j.Bool("ok", true);
@@ -130,6 +130,43 @@ public static partial class EngineHost
             if (move == 0) return Fail("illegal", $"Move '{uci}' is not legal in the current position.");
             _game.Apply(move);
             return Position();
+        }
+        catch (Exception ex)
+        {
+            return Error(ex);
+        }
+    }
+
+    [JSExport]
+    public static string ScoreMove(string uci)
+    {
+        if (_state != HostState.Idle) return Busy();
+        if (_game is null || _ps is null) return NotReady();
+        try
+        {
+            var move = MatchLegalMove(_game, uci);
+            if (move == 0) return Fail("illegal", $"Move '{uci}' is not legal in the current position.");
+
+            var ranked = _ps.RankRootMoves(_game, HumanPlay.RankDepth);
+            var candidate = ranked.FirstOrDefault(item => item.Move == move);
+            if (candidate.Move == 0) return Fail("unscored-move", $"Move '{uci}' was not scored.");
+
+            var j = new Json();
+            j.Start();
+            j.Bool("ok", true);
+            j.Str("move", uci);
+            if (MoveScoring.IsMateScore(candidate.Score))
+            {
+                j.Str("scoreType", "mate");
+                j.Num("score", Math.Sign(candidate.Score) * MoveScoring.GetMateDistance(candidate.Score));
+            }
+            else
+            {
+                j.Str("scoreType", "cp");
+                j.Num("score", candidate.Score);
+            }
+            j.End();
+            return j.Done();
         }
         catch (Exception ex)
         {
@@ -482,7 +519,7 @@ public static partial class EngineHost
         return "*";
     }
 
-    // Human-like difficulty override: rank the root moves and sample which rank to play,
+    // Human-like difficulty override: rank the root moves and sample with the embedded policy,
     // replacing the engine's best move. Inert unless HumanPlay is enabled; runs once per request.
     private static void ApplyHumanOverride()
     {
@@ -494,14 +531,8 @@ public static partial class EngineHost
         if (ranked.Count == 0)
             return;
 
-        var scores = new int[ranked.Count];
-        var feats = new int[ranked.Count];
-        for (var i = 0; i < ranked.Count; i++)
-        {
-            scores[i] = ranked[i].Score;
-            feats[i] = ranked[i].Feat;
-        }
-        var rank = HumanPlay.PickRank(_humanRng, scores, feats);
+        var board = _game.Board;
+        var rank = HumanPlay.PickMove(_humanRng, ref board, ranked, out _);
         if (rank <= 0 || rank >= ranked.Count)
             return;
 
@@ -620,6 +651,7 @@ public static partial class EngineHost
 
         public void Bool(string name, bool value) { Key(name); _sb.Append(value ? "true" : "false"); }
         public void Num(string name, long value) { Key(name); _sb.Append(value.ToString(CultureInfo.InvariantCulture)); }
+        public void Num(string name, float value) { Key(name); _sb.Append(value.ToString("R", CultureInfo.InvariantCulture)); }
         public void Str(string name, string value) { Key(name); WriteString(value); }
 
         public void ArrStart(string name) { Key(name); _sb.Append('['); _needComma = false; }
@@ -628,6 +660,11 @@ public static partial class EngineHost
         {
             if (_sb[^1] != '[') _sb.Append(',');
             WriteString(value);
+        }
+        public void NumItem(float value)
+        {
+            if (_sb[^1] != '[') _sb.Append(',');
+            _sb.Append(value.ToString("R", CultureInfo.InvariantCulture));
         }
 
         private void WriteString(string value)

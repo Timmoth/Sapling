@@ -7,11 +7,43 @@ CDN, no third-party runtime requests.
 ## Build
 
 ```bash
+npm --prefix web ci                 # pinned esbuild
+dotnet test src/Sapling.Engine.Tests -c Release
+dotnet test src/Sapling.WebHost.Tests -c Release
 Scripts/build_web.sh                 # SIMD + AOT (default; fastest search)
 Scripts/build_web.sh --jit           # SIMD + JIT (faster build)
 Scripts/build_web.sh --no-simd       # non-SIMD + AOT (older-browser fallback)
 Scripts/build_web.sh --no-simd --jit # non-SIMD + JIT
 ```
+
+## Tests
+
+```bash
+npm --prefix web ci
+npm --prefix web run check
+dotnet test src/Sapling.Engine.Tests -c Release
+dotnet test src/Sapling.WebHost.Tests -c Release
+Scripts/run_wasm_tests.sh
+Scripts/build_web.sh
+node Scripts/test_web_runtime.mjs
+node Scripts/test_web_worker.mjs
+```
+
+After building `dist/`, run `npm --prefix web run test:all` for the JavaScript checks and
+the published-Wasm host and worker integration tests.
+
+The Node tests cover UI formatting, slider bounds, and the HTML/app/worker contracts. The .NET
+tests cover engine and WebHost behavior; `Scripts/run_wasm_tests.sh` runs the Wasm test bundle under Node.
+After publishing, `test_web_runtime.mjs` exercises the shipped WASM runtime through the same host API
+used by the worker: startup, Human Elo, legal-move search, scoring, apply, PGN export and disable.
+`test_web_worker.mjs` drives the published worker protocol against that runtime, including undo-style
+restore, hint scoring and Elo restoration. Run the built static app in a browser for visual and
+interaction checks before release.
+
+The trained policy's weights are embedded in `Sapling.Engine` and its inference runs in the
+same C# engine code for native UCI and browser WASM builds. Human Elo values from 800 to 2200
+select the policy; zero disables it. The web build ships no separate policy model or inference
+runtime.
 
 ## Wasm profiles (4.6)
 
@@ -38,12 +70,12 @@ This publishes `src/Sapling.WebHost` for `browser-wasm` and assembles a static d
 
 ```
 dist/
-  index.html  app.js  worker.js  styles.css  ASSET-MANIFEST.md
+  index.html  app.js  ui-model.js  worker.js  styles.css  ASSET-MANIFEST.md
   Sapling.WebHost.runtimeconfig.json  package.json
   _framework/            # .NET runtime, native wasm, engine assemblies, ICU data
 ```
 
-NNUE weights are embedded in `Sapling.Engine.wasm`, so there is no separate weights file.
+NNUE and human-policy weights are embedded in `Sapling.Engine`; no model sidecar is fetched.
 
 ## Local preview
 

@@ -11,7 +11,7 @@ namespace Sapling.Engine.Search;
 /// search path are completely unaffected.
 ///
 /// Searches every legal root move with a full window at a fixed depth for comparable exact scores,
-/// returns them best-first, and attaches a cheap feature bitmask used by the human move sampler:
+/// returns them best-first, and attaches move flags used for engine diagnostics:
 ///   bit0 capture, bit1 castle, bit2 promotion, bit3 gives-check, bits4-6 piece kind (0=P..5=Q,6=K).
 /// </summary>
 public unsafe partial class Searcher
