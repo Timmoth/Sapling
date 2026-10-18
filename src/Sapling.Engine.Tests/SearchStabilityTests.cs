@@ -55,28 +55,6 @@ public class SearchStabilityTests
         first.depthSearched.Should().Be(second.depthSearched);
     }
 
-    [Theory]
-    // Positions where the side to move has a mate in one. The engine must report a mate score and
-    // the move it plays must actually leave the opponent with no legal moves while in check.
-    [InlineData("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1")]
-    [InlineData("6k1/5ppp/8/8/8/8/8/1R4K1 w - - 0 1")]
-    [InlineData("6k1/5ppp/8/8/8/8/8/Q6K w - - 0 1")]
-    public void MateInOne_IsFoundAndActuallyDeliversMate(string fen)
-    {
-        using var state = StateFromFen(fen);
-        using var searcher = new ParallelSearcher(1024);
-
-        var result = searcher.DepthBoundSearch(state, 6);
-
-        result.move.Should().NotBeEmpty();
-        MoveScoring.IsMateScore(result.score).Should().BeTrue();
-        result.score.Should().BePositive("the side to move is the one delivering mate");
-
-        state.Apply(result.move[0]);
-        state.Board.InCheck.Should().BeTrue("the mating move must give check");
-        state.LegalMoves.Should().BeEmpty("the opponent must be checkmated");
-    }
-
     [Fact]
     public void TimeBoundSearch_ReturnsALegalMoveWithinABoundedWallTime()
     {

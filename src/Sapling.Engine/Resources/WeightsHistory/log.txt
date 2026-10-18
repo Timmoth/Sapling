@@ -178,7 +178,7 @@ SuperBatches: 300
 ----------------------------------
 21_(768x4-1024)x2-8
 ----------------------------------
-Data: 1.396bn positions (standard + FRC)
+Data: 1.4bn positions (standard + FRC, eval orientation corrected)
 WDL: 0.3
-LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
+LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3 * 0.3
 SuperBatches: 100

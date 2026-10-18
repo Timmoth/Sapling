@@ -7,7 +7,7 @@ namespace Sapling.Engine.DataGen;
 //
 // A file is a flat sequence of games. Each game is:
 //   - a 32-byte packed header for the initial position,
-//   - one 4-byte record per move: u16 move + i16 eval (side-to-move relative), little endian,
+//   - one 4-byte record per move: u16 move + i16 eval (White-relative), little endian,
 //   - a 4-byte all-zero null terminator.
 //
 // Header layout (little endian):
@@ -154,11 +154,14 @@ public static class Viriformat
         WriteHeader(header, ref start, wdl);
 
         var is960 = start.Is960;
+        var whiteToMove = start.WhiteToMove;
         for (var i = 0; i < moveCount; i++)
         {
             var record = game.Slice(HeaderSize + i * MoveRecordSize, MoveRecordSize);
             BinaryPrimitives.WriteUInt16LittleEndian(record, EncodeMove(moves[i].move, is960));
-            BinaryPrimitives.WriteInt16LittleEndian(record[2..], moves[i].eval);
+            var score = whiteToMove ? moves[i].eval : (short)Math.Min(-(int)moves[i].eval, short.MaxValue);
+            BinaryPrimitives.WriteInt16LittleEndian(record[2..], score);
+            whiteToMove = !whiteToMove;
         }
 
         game.Slice(HeaderSize + moveCount * MoveRecordSize, MoveRecordSize).Clear();

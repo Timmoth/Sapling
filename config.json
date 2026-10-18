@@ -1,0 +1,155 @@
+{
+    "resign": {
+        "move_count": 1,
+        "score": 0,
+        "twosided": false,
+        "enabled": false
+    },
+    "draw": {
+        "move_number": 0,
+        "move_count": 1,
+        "score": 0,
+        "enabled": false
+    },
+    "maxmoves": {
+        "move_count": 1,
+        "enabled": false
+    },
+    "tb_adjudication": {
+        "syzygy_dirs": "",
+        "max_pieces": 0,
+        "ignore_50_move_rule": false,
+        "enabled": false
+    },
+    "opening": {
+        "file": "/Users/timmoth/code/Sapling/temp/openbench-worker-mac/Client/Books/UHO_4060_vT.epd",
+        "format": 0,
+        "order": 0,
+        "plies": -1,
+        "start": 1
+    },
+    "pgn": {
+        "additional_lines_rgx": [],
+        "event_name": "Fastchess Tournament",
+        "site": "?",
+        "file": "/private/tmp/sapling25-30-vs-net20.pgn",
+        "notation": 0,
+        "append_file": true,
+        "track_nodes": false,
+        "track_seldepth": false,
+        "track_nps": false,
+        "track_hashfull": false,
+        "track_tbhits": false,
+        "track_timeleft": false,
+        "track_latency": false,
+        "track_pv": false,
+        "min": false,
+        "crc": false
+    },
+    "epd": {
+        "file": "",
+        "append_file": true
+    },
+    "sprt": {
+        "alpha": 0.0,
+        "beta": 0.0,
+        "elo0": 0.0,
+        "elo1": 0.0,
+        "model": "normalized",
+        "enabled": false
+    },
+    "config_name": "config.json",
+    "output": 0,
+    "seed": 14297451063892561559,
+    "variant": 0,
+    "type": 0,
+    "gauntlet_seeds": 1,
+    "ratinginterval": 10,
+    "scoreinterval": 1,
+    "wait": 0,
+    "autosaveinterval": 20,
+    "games": 2,
+    "rounds": 100,
+    "concurrency": 6,
+    "force_concurrency": false,
+    "recover": false,
+    "noswap": false,
+    "reverse": false,
+    "report_penta": true,
+    "affinity": false,
+    "check_mate_pvs": false,
+    "show_latency": false,
+    "log": {
+        "file": "",
+        "level": 3,
+        "append_file": true,
+        "compress": false,
+        "realtime": true,
+        "engine_coms": false
+    },
+    "engines": [
+        {
+            "name": "NET25-30",
+            "dir": "",
+            "cmd": "/Users/timmoth/code/Sapling/temp/training/net-match-dev/src/Sapling/bin/Release/net11.0/osx-arm64/Sapling",
+            "args": "",
+            "restart": false,
+            "options": [
+                [
+                    "Hash",
+                    "64"
+                ]
+            ],
+            "limit": {
+                "tc": {
+                    "increment": 20,
+                    "fixed_time": 0,
+                    "time": 1000,
+                    "moves": 0,
+                    "timemargin": 0
+                },
+                "nodes": 0,
+                "plies": 0
+            },
+            "variant": 0
+        },
+        {
+            "name": "NET20",
+            "dir": "",
+            "cmd": "/Users/timmoth/code/Sapling/temp/training/net-match-base/src/Sapling/bin/Release/net11.0/osx-arm64/Sapling",
+            "args": "",
+            "restart": false,
+            "options": [
+                [
+                    "Hash",
+                    "64"
+                ]
+            ],
+            "limit": {
+                "tc": {
+                    "increment": 20,
+                    "fixed_time": 0,
+                    "time": 1000,
+                    "moves": 0,
+                    "timemargin": 0
+                },
+                "nodes": 0,
+                "plies": 0
+            },
+            "variant": 0
+        }
+    ],
+    "stats": {
+        "NET25-30 vs NET20": {
+            "wins": 30,
+            "losses": 103,
+            "draws": 67,
+            "penta_WW": 0,
+            "penta_WD": 6,
+            "penta_WL": 24,
+            "penta_DD": 9,
+            "penta_LD": 43,
+            "penta_LL": 18
+        }
+    }
+}
