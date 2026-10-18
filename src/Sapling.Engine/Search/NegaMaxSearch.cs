@@ -13,6 +13,19 @@ public partial class Searcher
     // evaluations or beta must not operate on them.
     private const int MateScoreLimit = Constants.ImmediateMateScore - Constants.MaxSearchDepth;
 
+    // Singular extension tunables. Deliberately conservative: the verification search is
+    // the whole cost of this feature, so the gates matter more than the margin.
+    private const int SingularMinDepth = 8;
+    private const int SingularTtDepthMargin = 3;
+    private const int SingularMarginScale = 16;
+    private const int SingularDoubleMargin = 20;
+
+    // Instrumentation: verification searches as a fraction of nodes is the number that
+    // decides whether the gating is tight enough.
+    public long SingularVerifications;
+    public long SingularExtensions;
+    public long SingularNegativeExtensions;
+
     // cutNode marks a node where a fail-high is expected: the children of a node whose
     // sibling search already failed low. It alternates down the tree (a cut node's child is
     // an all node and vice versa) and is independent of pvNode, which only records whether
@@ -20,7 +33,7 @@ public partial class Searcher
     // aggressive where a cutoff is expected but no transposition move is available.
     public unsafe int
         NegaMaxSearch(BoardStateData* currentBoardState, AccumulatorState* currentAccumulatorState, int depthFromRoot, int depth,
-            int alpha, int beta, bool cutNode = false)
+            int alpha, int beta, bool cutNode = false, uint excludedMove = default)
     {
         NodesVisited++;
 
@@ -35,7 +48,15 @@ public partial class Searcher
 
         var pvIndex = *(PVTable.Indexes + depthFromRoot);
         var nextPvIndex = *(PVTable.Indexes + depthFromRoot + 1);
-        _pVTable[pvIndex] = 0;
+        if (excludedMove == default)
+        {
+            _pVTable[pvIndex] = 0;
+        }
+
+        // A verification ("exclusion") search re-searches this node with one move removed.
+        // Its result describes a different position than the node's own hash, so it must not
+        // publish transposition entries or a principal variation.
+        var excluding = excludedMove != default;
 
         var pvNode = beta - alpha > 1;
         var parentInCheck = currentBoardState->InCheck;
@@ -99,7 +120,10 @@ public partial class Searcher
                         _ => TranspositionTableExtensions.NoHashEntry
                     };
 
-                    if (!pvNode && transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
+                    // An exclusion search must never take a cutoff from the entry it is
+                    // trying to test: that entry was computed *with* the excluded move, so
+                    // returning it makes every move look non-singular.
+                    if (!pvNode && !excluding && transpositionEvaluation != TranspositionTableExtensions.NoHashEntry)
                     {
                         // Transposition table hit
                         return transpositionEvaluation;
@@ -241,10 +265,10 @@ public partial class Searcher
             if (!currentBoardState->InCheck)
             {
                 var diff = eval - staticEval;
-                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
+                if (!excluding) UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
             }
 
-            StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
+            if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
@@ -412,7 +436,7 @@ public partial class Searcher
                 if (Interrupted()) return 0;
                 if (score >= probBeta)
                 {
-                    StoreTransposition(ref ttEntry, pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
+                    if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
                         score,
                         TranspositionTableFlag.Beta,
                         default);
@@ -470,6 +494,64 @@ public partial class Searcher
             if (m == default)
             {
                 continue;
+            }
+
+            // This is the exclusion search for m: skip it so the rest of the position is
+            // searched without it. Without this the verification is just a shallow search
+            // that still contains the move it is supposed to be testing.
+            if (m == excludedMove)
+            {
+                continue;
+            }
+
+            // Singular extension. If the transposition move is much better than every
+            // alternative at reduced depth, the position hinges on it, so search it deeper.
+            // Gated hard: at most one verification per node (m == transpositionBestMove),
+            // never nested, and only where the table already holds a deep lower bound.
+            // transpositionEvaluation is only populated when ttDepth >= depth, which is a
+            // stricter condition than this gate needs, so read the snapshot directly.
+            var extension = 0;
+            if (!excluding
+                && depthFromRoot > 0
+                && m == transpositionBestMove
+                && depth >= SingularMinDepth
+                && transpositionType == TranspositionTableFlag.Beta
+                && ttSnapshot.Depth >= depth - SingularTtDepthMargin
+                && ttSnapshot.Evaluation != TranspositionTableExtensions.NoHashEntry
+                && Math.Abs(ttSnapshot.Evaluation) < TranspositionTableExtensions.PositiveCheckmateDetectionLimit)
+            {
+                SingularVerifications++;
+
+                var ttScore = TranspositionTableExtensions.RecalculateMateScores(ttSnapshot.Evaluation, depthFromRoot);
+                var singularBeta = ttScore - depth * SingularMarginScale / 16;
+                var singularDepth = (depth - 1) / 2;
+
+                var singularScore = NegaMaxSearch(currentBoardState, currentAccumulatorState, depthFromRoot,
+                    singularDepth, singularBeta - 1, singularBeta, cutNode, m);
+
+                if (Interrupted())
+                    return 0;
+
+                if (singularScore < singularBeta)
+                {
+                    // Clearly singular: nothing else comes close, so spend two plies.
+                    extension = singularScore < singularBeta - SingularDoubleMargin ? 2 : 1;
+                    SingularExtensions++;
+                }
+                else if (ttScore >= beta)
+                {
+                    // Not singular and the table score already beats beta, so several moves
+                    // are good enough here. Search shallower instead - this is where the
+                    // node cost of the verification search is earned back.
+                    extension = -2;
+                    SingularNegativeExtensions++;
+                }
+                else if (cutNode)
+                {
+                    // Not singular at a node we expect to fail high anyway.
+                    extension = -1;
+                    SingularNegativeExtensions++;
+                }
             }
 
             Unsafe.CopyBlock(newBoardState, currentBoardState, BoardStateData.BoardStateSize);
@@ -544,7 +626,7 @@ public partial class Searcher
                     {
                         // The reduced null-window search is always a cut node: we expect it to
                         // fail low here, i.e. fail high from the child's point of view.
-                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - reduction - 1,
+                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth + extension - reduction - 1,
                             -alpha - 1, -alpha, true);
                         if (Interrupted())
                             return 0;
@@ -555,7 +637,7 @@ public partial class Searcher
                 if (needsFullSearch)
                 {
                     // PVS
-                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -alpha - 1, -alpha, !cutNode);
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, Math.Max(depth + extension - 1, 0), -alpha - 1, -alpha, !cutNode);
                     if (Interrupted())
                         return 0;
                     needsFullSearch = score > alpha && score < beta;
@@ -566,7 +648,7 @@ public partial class Searcher
             {
                 // Full search
                 // A re-search with the full window is a PV node, never a cut node.
-                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - 1, -beta, -alpha, false);
+                score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, Math.Max(depth + extension - 1, 0), -beta, -alpha, false);
             }
 
             // Revert the move
@@ -608,11 +690,11 @@ public partial class Searcher
                                    && (score > staticEval))
                 {
                     var diff = bestScore - staticEval;
-                    UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
+                    if (!excluding) UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
                 }
 
                 // Cache in transposition table
-                StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot,
+                if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot,
                     score,
                     TranspositionTableFlag.Beta,
                     bestMove);
@@ -634,7 +716,7 @@ public partial class Searcher
                 return score;
             }
 
-            if (!Interrupted() || depthFromRoot > 0)
+            if (!excluding && (!Interrupted() || depthFromRoot > 0))
             {
                 // update pv table
                 *(_pVTable + pvIndex) = m;
@@ -658,10 +740,10 @@ public partial class Searcher
             if (!parentInCheck)
             {
                 var diff = eval - staticEval;
-                UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
+                if (!excluding) UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
             }
 
-            StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
+            if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
@@ -672,11 +754,11 @@ public partial class Searcher
                             && (evaluationBound == TranspositionTableFlag.Exact || bestScore < staticEval))
         {
             var diff = bestScore - staticEval;
-            UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
+            if (!excluding) UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
         }
 
         // Cache in transposition table
-        StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, alpha,
+        if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, alpha,
             evaluationBound, bestMove);
 
         return alpha;
