@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """Deterministically generate NNUE kernels; --check verifies the checked-in artifact."""
 from pathlib import Path
+import re
 import sys
+
+# The unroll counts must track NnueWeights.Layer1Size exactly, so read it from the engine
+# rather than hardcoding it: a mismatch silently evaluates only part of the accumulator.
+ROOT = Path(__file__).resolve().parent.parent
+_weights = (ROOT / 'src/Sapling.Engine/Evaluation/NnueWeights.cs').read_text()
+L1 = int(re.search(r'public const int Layer1Size = (\d+);', _weights).group(1))
+AVX2_VECTORS = L1 // 16    # Vector256<short> holds 16 shorts
+AVX512_VECTORS = L1 // 32  # Vector512<short> holds 32 shorts
+assert AVX2_VECTORS * 16 == L1 and AVX512_VECTORS * 32 == L1, f'Layer1Size {L1} must be a multiple of 32'
 
 # All external offsets/pointers count shorts. Only the x86 body reinterprets vectors.
 ops = [
@@ -44,8 +54,8 @@ for name,args,expr in ops:
  l,r=scalar.rsplit(' = ',1)
  lines += [f'                    {l} = unchecked((short)({r}));','                }','            }','            return;','        }']
  for a in sources:lines += [f'        var {a} = (VectorShort*){a}Data;']
- for i in range(64):
-  if i==32:lines+=['#if !AVX512']
+ for i in range(AVX2_VECTORS):
+  if i==AVX512_VECTORS:lines+=['#if !AVX512']
   lines += ['        '+expr.replace('[i]',f'[{i}]')+';']
  lines += ['#endif','    }','']
 lines += ['    [MethodImpl(MethodImplOptions.AggressiveInlining)]',
@@ -85,15 +95,15 @@ lines += ['                }', '                return Vector128.Sum(sum0 + sum1
  '        var wPtr = (VectorShort*)weights;', '        var otherPtr = (VectorShort*)otherWeights;',
  '        var ceil = VectorType.Create((short)255);', '        var floor = VectorShort.Zero;',
  '        var sum = VectorInt.Zero;']
-for i in range(64):
- if i==32:lines+=['#if !AVX512']
+for i in range(AVX2_VECTORS):
+ if i==AVX512_VECTORS:lines+=['#if !AVX512']
  lines += [f'        var u{i} = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[{i}], ceil), floor);',
  f'        var t{i} = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[{i}], ceil), floor);',
  f'        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u{i}, wPtr[{i}]), u{i})',
  f'             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t{i}, otherPtr[{i}]), t{i});']
 lines += ['#endif','        return VectorType.Sum(sum);','    }','}']
 output='\n'.join(lines)+'\n'
-target=Path(__file__).resolve().parent.parent/'src/Sapling.Engine/Evaluation/Unrolled.cs'
+target=ROOT/'src/Sapling.Engine/Evaluation/Unrolled.cs'
 if '--check' in sys.argv:
  if target.read_text()!=output: raise SystemExit('Generated NNUE kernels are stale')
 else: target.write_text(output)
