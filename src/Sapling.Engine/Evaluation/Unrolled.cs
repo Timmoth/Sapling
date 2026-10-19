@@ -908,7 +908,11 @@ public unsafe partial class Searcher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ForwardCReLU(short* usData, short* themData, int bucket)
+    // Squared clipped ReLU. Returns the raw sum of clamp(acc,0,QA)^2 * weight; the caller
+    // divides by QA before applying the output bias (see Searcher.Evaluate).
+    // Every backend models the same arithmetic: the activation-by-weight product is
+    // truncated to i16 exactly as _mm256_mullo_epi16 does, so all paths agree bit for bit.
+    private static int ForwardSCReLU(short* usData, short* themData, int bucket)
     {
         var weights = NnueWeights.OutputWeights + bucket * NnueWeights.Layer1Size * 2;
         var otherWeights = weights + NnueWeights.Layer1Size;
@@ -924,33 +928,45 @@ public unsafe partial class Searcher
                 var ceil128 = Vector128.Create((short)255);
                 for (var i = 0; i < NnueWeights.Layer1Size; i += 4 * Vector128<short>.Count)
                 {
-                    var us0 = Vector128.Widen(Vector128.Clamp(Vector128.Load(usData + i), floor128, ceil128));
-                    var them0 = Vector128.Widen(Vector128.Clamp(Vector128.Load(themData + i), floor128, ceil128));
-                    var w0 = Vector128.Widen(Vector128.Load(weights + i));
-                    var other0 = Vector128.Widen(Vector128.Load(otherWeights + i));
-                    sum0 += us0.Lower * w0.Lower + us0.Upper * w0.Upper + them0.Lower * other0.Lower + them0.Upper * other0.Upper;
-                    var us1 = Vector128.Widen(Vector128.Clamp(Vector128.Load(usData + i + 1 * Vector128<short>.Count), floor128, ceil128));
-                    var them1 = Vector128.Widen(Vector128.Clamp(Vector128.Load(themData + i + 1 * Vector128<short>.Count), floor128, ceil128));
-                    var w1 = Vector128.Widen(Vector128.Load(weights + i + 1 * Vector128<short>.Count));
-                    var other1 = Vector128.Widen(Vector128.Load(otherWeights + i + 1 * Vector128<short>.Count));
-                    sum1 += us1.Lower * w1.Lower + us1.Upper * w1.Upper + them1.Lower * other1.Lower + them1.Upper * other1.Upper;
-                    var us2 = Vector128.Widen(Vector128.Clamp(Vector128.Load(usData + i + 2 * Vector128<short>.Count), floor128, ceil128));
-                    var them2 = Vector128.Widen(Vector128.Clamp(Vector128.Load(themData + i + 2 * Vector128<short>.Count), floor128, ceil128));
-                    var w2 = Vector128.Widen(Vector128.Load(weights + i + 2 * Vector128<short>.Count));
-                    var other2 = Vector128.Widen(Vector128.Load(otherWeights + i + 2 * Vector128<short>.Count));
-                    sum2 += us2.Lower * w2.Lower + us2.Upper * w2.Upper + them2.Lower * other2.Lower + them2.Upper * other2.Upper;
-                    var us3 = Vector128.Widen(Vector128.Clamp(Vector128.Load(usData + i + 3 * Vector128<short>.Count), floor128, ceil128));
-                    var them3 = Vector128.Widen(Vector128.Clamp(Vector128.Load(themData + i + 3 * Vector128<short>.Count), floor128, ceil128));
-                    var w3 = Vector128.Widen(Vector128.Load(weights + i + 3 * Vector128<short>.Count));
-                    var other3 = Vector128.Widen(Vector128.Load(otherWeights + i + 3 * Vector128<short>.Count));
-                    sum3 += us3.Lower * w3.Lower + us3.Upper * w3.Upper + them3.Lower * other3.Lower + them3.Upper * other3.Upper;
+                    var usClamped0 = Vector128.Clamp(Vector128.Load(usData + i), floor128, ceil128);
+                    var themClamped0 = Vector128.Clamp(Vector128.Load(themData + i), floor128, ceil128);
+                    var usProd0 = Vector128.Widen(usClamped0 * Vector128.Load(weights + i));
+                    var themProd0 = Vector128.Widen(themClamped0 * Vector128.Load(otherWeights + i));
+                    var us0 = Vector128.Widen(usClamped0);
+                    var them0 = Vector128.Widen(themClamped0);
+                    sum0 += usProd0.Lower * us0.Lower + usProd0.Upper * us0.Upper + themProd0.Lower * them0.Lower + themProd0.Upper * them0.Upper;
+                    var usClamped1 = Vector128.Clamp(Vector128.Load(usData + i + 1 * Vector128<short>.Count), floor128, ceil128);
+                    var themClamped1 = Vector128.Clamp(Vector128.Load(themData + i + 1 * Vector128<short>.Count), floor128, ceil128);
+                    var usProd1 = Vector128.Widen(usClamped1 * Vector128.Load(weights + i + 1 * Vector128<short>.Count));
+                    var themProd1 = Vector128.Widen(themClamped1 * Vector128.Load(otherWeights + i + 1 * Vector128<short>.Count));
+                    var us1 = Vector128.Widen(usClamped1);
+                    var them1 = Vector128.Widen(themClamped1);
+                    sum1 += usProd1.Lower * us1.Lower + usProd1.Upper * us1.Upper + themProd1.Lower * them1.Lower + themProd1.Upper * them1.Upper;
+                    var usClamped2 = Vector128.Clamp(Vector128.Load(usData + i + 2 * Vector128<short>.Count), floor128, ceil128);
+                    var themClamped2 = Vector128.Clamp(Vector128.Load(themData + i + 2 * Vector128<short>.Count), floor128, ceil128);
+                    var usProd2 = Vector128.Widen(usClamped2 * Vector128.Load(weights + i + 2 * Vector128<short>.Count));
+                    var themProd2 = Vector128.Widen(themClamped2 * Vector128.Load(otherWeights + i + 2 * Vector128<short>.Count));
+                    var us2 = Vector128.Widen(usClamped2);
+                    var them2 = Vector128.Widen(themClamped2);
+                    sum2 += usProd2.Lower * us2.Lower + usProd2.Upper * us2.Upper + themProd2.Lower * them2.Lower + themProd2.Upper * them2.Upper;
+                    var usClamped3 = Vector128.Clamp(Vector128.Load(usData + i + 3 * Vector128<short>.Count), floor128, ceil128);
+                    var themClamped3 = Vector128.Clamp(Vector128.Load(themData + i + 3 * Vector128<short>.Count), floor128, ceil128);
+                    var usProd3 = Vector128.Widen(usClamped3 * Vector128.Load(weights + i + 3 * Vector128<short>.Count));
+                    var themProd3 = Vector128.Widen(themClamped3 * Vector128.Load(otherWeights + i + 3 * Vector128<short>.Count));
+                    var us3 = Vector128.Widen(usClamped3);
+                    var them3 = Vector128.Widen(themClamped3);
+                    sum3 += usProd3.Lower * us3.Lower + usProd3.Upper * us3.Upper + themProd3.Lower * them3.Lower + themProd3.Upper * them3.Upper;
                 }
                 return Vector128.Sum(sum0 + sum1 + sum2 + sum3);
             }
             var scalar = 0;
             for (var i = 0; i < NnueWeights.Layer1Size; i++)
-                scalar = unchecked(scalar + Math.Clamp((int)usData[i], 0, 255) * weights[i]
-                    + Math.Clamp((int)themData[i], 0, 255) * otherWeights[i]);
+            {
+                var u = Math.Clamp((int)usData[i], 0, 255);
+                var t = Math.Clamp((int)themData[i], 0, 255);
+                scalar = unchecked(scalar + unchecked((short)(u * weights[i])) * u
+                    + unchecked((short)(t * otherWeights[i])) * t);
+            }
             return scalar;
         }
         var usAcc = (VectorShort*)usData;
@@ -960,135 +976,263 @@ public unsafe partial class Searcher
         var ceil = VectorType.Create((short)255);
         var floor = VectorShort.Zero;
         var sum = VectorInt.Zero;
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[0], ceil), floor), wPtr[0])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[0], ceil), floor), otherPtr[0]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[1], ceil), floor), wPtr[1])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[1], ceil), floor), otherPtr[1]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[2], ceil), floor), wPtr[2])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[2], ceil), floor), otherPtr[2]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[3], ceil), floor), wPtr[3])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[3], ceil), floor), otherPtr[3]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[4], ceil), floor), wPtr[4])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[4], ceil), floor), otherPtr[4]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[5], ceil), floor), wPtr[5])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[5], ceil), floor), otherPtr[5]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[6], ceil), floor), wPtr[6])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[6], ceil), floor), otherPtr[6]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[7], ceil), floor), wPtr[7])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[7], ceil), floor), otherPtr[7]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[8], ceil), floor), wPtr[8])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[8], ceil), floor), otherPtr[8]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[9], ceil), floor), wPtr[9])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[9], ceil), floor), otherPtr[9]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[10], ceil), floor), wPtr[10])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[10], ceil), floor), otherPtr[10]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[11], ceil), floor), wPtr[11])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[11], ceil), floor), otherPtr[11]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[12], ceil), floor), wPtr[12])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[12], ceil), floor), otherPtr[12]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[13], ceil), floor), wPtr[13])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[13], ceil), floor), otherPtr[13]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[14], ceil), floor), wPtr[14])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[14], ceil), floor), otherPtr[14]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[15], ceil), floor), wPtr[15])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[15], ceil), floor), otherPtr[15]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[16], ceil), floor), wPtr[16])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[16], ceil), floor), otherPtr[16]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[17], ceil), floor), wPtr[17])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[17], ceil), floor), otherPtr[17]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[18], ceil), floor), wPtr[18])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[18], ceil), floor), otherPtr[18]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[19], ceil), floor), wPtr[19])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[19], ceil), floor), otherPtr[19]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[20], ceil), floor), wPtr[20])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[20], ceil), floor), otherPtr[20]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[21], ceil), floor), wPtr[21])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[21], ceil), floor), otherPtr[21]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[22], ceil), floor), wPtr[22])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[22], ceil), floor), otherPtr[22]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[23], ceil), floor), wPtr[23])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[23], ceil), floor), otherPtr[23]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[24], ceil), floor), wPtr[24])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[24], ceil), floor), otherPtr[24]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[25], ceil), floor), wPtr[25])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[25], ceil), floor), otherPtr[25]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[26], ceil), floor), wPtr[26])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[26], ceil), floor), otherPtr[26]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[27], ceil), floor), wPtr[27])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[27], ceil), floor), otherPtr[27]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[28], ceil), floor), wPtr[28])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[28], ceil), floor), otherPtr[28]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[29], ceil), floor), wPtr[29])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[29], ceil), floor), otherPtr[29]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[30], ceil), floor), wPtr[30])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[30], ceil), floor), otherPtr[30]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[31], ceil), floor), wPtr[31])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[31], ceil), floor), otherPtr[31]);
+        var u0 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[0], ceil), floor);
+        var t0 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[0], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u0, wPtr[0]), u0)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t0, otherPtr[0]), t0);
+        var u1 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[1], ceil), floor);
+        var t1 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[1], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u1, wPtr[1]), u1)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t1, otherPtr[1]), t1);
+        var u2 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[2], ceil), floor);
+        var t2 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[2], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u2, wPtr[2]), u2)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t2, otherPtr[2]), t2);
+        var u3 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[3], ceil), floor);
+        var t3 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[3], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u3, wPtr[3]), u3)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t3, otherPtr[3]), t3);
+        var u4 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[4], ceil), floor);
+        var t4 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[4], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u4, wPtr[4]), u4)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t4, otherPtr[4]), t4);
+        var u5 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[5], ceil), floor);
+        var t5 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[5], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u5, wPtr[5]), u5)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t5, otherPtr[5]), t5);
+        var u6 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[6], ceil), floor);
+        var t6 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[6], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u6, wPtr[6]), u6)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t6, otherPtr[6]), t6);
+        var u7 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[7], ceil), floor);
+        var t7 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[7], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u7, wPtr[7]), u7)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t7, otherPtr[7]), t7);
+        var u8 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[8], ceil), floor);
+        var t8 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[8], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u8, wPtr[8]), u8)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t8, otherPtr[8]), t8);
+        var u9 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[9], ceil), floor);
+        var t9 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[9], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u9, wPtr[9]), u9)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t9, otherPtr[9]), t9);
+        var u10 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[10], ceil), floor);
+        var t10 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[10], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u10, wPtr[10]), u10)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t10, otherPtr[10]), t10);
+        var u11 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[11], ceil), floor);
+        var t11 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[11], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u11, wPtr[11]), u11)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t11, otherPtr[11]), t11);
+        var u12 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[12], ceil), floor);
+        var t12 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[12], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u12, wPtr[12]), u12)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t12, otherPtr[12]), t12);
+        var u13 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[13], ceil), floor);
+        var t13 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[13], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u13, wPtr[13]), u13)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t13, otherPtr[13]), t13);
+        var u14 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[14], ceil), floor);
+        var t14 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[14], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u14, wPtr[14]), u14)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t14, otherPtr[14]), t14);
+        var u15 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[15], ceil), floor);
+        var t15 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[15], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u15, wPtr[15]), u15)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t15, otherPtr[15]), t15);
+        var u16 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[16], ceil), floor);
+        var t16 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[16], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u16, wPtr[16]), u16)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t16, otherPtr[16]), t16);
+        var u17 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[17], ceil), floor);
+        var t17 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[17], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u17, wPtr[17]), u17)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t17, otherPtr[17]), t17);
+        var u18 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[18], ceil), floor);
+        var t18 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[18], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u18, wPtr[18]), u18)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t18, otherPtr[18]), t18);
+        var u19 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[19], ceil), floor);
+        var t19 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[19], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u19, wPtr[19]), u19)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t19, otherPtr[19]), t19);
+        var u20 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[20], ceil), floor);
+        var t20 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[20], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u20, wPtr[20]), u20)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t20, otherPtr[20]), t20);
+        var u21 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[21], ceil), floor);
+        var t21 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[21], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u21, wPtr[21]), u21)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t21, otherPtr[21]), t21);
+        var u22 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[22], ceil), floor);
+        var t22 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[22], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u22, wPtr[22]), u22)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t22, otherPtr[22]), t22);
+        var u23 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[23], ceil), floor);
+        var t23 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[23], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u23, wPtr[23]), u23)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t23, otherPtr[23]), t23);
+        var u24 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[24], ceil), floor);
+        var t24 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[24], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u24, wPtr[24]), u24)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t24, otherPtr[24]), t24);
+        var u25 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[25], ceil), floor);
+        var t25 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[25], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u25, wPtr[25]), u25)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t25, otherPtr[25]), t25);
+        var u26 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[26], ceil), floor);
+        var t26 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[26], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u26, wPtr[26]), u26)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t26, otherPtr[26]), t26);
+        var u27 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[27], ceil), floor);
+        var t27 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[27], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u27, wPtr[27]), u27)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t27, otherPtr[27]), t27);
+        var u28 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[28], ceil), floor);
+        var t28 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[28], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u28, wPtr[28]), u28)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t28, otherPtr[28]), t28);
+        var u29 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[29], ceil), floor);
+        var t29 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[29], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u29, wPtr[29]), u29)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t29, otherPtr[29]), t29);
+        var u30 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[30], ceil), floor);
+        var t30 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[30], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u30, wPtr[30]), u30)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t30, otherPtr[30]), t30);
+        var u31 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[31], ceil), floor);
+        var t31 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[31], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u31, wPtr[31]), u31)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t31, otherPtr[31]), t31);
 #if !AVX512
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[32], ceil), floor), wPtr[32])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[32], ceil), floor), otherPtr[32]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[33], ceil), floor), wPtr[33])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[33], ceil), floor), otherPtr[33]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[34], ceil), floor), wPtr[34])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[34], ceil), floor), otherPtr[34]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[35], ceil), floor), wPtr[35])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[35], ceil), floor), otherPtr[35]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[36], ceil), floor), wPtr[36])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[36], ceil), floor), otherPtr[36]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[37], ceil), floor), wPtr[37])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[37], ceil), floor), otherPtr[37]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[38], ceil), floor), wPtr[38])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[38], ceil), floor), otherPtr[38]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[39], ceil), floor), wPtr[39])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[39], ceil), floor), otherPtr[39]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[40], ceil), floor), wPtr[40])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[40], ceil), floor), otherPtr[40]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[41], ceil), floor), wPtr[41])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[41], ceil), floor), otherPtr[41]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[42], ceil), floor), wPtr[42])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[42], ceil), floor), otherPtr[42]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[43], ceil), floor), wPtr[43])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[43], ceil), floor), otherPtr[43]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[44], ceil), floor), wPtr[44])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[44], ceil), floor), otherPtr[44]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[45], ceil), floor), wPtr[45])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[45], ceil), floor), otherPtr[45]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[46], ceil), floor), wPtr[46])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[46], ceil), floor), otherPtr[46]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[47], ceil), floor), wPtr[47])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[47], ceil), floor), otherPtr[47]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[48], ceil), floor), wPtr[48])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[48], ceil), floor), otherPtr[48]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[49], ceil), floor), wPtr[49])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[49], ceil), floor), otherPtr[49]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[50], ceil), floor), wPtr[50])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[50], ceil), floor), otherPtr[50]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[51], ceil), floor), wPtr[51])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[51], ceil), floor), otherPtr[51]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[52], ceil), floor), wPtr[52])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[52], ceil), floor), otherPtr[52]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[53], ceil), floor), wPtr[53])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[53], ceil), floor), otherPtr[53]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[54], ceil), floor), wPtr[54])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[54], ceil), floor), otherPtr[54]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[55], ceil), floor), wPtr[55])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[55], ceil), floor), otherPtr[55]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[56], ceil), floor), wPtr[56])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[56], ceil), floor), otherPtr[56]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[57], ceil), floor), wPtr[57])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[57], ceil), floor), otherPtr[57]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[58], ceil), floor), wPtr[58])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[58], ceil), floor), otherPtr[58]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[59], ceil), floor), wPtr[59])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[59], ceil), floor), otherPtr[59]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[60], ceil), floor), wPtr[60])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[60], ceil), floor), otherPtr[60]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[61], ceil), floor), wPtr[61])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[61], ceil), floor), otherPtr[61]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[62], ceil), floor), wPtr[62])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[62], ceil), floor), otherPtr[62]);
-        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[63], ceil), floor), wPtr[63])
-             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[63], ceil), floor), otherPtr[63]);
+        var u32 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[32], ceil), floor);
+        var t32 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[32], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u32, wPtr[32]), u32)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t32, otherPtr[32]), t32);
+        var u33 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[33], ceil), floor);
+        var t33 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[33], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u33, wPtr[33]), u33)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t33, otherPtr[33]), t33);
+        var u34 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[34], ceil), floor);
+        var t34 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[34], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u34, wPtr[34]), u34)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t34, otherPtr[34]), t34);
+        var u35 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[35], ceil), floor);
+        var t35 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[35], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u35, wPtr[35]), u35)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t35, otherPtr[35]), t35);
+        var u36 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[36], ceil), floor);
+        var t36 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[36], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u36, wPtr[36]), u36)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t36, otherPtr[36]), t36);
+        var u37 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[37], ceil), floor);
+        var t37 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[37], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u37, wPtr[37]), u37)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t37, otherPtr[37]), t37);
+        var u38 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[38], ceil), floor);
+        var t38 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[38], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u38, wPtr[38]), u38)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t38, otherPtr[38]), t38);
+        var u39 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[39], ceil), floor);
+        var t39 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[39], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u39, wPtr[39]), u39)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t39, otherPtr[39]), t39);
+        var u40 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[40], ceil), floor);
+        var t40 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[40], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u40, wPtr[40]), u40)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t40, otherPtr[40]), t40);
+        var u41 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[41], ceil), floor);
+        var t41 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[41], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u41, wPtr[41]), u41)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t41, otherPtr[41]), t41);
+        var u42 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[42], ceil), floor);
+        var t42 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[42], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u42, wPtr[42]), u42)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t42, otherPtr[42]), t42);
+        var u43 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[43], ceil), floor);
+        var t43 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[43], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u43, wPtr[43]), u43)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t43, otherPtr[43]), t43);
+        var u44 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[44], ceil), floor);
+        var t44 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[44], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u44, wPtr[44]), u44)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t44, otherPtr[44]), t44);
+        var u45 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[45], ceil), floor);
+        var t45 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[45], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u45, wPtr[45]), u45)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t45, otherPtr[45]), t45);
+        var u46 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[46], ceil), floor);
+        var t46 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[46], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u46, wPtr[46]), u46)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t46, otherPtr[46]), t46);
+        var u47 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[47], ceil), floor);
+        var t47 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[47], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u47, wPtr[47]), u47)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t47, otherPtr[47]), t47);
+        var u48 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[48], ceil), floor);
+        var t48 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[48], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u48, wPtr[48]), u48)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t48, otherPtr[48]), t48);
+        var u49 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[49], ceil), floor);
+        var t49 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[49], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u49, wPtr[49]), u49)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t49, otherPtr[49]), t49);
+        var u50 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[50], ceil), floor);
+        var t50 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[50], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u50, wPtr[50]), u50)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t50, otherPtr[50]), t50);
+        var u51 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[51], ceil), floor);
+        var t51 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[51], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u51, wPtr[51]), u51)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t51, otherPtr[51]), t51);
+        var u52 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[52], ceil), floor);
+        var t52 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[52], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u52, wPtr[52]), u52)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t52, otherPtr[52]), t52);
+        var u53 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[53], ceil), floor);
+        var t53 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[53], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u53, wPtr[53]), u53)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t53, otherPtr[53]), t53);
+        var u54 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[54], ceil), floor);
+        var t54 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[54], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u54, wPtr[54]), u54)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t54, otherPtr[54]), t54);
+        var u55 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[55], ceil), floor);
+        var t55 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[55], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u55, wPtr[55]), u55)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t55, otherPtr[55]), t55);
+        var u56 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[56], ceil), floor);
+        var t56 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[56], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u56, wPtr[56]), u56)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t56, otherPtr[56]), t56);
+        var u57 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[57], ceil), floor);
+        var t57 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[57], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u57, wPtr[57]), u57)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t57, otherPtr[57]), t57);
+        var u58 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[58], ceil), floor);
+        var t58 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[58], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u58, wPtr[58]), u58)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t58, otherPtr[58]), t58);
+        var u59 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[59], ceil), floor);
+        var t59 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[59], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u59, wPtr[59]), u59)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t59, otherPtr[59]), t59);
+        var u60 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[60], ceil), floor);
+        var t60 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[60], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u60, wPtr[60]), u60)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t60, otherPtr[60]), t60);
+        var u61 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[61], ceil), floor);
+        var t61 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[61], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u61, wPtr[61]), u61)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t61, otherPtr[61]), t61);
+        var u62 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[62], ceil), floor);
+        var t62 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[62], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u62, wPtr[62]), u62)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t62, otherPtr[62]), t62);
+        var u63 = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[63], ceil), floor);
+        var t63 = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[63], ceil), floor);
+        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u63, wPtr[63]), u63)
+             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t63, otherPtr[63]), t63);
 #endif
         return VectorType.Sum(sum);
     }

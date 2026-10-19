@@ -7,7 +7,9 @@ namespace Sapling.Engine.Search;
 public unsafe partial class Searcher
 {
     private const int Scale = 400;
-    private const int Q = 255 * 64;
+    private const int QA = 255;
+    private const int QB = 64;
+    private const int Q = QA * QB;
 
 #if AVX512
             const int VectorSize = 32; // AVX2 operates on 16 shorts (256 bits = 16 x 16 bits)
@@ -24,8 +26,8 @@ public unsafe partial class Searcher
 
     // Narrow test entry point to the generated output kernel for the friend test assembly
     // (output-parity tests in NnueOracleTests). Never called from production search paths.
-    internal static int ForwardCReLUProbe(short* usData, short* themData, int bucket) =>
-        ForwardCReLU(usData, themData, bucket);
+    internal static int ForwardSCReLUProbe(short* usData, short* themData, int bucket) =>
+        ForwardSCReLU(usData, themData, bucket);
 
     public int Evaluate(BoardStateData* boardState, AccumulatorState* accumulatorState, int depthFromRoot)
     {
@@ -41,10 +43,12 @@ public unsafe partial class Searcher
         var bucket = (boardState->PieceCount - 2) / BucketDivisor;
 
         var output = boardState->WhiteToMove
-            ? ForwardCReLU(WhiteAccumulators[depthFromRoot], BlackAccumulators[depthFromRoot], bucket)
-            : ForwardCReLU(BlackAccumulators[depthFromRoot], WhiteAccumulators[depthFromRoot], bucket);
+            ? ForwardSCReLU(WhiteAccumulators[depthFromRoot], BlackAccumulators[depthFromRoot], bucket)
+            : ForwardSCReLU(BlackAccumulators[depthFromRoot], WhiteAccumulators[depthFromRoot], bucket);
 
-        return (eval = (output + NnueWeights.OutputBiases[bucket]) * Scale / Q);
+        // SCReLU squares the activation, so the raw sum carries an extra factor of QA that
+        // has to come out before the output bias (quantised at QA * QB) is added.
+        return (eval = (output / QA + NnueWeights.OutputBiases[bucket]) * Scale / Q);
     }
 
     public void FillInitialAccumulators(BoardStateData* board, AccumulatorState* accumulatorState)
