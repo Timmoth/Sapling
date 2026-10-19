@@ -13,13 +13,6 @@ public partial class Searcher
     // evaluations or beta must not operate on them.
     private const int MateScoreLimit = Constants.ImmediateMateScore - Constants.MaxSearchDepth;
 
-    // Singular extension tunables. Deliberately conservative: the verification search is
-    // the whole cost of this feature, so the gates matter more than the margin.
-    private const int SingularMinDepth = 8;
-    private const int SingularTtDepthMargin = 3;
-    private const int SingularMarginScale = 16;
-    private const int SingularDoubleMargin = 20;
-
     // Instrumentation: verification searches as a fraction of nodes is the number that
     // decides whether the gating is tight enough.
     public long SingularVerifications;
@@ -514,16 +507,16 @@ public partial class Searcher
             if (!excluding
                 && depthFromRoot > 0
                 && m == transpositionBestMove
-                && depth >= SingularMinDepth
+                && depth >= SpsaOptions.SingularMinDepth
                 && transpositionType == TranspositionTableFlag.Beta
-                && ttSnapshot.Depth >= depth - SingularTtDepthMargin
+                && ttSnapshot.Depth >= depth - SpsaOptions.SingularTtDepthMargin
                 && ttSnapshot.Evaluation != TranspositionTableExtensions.NoHashEntry
                 && Math.Abs(ttSnapshot.Evaluation) < TranspositionTableExtensions.PositiveCheckmateDetectionLimit)
             {
                 SingularVerifications++;
 
                 var ttScore = TranspositionTableExtensions.RecalculateMateScores(ttSnapshot.Evaluation, depthFromRoot);
-                var singularBeta = ttScore - depth * SingularMarginScale / 16;
+                var singularBeta = ttScore - depth * SpsaOptions.SingularMarginScale / 16;
                 var singularDepth = (depth - 1) / 2;
 
                 var singularScore = NegaMaxSearch(currentBoardState, currentAccumulatorState, depthFromRoot,
@@ -535,7 +528,7 @@ public partial class Searcher
                 if (singularScore < singularBeta)
                 {
                     // Clearly singular: nothing else comes close, so spend two plies.
-                    extension = singularScore < singularBeta - SingularDoubleMargin ? 2 : 1;
+                    extension = singularScore < singularBeta - SpsaOptions.SingularDoubleMargin ? 2 : 1;
                     SingularExtensions++;
                 }
                 else if (ttScore >= beta)

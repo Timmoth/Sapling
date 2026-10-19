@@ -53,6 +53,14 @@ namespace Sapling.Engine.Tuning
         public const int RazorMarginA = 58;
         public const int RazorMarginB = 378;
         public const int InternalIterativeDeepeningDepth = 2;
+
+        // Singular / double / negative extensions. These four were hand-picked and never
+        // tuned; a manual sweep moved the node count non-monotonically, so local reasoning
+        // about them is unreliable.
+        public const int SingularMinDepth = 8;
+        public const int SingularTtDepthMargin = 3;
+        public const int SingularMarginScale = 16;
+        public const int SingularDoubleMargin = 20;
         public const int LateMovePruningConstant = 8;
         public const int LateMoveReductionMinDepth = 3;
         public const int LateMoveReductionMinMoves = 2;
@@ -112,6 +120,18 @@ namespace Sapling.Engine.Tuning
 
         [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int InternalIterativeDeepeningDepth = SpsaDefaults.InternalIterativeDeepeningDepth;
+
+        [SpsaMinValue("4"), SpsaMaxValue("12")]
+        public static int SingularMinDepth = SpsaDefaults.SingularMinDepth;
+
+        [SpsaMinValue("1"), SpsaMaxValue("6")]
+        public static int SingularTtDepthMargin = SpsaDefaults.SingularTtDepthMargin;
+
+        [SpsaMinValue("4"), SpsaMaxValue("64")]
+        public static int SingularMarginScale = SpsaDefaults.SingularMarginScale;
+
+        [SpsaMinValue("0"), SpsaMaxValue("100")]
+        public static int SingularDoubleMargin = SpsaDefaults.SingularDoubleMargin;
 
         [SpsaMinValue("0"), SpsaMaxValue("10")]
         public static int LateMovePruningConstant = SpsaDefaults.LateMovePruningConstant;
@@ -206,6 +226,10 @@ namespace Sapling.Engine.Tuning
         public const int RazorMarginA = SpsaDefaults.RazorMarginA;
         public const int RazorMarginB = SpsaDefaults.RazorMarginB;
         public const int InternalIterativeDeepeningDepth = SpsaDefaults.InternalIterativeDeepeningDepth;
+        public const int SingularMinDepth = SpsaDefaults.SingularMinDepth;
+        public const int SingularTtDepthMargin = SpsaDefaults.SingularTtDepthMargin;
+        public const int SingularMarginScale = SpsaDefaults.SingularMarginScale;
+        public const int SingularDoubleMargin = SpsaDefaults.SingularDoubleMargin;
         public const int LateMovePruningConstant = SpsaDefaults.LateMovePruningConstant;
         public const int LateMoveReductionMinDepth = SpsaDefaults.LateMoveReductionMinDepth;
         public const int LateMoveReductionMinMoves = SpsaDefaults.LateMoveReductionMinMoves;
