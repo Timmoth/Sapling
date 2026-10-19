@@ -25,7 +25,7 @@ public class CastlingRightsTests
         using var state = new GameState(BoardStateExtensions.CreateBoardFromFen(UnderPromotionFen));
         Assert.Equal(AllRights, state.Board.CastleRights);
 
-        var move = Assert.Single(state.LegalMoves.Where(m => m.ToUciMoveName() == uciMove));
+        var move = Assert.Single(state.LegalMoves, m => m.ToUciMoveName() == uciMove);
 
         state.Apply(move);
 
@@ -44,7 +44,7 @@ public class CastlingRightsTests
             BoardStateExtensions.CreateBoardFromFen("4k3/8/8/8/8/8/1p6/R3K2R b KQ - 0 1"));
         Assert.Equal(CastleRights.WhiteKingSide | CastleRights.WhiteQueenSide, state.Board.CastleRights);
 
-        var move = Assert.Single(state.LegalMoves.Where(m => m.ToUciMoveName() == uciMove));
+        var move = Assert.Single(state.LegalMoves, m => m.ToUciMoveName() == uciMove);
 
         state.Apply(move);
 
@@ -65,7 +65,7 @@ public class CastlingRightsTests
     public void PieceCapture_ClearsCapturedRooksRight()
     {
         using var state = new GameState(BoardStateExtensions.CreateBoardFromFen("r3k2r/8/1N6/8/8/8/8/R3K2R w KQkq - 0 1"));
-        var move = Assert.Single(state.LegalMoves.Where(m => m.ToUciMoveName() == "b6a8"));
+        var move = Assert.Single(state.LegalMoves, m => m.ToUciMoveName() == "b6a8");
 
         state.Apply(move);
 

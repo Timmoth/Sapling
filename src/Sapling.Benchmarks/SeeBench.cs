@@ -26,25 +26,22 @@ public unsafe class SeeBench
     public int SeeAllCaptures()
     {
         var sum = 0;
+        var occupancy = stackalloc ulong[8];
+        var scratch = stackalloc short[64];
         foreach (var fen in Positions.Tactical)
         {
             _gs.ResetToFen(fen);
             _captures.Clear();
             MoveGenerator.GenerateLegalMoves(ref _gs.Board, _captures, captureOnly: true);
 
-            var occupancy = stackalloc ulong[8]
-            {
-                _gs.Board.Occupancy[Constants.WhitePieces],
-                _gs.Board.Occupancy[Constants.BlackPieces],
-                _gs.Board.Occupancy[Constants.BlackPawn] | _gs.Board.Occupancy[Constants.WhitePawn],
-                _gs.Board.Occupancy[Constants.BlackKnight] | _gs.Board.Occupancy[Constants.WhiteKnight],
-                _gs.Board.Occupancy[Constants.BlackBishop] | _gs.Board.Occupancy[Constants.WhiteBishop],
-                _gs.Board.Occupancy[Constants.BlackRook] | _gs.Board.Occupancy[Constants.WhiteRook],
-                _gs.Board.Occupancy[Constants.BlackQueen] | _gs.Board.Occupancy[Constants.WhiteQueen],
-                _gs.Board.Occupancy[Constants.BlackKing] | _gs.Board.Occupancy[Constants.WhiteKing],
-            };
-
-            var scratch = stackalloc short[64];
+            occupancy[0] = _gs.Board.Occupancy[Constants.WhitePieces];
+            occupancy[1] = _gs.Board.Occupancy[Constants.BlackPieces];
+            occupancy[2] = _gs.Board.Occupancy[Constants.BlackPawn] | _gs.Board.Occupancy[Constants.WhitePawn];
+            occupancy[3] = _gs.Board.Occupancy[Constants.BlackKnight] | _gs.Board.Occupancy[Constants.WhiteKnight];
+            occupancy[4] = _gs.Board.Occupancy[Constants.BlackBishop] | _gs.Board.Occupancy[Constants.WhiteBishop];
+            occupancy[5] = _gs.Board.Occupancy[Constants.BlackRook] | _gs.Board.Occupancy[Constants.WhiteRook];
+            occupancy[6] = _gs.Board.Occupancy[Constants.BlackQueen] | _gs.Board.Occupancy[Constants.WhiteQueen];
+            occupancy[7] = _gs.Board.Occupancy[Constants.BlackKing] | _gs.Board.Occupancy[Constants.WhiteKing];
             foreach (var move in _captures)
             {
                 sum += StaticExchangeEvaluator.StaticExchangeEvaluation(ref _gs.Board, occupancy, scratch, move);

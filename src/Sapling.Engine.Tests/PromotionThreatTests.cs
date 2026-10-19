@@ -16,7 +16,7 @@ public class PromotionThreatTests
         var moves = new List<uint>();
         board.GenerateLegalMoves(moves, false);
 
-        var move = Assert.Single(moves.Where(m => m.ToUciMoveName() == uciMove));
+        var move = Assert.Single(moves, m => m.ToUciMoveName() == uciMove);
 
         // When
         var actual = move.IsPromotionThreat();

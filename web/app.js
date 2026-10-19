@@ -99,9 +99,11 @@ function renderMaterial() {
     if (capture) byColor[capture.color].push(capture.type);
   }
   const opponentColor = humanColor === 'w' ? 'b' : 'w';
+  // Captured pieces sit with the capturing side (like over-the-board): Sapling's row
+  // shows pieces Sapling took (human-colored), your row shows pieces you took.
   const rows = [
-    { id: 'opponent-material', color: opponentColor, pieces: byColor[opponentColor] },
-    { id: 'you-material', color: humanColor, pieces: byColor[humanColor] },
+    { id: 'opponent-material', color: humanColor, pieces: byColor[humanColor] },
+    { id: 'you-material', color: opponentColor, pieces: byColor[opponentColor] },
   ];
   for (const row of rows) {
     const container = el(row.id);
@@ -110,7 +112,7 @@ function renderMaterial() {
       const empty = document.createElement('span');
       empty.className = 'material-empty';
       empty.textContent = '—';
-      empty.setAttribute('aria-label', 'No pieces lost');
+      empty.setAttribute('aria-label', 'No pieces captured');
       container.appendChild(empty);
       continue;
     }

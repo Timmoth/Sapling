@@ -36,8 +36,7 @@ public class UciEngine : IDisposable
     private readonly string _version;
     public UciEngine(StreamWriter logWriter)
     {
-        var version = typeof(Program).Assembly.GetName().Version;
-        _version = $"{version.Major}.{version.Minor}.{version.Build}";
+        _version = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
         _logWriter = logWriter;
         _parallelSearcher = new ParallelSearcher(TranspositionSize);

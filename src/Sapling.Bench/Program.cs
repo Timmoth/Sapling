@@ -292,8 +292,20 @@ internal static class Program
             var results = new List<object>();
             var totalNodes = 0L;
             var totalElapsedNs = 0L;
+            var totalManagedAllocatedBytes = 0L;
+            var totalGen0Collections = 0;
+            var totalGen1Collections = 0;
+            var totalGen2Collections = 0;
             var aggregateChecksum = 14695981039346656037UL;
             var perPositionChecksums = positions.ToDictionary(p => p.fen, _ => new List<ulong>());
+            using var process = Process.GetCurrentProcess();
+            process.Refresh();
+            var workingSetBeforeBytes = process.WorkingSet64;
+            var sampledPeakWorkingSetBytes = workingSetBeforeBytes;
+            var managedHeapBeforeBytes = GC.GetTotalMemory(forceFullCollection: false);
+            var gen0BeforeBench = GC.CollectionCount(0);
+            var gen1BeforeBench = GC.CollectionCount(1);
+            var gen2BeforeBench = GC.CollectionCount(2);
 
             for (var rep = 0; rep < repeat; rep++)
             {
@@ -303,37 +315,51 @@ internal static class Program
                     {
                         if (tt != null)
                             NativeMemory.Clear(tt, ttBytes);
-                        else
+                        else if (session is not null)
                             NativeMemory.Clear(session.Transpositions, ttBytes);
+                        else
+                            throw new InvalidOperationException("No transposition table is available.");
                     }
 
                     gameState.ResetToFen(fen);
 
                     (List<uint> pv, int depthSearched, int score, long nodes) r;
+                    var allocatedBytesBefore = GC.GetAllocatedBytesForCurrentThread();
+                    var gen0BeforeSearch = GC.CollectionCount(0);
+                    var gen1BeforeSearch = GC.CollectionCount(1);
+                    var gen2BeforeSearch = GC.CollectionCount(2);
                     var start = Stopwatch.GetTimestamp();
                     if (engine == "raw")
                     {
-                        searcher.Reset(gameState);
+                        var activeSearcher = searcher ?? throw new InvalidOperationException("The raw searcher was not initialized.");
+                        activeSearcher.Reset(gameState);
                         if (strictReset)
                         {
                             // Model a new game for each independent fixture. Per-search Reset
                             // deliberately retains correction history within the same game.
-                            NativeMemory.Clear(searcher.PawnCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
-                            NativeMemory.Clear(searcher.WhiteMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
-                            NativeMemory.Clear(searcher.BlackMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
+                            NativeMemory.Clear(activeSearcher.PawnCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
+                            NativeMemory.Clear(activeSearcher.WhiteMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
+                            NativeMemory.Clear(activeSearcher.BlackMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
                         }
-                        var (pv, depthSearched, score, nodes) = searcher.Search(gameState, searcher.Stop,
+                        var (pv, depthSearched, score, nodes) = activeSearcher.Search(gameState, activeSearcher.Stop,
                             depthLimit: depth, threadId: -1);
                         r = (pv, depthSearched, score, nodes);
                     }
                     else
                     {
+                        var activeSession = session ?? throw new InvalidOperationException("The search session was not initialized.");
                         if (strictReset)
-                            session.NewGame();
-                        var (pv, depthSearched, score, nodes, _) = session.DepthBoundSearch(gameState, depth);
+                            activeSession.NewGame();
+                        var (pv, depthSearched, score, nodes, _) = activeSession.DepthBoundSearch(gameState, depth);
                         r = (pv, depthSearched, score, nodes);
                     }
                     var elapsedNs = (Stopwatch.GetTimestamp() - start) * 1_000_000_000 / Stopwatch.Frequency;
+                    var managedAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBytesBefore;
+                    var gen0Collections = GC.CollectionCount(0) - gen0BeforeSearch;
+                    var gen1Collections = GC.CollectionCount(1) - gen1BeforeSearch;
+                    var gen2Collections = GC.CollectionCount(2) - gen2BeforeSearch;
+                    process.Refresh();
+                    sampledPeakWorkingSetBytes = Math.Max(sampledPeakWorkingSetBytes, process.WorkingSet64);
 
                     var bestMove = r.pv.Count > 0 ? r.pv[0].ToUciMoveName() : "(none)";
                     // Full PV in UCI notation. Built outside the timed region; additive field.
@@ -345,6 +371,10 @@ internal static class Program
 
                     totalNodes += r.nodes;
                     totalElapsedNs += elapsedNs;
+                    totalManagedAllocatedBytes += managedAllocatedBytes;
+                    totalGen0Collections += gen0Collections;
+                    totalGen1Collections += gen1Collections;
+                    totalGen2Collections += gen2Collections;
 
                     results.Add(new
                     {
@@ -354,6 +384,11 @@ internal static class Program
                         nodes = r.nodes,
                         elapsedNs,
                         nps = elapsedNs > 0 ? (long)((double)r.nodes * 1_000_000_000.0 / elapsedNs) : 0L,
+                        managedAllocatedBytes,
+                        managedBytesPerNode = r.nodes > 0 ? (double)managedAllocatedBytes / r.nodes : 0,
+                        gen0Collections,
+                        gen1Collections,
+                        gen2Collections,
                         score = r.score,
                         depthSearched = r.depthSearched,
                         bestMove,
@@ -365,6 +400,7 @@ internal static class Program
             }
 
             var deterministic = perPositionChecksums.All(kv => kv.Value.Distinct().Count() == 1);
+            process.Refresh();
 
             WriteJson(new
             {
@@ -392,6 +428,26 @@ internal static class Program
                     nps = totalElapsedNs > 0 ? (long)((double)totalNodes * 1_000_000_000.0 / totalElapsedNs) : 0L,
                     aggregateChecksum = $"X{aggregateChecksum:X16}",
                     deterministicAcrossRepeats = deterministic,
+                    managedAllocatedBytes = totalManagedAllocatedBytes,
+                    managedBytesPerNode = totalNodes > 0 ? (double)totalManagedAllocatedBytes / totalNodes : 0,
+                    gen0CollectionsDuringSearch = totalGen0Collections,
+                    gen1CollectionsDuringSearch = totalGen1Collections,
+                    gen2CollectionsDuringSearch = totalGen2Collections,
+                },
+                memory = new
+                {
+                    samplingScope = "single-worker search calls; managed allocations on the calling thread",
+                    workingSetBeforeBytes,
+                    workingSetAfterBytes = process.WorkingSet64,
+                    sampledPeakWorkingSetBytes,
+                    managedHeapBeforeBytes,
+                    managedHeapAfterBytes = GC.GetTotalMemory(forceFullCollection: false),
+                    gen0CollectionsBefore = gen0BeforeBench,
+                    gen0CollectionsAfter = GC.CollectionCount(0),
+                    gen1CollectionsBefore = gen1BeforeBench,
+                    gen1CollectionsAfter = GC.CollectionCount(1),
+                    gen2CollectionsBefore = gen2BeforeBench,
+                    gen2CollectionsAfter = GC.CollectionCount(2),
                 },
             }, opts);
         }

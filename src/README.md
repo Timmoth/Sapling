@@ -82,6 +82,11 @@ After any changes to the engine a SPRT test must be ran to ensure that the chang
 
 Run playing-strength SPRTs with CuteChess CLI using fixed engine builds, time control, and opening set. Record the command and result with the experiment.
 
+## Local performance report
+Run `../Scripts/performance_report.sh` from `src/` or `Scripts/performance_report.sh` from the repository root to build and run the fixed-position search corpus and BenchmarkDotNet microbenchmarks. The command writes a Markdown report plus raw JSON, CSV, and BenchmarkDotNet artifacts under `artifacts/performance/`; pass a directory path to choose a different output location.
+
+The report ranks the slowest corpus positions, measures managed allocations and GC counts around each single-worker search, snapshots process working set, and shows microbenchmark timing, allocation, and invocation settings. Each run also creates a ZIP bundle with the report and raw artifacts for sharing. Install [`dotnet-trace`](https://learn.microsoft.com/dotnet/core/diagnostics/dotnet-trace) (`dotnet tool install --global dotnet-trace`) to collect a sampled thread-time profile and top-method summary from a separate single-worker search. The profile is directional evidence, not an absolute CPU-time measurement. Set `SAPLING_PERF_DEPTH` and `SAPLING_PERF_REPEAT` to adjust search depth and repeat count. These are local investigation tools and are not part of the CI runners.
+
 ## NNUE
 I'm in the process of training a (768x8->1024)x2-8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger as I improve the network. Check [here](https://github.com/Timmoth/Sapling/tree/main/src/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
 

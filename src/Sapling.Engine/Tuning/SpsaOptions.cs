@@ -6,12 +6,12 @@ namespace Sapling.Engine.Tuning
 {
     public class SpsaParameter
     {
-        public string Name;
-        public string Type;
-        public string DefaultValue;
-        public string MinValue;
-        public string MaxValue;
-        public FieldInfo FieldHandle;
+        public string Name = string.Empty;
+        public string Type = string.Empty;
+        public string DefaultValue = string.Empty;
+        public string MinValue = string.Empty;
+        public string MaxValue = string.Empty;
+        public FieldInfo FieldHandle = null!;
     }
 
     [AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
