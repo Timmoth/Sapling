@@ -117,10 +117,11 @@ public static unsafe class NnueOracle
         {
             var u = Math.Clamp((int)us[i], 0, 255);
             var t = Math.Clamp((int)them[i], 0, 255);
-            sum = unchecked(sum + u * outputWeights[i] + t * outputWeights[NnueWeights.Layer1Size + i]);
+            sum = unchecked(sum + unchecked((short)(u * outputWeights[i])) * u
+                + unchecked((short)(t * outputWeights[NnueWeights.Layer1Size + i])) * t);
         }
 
-        return unchecked((sum + NnueWeights.OutputBiases[bucket]) * 400 / (255 * 64));
+        return unchecked((sum / 255 + NnueWeights.OutputBiases[bucket]) * 400 / (255 * 64));
     }
 
     public static int OracleEvalFromScratch(BoardStateData* board)

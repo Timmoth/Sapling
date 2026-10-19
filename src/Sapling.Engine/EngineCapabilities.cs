@@ -18,7 +18,7 @@ public static class EngineCapabilities
     public static readonly bool UsePext;
 
     // Resolved once at startup so the generated NNUE kernels read a cached field instead of
-    // re-evaluating the backend switch on every accumulator update / ForwardCReLU.
+    // re-evaluating the backend switch on every accumulator update / ForwardSCReLU.
     public static readonly bool UseX86Nnue;
     public static readonly bool UseVector128Nnue;
 
