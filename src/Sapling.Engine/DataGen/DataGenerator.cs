@@ -235,6 +235,7 @@ public class DataGenerator
                 // and first-searched-move bias in the WDL labels.
                 for (var pairIndex = 0; pairIndex < 2 && !Cancelled; pairIndex++)
                 {
+#pragma warning disable CS0162 // The generator is currently compiled in Chess960-only mode.
                     if (Is960)
                     {
                         gameState.ResetToFen(pairIndex == 0 ? fen : MirrorFen(fen));
@@ -247,6 +248,7 @@ public class DataGenerator
                     {
                         gameState.ResetToFen(MirrorFen(fen));
                     }
+#pragma warning restore CS0162
 
                     var startBoard = gameState.Board;
                     var (result, moveCount) = RunGame(gameState, searcher, moves);

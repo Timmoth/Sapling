@@ -126,7 +126,7 @@ public unsafe class EnPassantMechanicsTests
 
         foreach (var uci in new[] { "e2e4", "a8a7", "c1b1", "a7a8", "b1c1", "a8a7", "c1b1", "a7a8", "b1c1" })
         {
-            var move = Assert.Single(state.LegalMoves.Where(m => m.ToUciMoveName() == uci));
+            var move = Assert.Single(state.LegalMoves, m => m.ToUciMoveName() == uci);
             state.Apply(move);
         }
 

@@ -24,7 +24,7 @@ public unsafe class TtBench
         var rng = new Random(12345);
         _hashes = new ulong[Ops];
         for (var i = 0; i < Ops; i++)
-            _hashes[i] = ((ulong)rng.NextInt64() << 1) | (ulong)(rng.Next(2));
+            _hashes[i] = (unchecked((ulong)rng.NextInt64()) << 1) | (uint)rng.Next(2);
     }
 
     [GlobalCleanup]

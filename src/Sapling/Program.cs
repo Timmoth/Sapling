@@ -22,8 +22,7 @@ internal class Program
     private const string QuitCommand = "quit";
     private static volatile bool hasQuit;
 
-    private static FileStream _fileStream;
-    private static StreamWriter _logWriter;
+    private static StreamWriter _logWriter = null!;
 
 private static void Main(string[] args)
 {
@@ -36,7 +35,7 @@ private static void Main(string[] args)
         {
             // Get the version from the assembly information
             var version = Assembly.GetExecutingAssembly().GetName().Version;
-            Console.WriteLine($"{version.Major}-{version.Minor}-{version.Build}");
+            Console.WriteLine(version?.ToString(3).Replace('.', '-') ?? "0-0-0");
             return;
         }
 
@@ -49,8 +48,7 @@ private static void Main(string[] args)
         var fileName = (DateTime.Now.ToString("g") + Guid.NewGuid()).Replace("/", "-").Replace(" ", "_")
             .Replace(":", "-");
         var logFilePath = Path.Combine(logDirectory, $"{fileName}.txt");
-        _fileStream = new FileStream(logFilePath, FileMode.Append, FileAccess.Write);
-        _logWriter = new StreamWriter(_fileStream);
+        _logWriter = new StreamWriter(new FileStream(logFilePath, FileMode.Append, FileAccess.Write));
 
 
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>

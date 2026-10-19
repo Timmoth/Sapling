@@ -224,9 +224,12 @@ public class UciProcessStabilityTests
             Assert.True(e.Bestmove("go depth 6").Length > 0, $"game {game}");
         }
         e.Send("position startpos");
-        e.Send("go depth 90");
+        e.Send("go infinite");
+        // Wait for an iteration report before stopping, so this test exercises stopping an
+        // active search. A fixed-depth UCI search reports only when it finishes.
+        e.Expect("info depth ");
         e.Send("stop");
-        Assert.True(e.Bestmove("").Length > 0, "stop racing search start must still answer");
+        Assert.True(e.Bestmove("").Length > 0, "stop racing an active search must still answer");
     }
 
     [Fact]

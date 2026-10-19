@@ -23,7 +23,7 @@ public class StaticExchangeTests
 
         var moves = new List<uint>();
         board.GenerateLegalMoves(moves, true);
-        var move = Assert.Single(moves.Where(m => m.ToUciMoveName() == uciMove));
+        var move = Assert.Single(moves, m => m.ToUciMoveName() == uciMove);
 
         var occupancyBitBoards = stackalloc ulong[8]
         {
@@ -69,7 +69,8 @@ public class StaticExchangeTests
             'q' => 9,
             'Q' => 10,
             'k' => 11,
-            'K' => 12
+            'K' => 12,
+            _ => throw new ArgumentOutOfRangeException(nameof(c), c, "Expected a chess piece character."),
         };
     }
 }

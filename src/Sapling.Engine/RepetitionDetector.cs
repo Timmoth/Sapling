@@ -72,6 +72,7 @@ public static unsafe class RepetitionDetector
                 Constants.BlackQueen => AttackTables.BishopAttackMasksAll[idx] | AttackTables.RookAttackMasksAll[idx],
                 Constants.WhiteKing => AttackTables.KingAttackTable[idx],
                 Constants.BlackKing => AttackTables.KingAttackTable[idx],
+                _ => throw new ArgumentOutOfRangeException(nameof(piece), piece, "Expected a non-pawn piece code."),
             };
         }
     }

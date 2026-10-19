@@ -1,0 +1,41 @@
+name: .NET quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 11.0.100-rc.2
+          include-prerelease: true
+
+      - name: Restore
+        run: dotnet restore src/Sapling.sln
+
+      - name: Test with coverage
+        run: >-
+          dotnet test src/Sapling.sln
+          --no-restore
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --settings .github/coverlet.runsettings
+          --results-directory artifacts/TestResults
+
+      - name: Upload Cobertura coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-coverage
+          path: artifacts/TestResults/**/coverage.cobertura.xml
+          if-no-files-found: warn

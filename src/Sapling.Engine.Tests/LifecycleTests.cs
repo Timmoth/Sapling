@@ -97,7 +97,7 @@ public class LifecycleTests
         var ps = new ParallelSearcher(1024);
         try
         {
-            Assert.Equal(1, ps.Searchers.Count);
+            Assert.Single(ps.Searchers);
 
             // Grow and shrink worker pool; removed searchers must be disposed without leaking.
             // SetThreads clamps to Environment.ProcessorCount, so target the max this host allows.
@@ -105,7 +105,7 @@ public class LifecycleTests
             ps.SetThreads(grow);
             Assert.Equal(grow, ps.Searchers.Count);
             ps.SetThreads(1);
-            Assert.Equal(1, ps.Searchers.Count);
+            Assert.Single(ps.Searchers);
         }
         finally
         {
