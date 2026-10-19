@@ -32,11 +32,11 @@ public unsafe class NnueOracleTests
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
     };
 
-    // Direct output-kernel parity: production ForwardCReLU (via the narrow internal probe)
+    // Direct output-kernel parity: production ForwardSCReLU (via the narrow internal probe)
     // against an independent scalar oracle. Exact integer equality, never a tolerance.
     // Covers every output bucket, both perspective orderings, boundary accumulator values
     // (below zero, 0, 1, 254, 255, above 255) and fixed-seed randomized arrays including
-    // short extremes. The oracle re-derives the CReLU dot product without SIMD and without
+    // short extremes. The oracle re-derives the SCReLU dot product without SIMD and without
     // calling the kernel under test.
 
     private static int OracleRawOutput(short[] us, short[] them, int bucket)
@@ -47,7 +47,9 @@ public unsafe class NnueOracleTests
         {
             var u = Math.Clamp((int)us[i], 0, 255);
             var t = Math.Clamp((int)them[i], 0, 255);
-            sum = unchecked(sum + u * weights[i] + t * weights[NnueWeights.Layer1Size + i]);
+            // Model the i16-truncating activation*weight product that _mm256_mullo_epi16 performs.
+            sum = unchecked(sum + unchecked((short)(u * weights[i])) * u
+                + unchecked((short)(t * weights[NnueWeights.Layer1Size + i])) * t);
         }
 
         return sum;
@@ -58,7 +60,7 @@ public unsafe class NnueOracleTests
         fixed (short* u = us)
         fixed (short* t = them)
         {
-            return Searcher.ForwardCReLUProbe(u, t, bucket);
+            return Searcher.ForwardSCReLUProbe(u, t, bucket);
         }
     }
 

@@ -85,6 +85,9 @@ namespace Sapling.Engine.DataGen
             using var gameState = GameState.InitialState();
             var searcher = new Searcher(transpositions, transpositionSize);
             var stopwatch = new Stopwatch();
+            long singularVerifications = 0;
+            long singularExtensions = 0;
+            long singularNegative = 0;
             long totalNodes = 0;
             long totalTime = 0;
             try
@@ -99,6 +102,9 @@ namespace Sapling.Engine.DataGen
 
                     totalTime += stopwatch.ElapsedMilliseconds;
                     totalNodes += result.nodes;
+                    singularVerifications += searcher.SingularVerifications;
+                    singularExtensions += searcher.SingularExtensions;
+                    singularNegative += searcher.SingularNegativeExtensions;
                 }
             }
             finally
@@ -108,6 +114,10 @@ namespace Sapling.Engine.DataGen
             }
 
             Console.WriteLine($"{totalNodes} nodes {(int)(totalNodes / (float)totalTime) * 1000} nps");
+            if (Environment.GetEnvironmentVariable("SAPLING_SINGULAR_STATS") == "1")
+            {
+                Console.WriteLine($"singular: {singularVerifications} verifications ({100.0 * singularVerifications / totalNodes:F3}% of nodes), {singularExtensions} extensions, {singularNegative} negative");
+            }
         }
     }
 }

@@ -49,7 +49,11 @@ for name,args,expr in ops:
   lines += ['        '+expr.replace('[i]',f'[{i}]')+';']
  lines += ['#endif','    }','']
 lines += ['    [MethodImpl(MethodImplOptions.AggressiveInlining)]',
- '    private static int ForwardCReLU(short* usData, short* themData, int bucket)', '    {',
+ '    // Squared clipped ReLU. Returns the raw sum of clamp(acc,0,QA)^2 * weight; the caller',
+ '    // divides by QA before applying the output bias (see Searcher.Evaluate).',
+ '    // Every backend models the same arithmetic: the activation-by-weight product is',
+ '    // truncated to i16 exactly as _mm256_mullo_epi16 does, so all paths agree bit for bit.',
+ '    private static int ForwardSCReLU(short* usData, short* themData, int bucket)', '    {',
  '        var weights = NnueWeights.OutputWeights + bucket * NnueWeights.Layer1Size * 2;',
  '        var otherWeights = weights + NnueWeights.Layer1Size;',
  '        if (!EngineCapabilities.UseX86Nnue)', '        {',
@@ -61,15 +65,21 @@ lines += ['    [MethodImpl(MethodImplOptions.AggressiveInlining)]',
   '                for (var i = 0; i < NnueWeights.Layer1Size; i += 4 * Vector128<short>.Count)', '                {']
 for u in range(4):
  off='' if u==0 else f' + {u} * Vector128<short>.Count'
- lines += [f'                    var us{u} = Vector128.Widen(Vector128.Clamp(Vector128.Load(usData + i{off}), floor128, ceil128));',
-  f'                    var them{u} = Vector128.Widen(Vector128.Clamp(Vector128.Load(themData + i{off}), floor128, ceil128));',
-  f'                    var w{u} = Vector128.Widen(Vector128.Load(weights + i{off}));',
-  f'                    var other{u} = Vector128.Widen(Vector128.Load(otherWeights + i{off}));',
-  f'                    sum{u} += us{u}.Lower * w{u}.Lower + us{u}.Upper * w{u}.Upper + them{u}.Lower * other{u}.Lower + them{u}.Upper * other{u}.Upper;']
+ lines += [f'                    var usClamped{u} = Vector128.Clamp(Vector128.Load(usData + i{off}), floor128, ceil128);',
+  f'                    var themClamped{u} = Vector128.Clamp(Vector128.Load(themData + i{off}), floor128, ceil128);',
+  f'                    var usProd{u} = Vector128.Widen(usClamped{u} * Vector128.Load(weights + i{off}));',
+  f'                    var themProd{u} = Vector128.Widen(themClamped{u} * Vector128.Load(otherWeights + i{off}));',
+  f'                    var us{u} = Vector128.Widen(usClamped{u});',
+  f'                    var them{u} = Vector128.Widen(themClamped{u});',
+  f'                    sum{u} += usProd{u}.Lower * us{u}.Lower + usProd{u}.Upper * us{u}.Upper + themProd{u}.Lower * them{u}.Lower + themProd{u}.Upper * them{u}.Upper;']
 lines += ['                }', '                return Vector128.Sum(sum0 + sum1 + sum2 + sum3);', '            }',
  '            var scalar = 0;', '            for (var i = 0; i < NnueWeights.Layer1Size; i++)',
- '                scalar = unchecked(scalar + Math.Clamp((int)usData[i], 0, 255) * weights[i]',
- '                    + Math.Clamp((int)themData[i], 0, 255) * otherWeights[i]);',
+ '            {',
+ '                var u = Math.Clamp((int)usData[i], 0, 255);',
+ '                var t = Math.Clamp((int)themData[i], 0, 255);',
+ '                scalar = unchecked(scalar + unchecked((short)(u * weights[i])) * u',
+ '                    + unchecked((short)(t * otherWeights[i])) * t);',
+ '            }',
  '            return scalar;', '        }',
  '        var usAcc = (VectorShort*)usData;', '        var themAcc = (VectorShort*)themData;',
  '        var wPtr = (VectorShort*)weights;', '        var otherPtr = (VectorShort*)otherWeights;',
@@ -77,8 +87,10 @@ lines += ['                }', '                return Vector128.Sum(sum0 + sum1
  '        var sum = VectorInt.Zero;']
 for i in range(64):
  if i==32:lines+=['#if !AVX512']
- lines += [f'        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[{i}], ceil), floor), wPtr[{i}])',
- f'             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[{i}], ceil), floor), otherPtr[{i}]);']
+ lines += [f'        var u{i} = AvxIntrinsics.Max(AvxIntrinsics.Min(usAcc[{i}], ceil), floor);',
+ f'        var t{i} = AvxIntrinsics.Max(AvxIntrinsics.Min(themAcc[{i}], ceil), floor);',
+ f'        sum += AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(u{i}, wPtr[{i}]), u{i})',
+ f'             + AvxIntrinsics.MultiplyAddAdjacent(AvxIntrinsics.MultiplyLow(t{i}, otherPtr[{i}]), t{i});']
 lines += ['#endif','        return VectorType.Sum(sum);','    }','}']
 output='\n'.join(lines)+'\n'
 target=Path(__file__).resolve().parent.parent/'src/Sapling.Engine/Evaluation/Unrolled.cs'
