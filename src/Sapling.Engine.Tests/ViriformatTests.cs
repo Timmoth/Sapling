@@ -153,8 +153,28 @@ public class ViriformatTests
 
         Assert.Equal(Viriformat.EncodeMove(moves[0].move, false), BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize, 2)));
         Assert.Equal(42, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + 2, 2)));
-        Assert.Equal(-37, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + Viriformat.MoveRecordSize + 2, 2)));
+        Assert.Equal(37, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + Viriformat.MoveRecordSize + 2, 2)));
 
         Assert.All(bytes[^4..], b => Assert.Equal(0, b));
+    }
+
+    [Fact]
+    public void WriteGame_BlackToMoveStart_StoresWhiteRelativeScores()
+    {
+        var board = BoardStateExtensions.CreateBoardFromFen(
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1");
+        Span<(uint move, short eval)> moves = stackalloc (uint move, short eval)[2];
+        moves[0] = (MoveExtensions.EncodeNormalMove(Constants.BlackPawn, 52, 36), 42);
+        moves[1] = (MoveExtensions.EncodeNormalMove(Constants.WhitePawn, 12, 28), -37);
+
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, true))
+        {
+            Viriformat.WriteGame(stackalloc byte[Viriformat.MaxGameBytes], writer, ref board, moves, 2, Viriformat.WdlDraw);
+        }
+
+        var bytes = stream.ToArray();
+        Assert.Equal(-42, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + 2, 2)));
+        Assert.Equal(-37, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(Viriformat.HeaderSize + Viriformat.MoveRecordSize + 2, 2)));
     }
 }
