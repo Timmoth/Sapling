@@ -68,7 +68,9 @@ namespace Sapling.Engine.Tuning
         public const float LateMoveReductionInterestingB = 2.4956496f;
         public const float LateMoveReductionA = 1.315961f;
         public const float LateMoveReductionB = 2.7831153f;
-        public const float LateMoveReductionHistoryScale = 0.0001f;
+        // Stored in millionths so the SPSA step/learning-rate formulas, which assume
+        // O(1)-magnitude parameters, see an integer range. 100 == 0.0001f.
+        public const int LateMoveReductionHistoryScaleMicros = 100;
         public const int HistoryHeuristicMaxHistory = 9532;
         public const int HistoryHeuristicBonusMax = 406;
         public const int HistoryHeuristicBonusCoeff = 83;
@@ -154,8 +156,8 @@ namespace Sapling.Engine.Tuning
         [SpsaMinValueAttribute("0.1"), SpsaMaxValue("10")]
         public static float LateMoveReductionB = SpsaDefaults.LateMoveReductionB;
 
-        [SpsaMinValue("0"), SpsaMaxValue("0.0005")]
-        public static float LateMoveReductionHistoryScale = SpsaDefaults.LateMoveReductionHistoryScale;
+        [SpsaMinValue("0"), SpsaMaxValue("500")]
+        public static int LateMoveReductionHistoryScaleMicros = SpsaDefaults.LateMoveReductionHistoryScaleMicros;
 
         [SpsaMinValue("7000"), SpsaMaxValue("10000")]
         public static int HistoryHeuristicMaxHistory = SpsaDefaults.HistoryHeuristicMaxHistory;
@@ -237,7 +239,7 @@ namespace Sapling.Engine.Tuning
         public const float LateMoveReductionInterestingB = SpsaDefaults.LateMoveReductionInterestingB;
         public const float LateMoveReductionA = SpsaDefaults.LateMoveReductionA;
         public const float LateMoveReductionB = SpsaDefaults.LateMoveReductionB;
-        public const float LateMoveReductionHistoryScale = SpsaDefaults.LateMoveReductionHistoryScale;
+        public const int LateMoveReductionHistoryScaleMicros = SpsaDefaults.LateMoveReductionHistoryScaleMicros;
         public const int HistoryHeuristicMaxHistory = SpsaDefaults.HistoryHeuristicMaxHistory;
         public const int HistoryHeuristicBonusMax = SpsaDefaults.HistoryHeuristicBonusMax;
         public const int HistoryHeuristicBonusCoeff = SpsaDefaults.HistoryHeuristicBonusCoeff;
@@ -302,16 +304,42 @@ namespace Sapling.Engine.Tuning
             ProcessUCIOptions();
         }
 
+        // The step-size and learning-rate formulas below assume an O(1)-or-larger parameter.
+        // When (max - min) / 40 falls under minStepSize the floor takes over, and the emitted
+        // perturbation can exceed the parameter's entire legal range - every SPSA iteration then
+        // clamps both arms to the bounds and the session learns nothing from that parameter while
+        // still injecting its noise into every other parameter's gradient. This went unnoticed for
+        // 9,606 games on LateMoveReductionHistoryScale (range 0.0005, emitted step 0.01). Express
+        // such a parameter in smaller units (see LateMoveReductionHistoryScaleMicros) instead.
+        private static void GuardRange(SpsaParameter parameter, double min, double max, double minStepSize)
+        {
+            if (max - min >= minStepSize * 40.0)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"SPSA parameter '{parameter.Name}' has range [{min}, {max}], which is too narrow for the " +
+                $"step-size formula: the emitted perturbation would be {minStepSize}, " +
+                $"{minStepSize / (max - min):F1}x the whole range. Rescale it to integer units.");
+        }
+
         public static string FormatParameter(SpsaParameter parameter)
         {
             const double minStepSize = 0.01;
             const double normalLearningRate = 0.02;
+            // An int option is rounded before it reaches the engine, so a perturbation under half a
+            // unit leaves both SPSA arms on the same value: the two engines are then identical, the
+            // iteration measures only noise, and the parameter receives no signal at all. Every
+            // depth gate in the engine has a range narrow enough for range/40 to fall under 0.5.
+            const double minIntStepSize = 0.5;
 
             if (parameter.Type == "int")
             {
                 var min = int.Parse(parameter.MinValue, CultureInfo.InvariantCulture);
                 var max = int.Parse(parameter.MaxValue, CultureInfo.InvariantCulture);
-                var ss = Math.Max(minStepSize, (max - min) / 40.0);
+                GuardRange(parameter, min, max, minStepSize);
+                var ss = Math.Max(minIntStepSize, (max - min) / 40.0);
                 var lr = double.Round(Math.Max(normalLearningRate, normalLearningRate * (0.50 / ss)), 4);
 
                 return
@@ -321,7 +349,10 @@ namespace Sapling.Engine.Tuning
             {
                 var min = double.Parse(parameter.MinValue, CultureInfo.InvariantCulture);
                 var max = double.Parse(parameter.MaxValue, CultureInfo.InvariantCulture);
-                var ss = Math.Max(minStepSize, (max - min) / 40.0);
+                GuardRange(parameter, min, max, minStepSize);
+                // No floor here: GuardRange has already established range/40 >= minStepSize, and
+                // flooring a float step is what produced a perturbation 20x its own range.
+                var ss = (max - min) / 40.0;
                 var lr = double.Round(Math.Max(normalLearningRate, normalLearningRate * (0.50 / ss)), 4);
 
                 return

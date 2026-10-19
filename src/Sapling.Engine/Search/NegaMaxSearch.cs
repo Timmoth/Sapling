@@ -605,7 +605,7 @@ public partial class Searcher
                     {
                         var moveHistory = *(History + m.GetCounterMoveIndex());
                         reduction = HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, moveHistory,
-                            SpsaOptions.LateMoveReductionHistoryScale, depth - 1);
+                            SpsaOptions.LateMoveReductionHistoryScaleMicros / 1_000_000f, depth - 1);
                     }
                     // A cutoff is expected here, so late moves are even less likely to be best.
                     if (cutNode)
