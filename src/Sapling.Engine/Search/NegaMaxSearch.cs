@@ -281,7 +281,6 @@ public partial class Searcher
 
         // Data used in move ordering
         var scores = stackalloc int[MaxMovesPerPly];
-        var seeScores = stackalloc short[MaxMovesPerPly];
 
         var captures = stackalloc short[64];
 
@@ -299,7 +298,6 @@ public partial class Searcher
 
         for (var i = 0; i < psuedoMoveCount; i++)
         {
-            *(seeScores + i) = short.MinValue;
             var move = *(moves + i);
             if (moveOrderingBestMove == move)
             {
@@ -316,7 +314,6 @@ public partial class Searcher
                 }
 
                 var captureDelta = currentBoardState->StaticExchangeEvaluation(occupancyBitBoards, captures, move);
-                *(seeScores + i) = (short)captureDelta;
 
                 *(scores + i) = (captureDelta >= 0 ? SpsaOptions.MoveOrderingWinningCaptureBias : SpsaOptions.MoveOrderingLosingCaptureBias) +
                                 captureDelta + (move.IsPromotion() ? SpsaOptions.MoveOrderingCapturePromoteBias : 0);
@@ -375,15 +372,12 @@ public partial class Searcher
                         // Using temporary variables for clarity
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
-                        short tempSeeScore = *(seeScores + probCutSortedUpTo);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
-                        *(seeScores + probCutSortedUpTo) = *(seeScores + j);
 
                         *compareScorePtr = tempScore;
                         *compareMovePtr = tempMove;
-                        *(seeScores + j) = tempSeeScore;
                     }
                 }
 
@@ -478,15 +472,12 @@ public partial class Searcher
                         // Using temporary variables for clarity
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
-                        short tempSeeScore = *(seeScores + moveIndex);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
-                        *(seeScores + moveIndex) = *(seeScores + j);
 
                         *compareScorePtr = tempScore;
                         *compareMovePtr = tempMove;
-                        *(seeScores + j) = tempSeeScore;
                     }
                 }
             }
@@ -582,18 +573,9 @@ public partial class Searcher
 
             if (!pvNode && depthFromRoot > 0 && depth is >= 1 and <= 4 &&
                 !parentInCheck && !newBoardState->InCheck && !isPromotionThreat &&
-                !isInteresting && m.IsCapture() && !m.IsPromotion())
-            {
-                var seeScore = *(seeScores + moveIndex);
-                if (seeScore == short.MinValue)
-                {
-                    seeScore = (short)currentBoardState->StaticExchangeEvaluation(occupancyBitBoards, captures, m);
-                    *(seeScores + moveIndex) = seeScore;
-                }
-
-                if (seeScore <= -40 * depth)
-                    continue;
-            }
+                !isInteresting && m.IsCapture() && !m.IsPromotion() &&
+                currentBoardState->StaticExchangeEvaluation(occupancyBitBoards, captures, m) <= -40 * depth)
+                continue;
 
             newAccumulatorState->UpdateToParent(currentAccumulatorState, newBoardState);
             if (whiteToMove)
