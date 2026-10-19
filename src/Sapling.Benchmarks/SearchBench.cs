@@ -40,16 +40,21 @@ public unsafe class SearchBench
         _gameState.Dispose();
     }
 
-    // Measures the production Searcher API path for a fixed hard corpus position.
-    // Table/history reset is included so each invocation starts from a comparable state.
-    [Benchmark]
-    public long SearchFixedPosition()
+    // Reset work is excluded from the timed region so this measures search rather than
+    // clearing a 64 MiB table. InvocationSetup keeps each operation a cold-table search.
+    [IterationSetup(Target = nameof(SearchFixedPosition))]
+    public void ResetForSearch()
     {
         NativeMemory.Clear(_transpositions, _ttBytes);
         _searcher.Reset(_gameState);
         NativeMemory.Clear(_searcher.PawnCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
         NativeMemory.Clear(_searcher.WhiteMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
         NativeMemory.Clear(_searcher.BlackMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
+    }
+
+    [Benchmark]
+    public long SearchFixedPosition()
+    {
         var (_, _, _, nodes) = _searcher.Search(_gameState, _searcher.Stop,
             depthLimit: Depth, threadId: -1);
         return nodes;
