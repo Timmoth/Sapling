@@ -47,9 +47,8 @@ public unsafe class SearchBench
     {
         NativeMemory.Clear(_transpositions, _ttBytes);
         _searcher.Reset(_gameState);
-        NativeMemory.Clear(_searcher.PawnCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
-        NativeMemory.Clear(_searcher.WhiteMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
-        NativeMemory.Clear(_searcher.BlackMaterialCorrHist, (nuint)Searcher.TableElementsSize * sizeof(int));
+        _searcher.ClearMoveHistory();
+        _searcher.ClearCorrectionHistory();
     }
 
     [Benchmark]
