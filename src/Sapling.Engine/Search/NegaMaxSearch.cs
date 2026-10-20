@@ -346,13 +346,17 @@ public partial class Searcher
         }
 
         var enemyAttacks = EnemyAttacks(currentBoardState);
+        var previousMove = currentAccumulatorState->Move;
+        // Do not read before the root frame or bridge a null move.
+        var earlierMove = depthFromRoot >= 2 && previousMove != 0 ? currentAccumulatorState[-1].Move : 0;
 
         // Keep legacy scores for ProbCut eligibility, interesting-move gates and pruning.
         // The learned component only changes normal ordering and the explicit LMR signal.
         for (var i = 0; i < psuedoMoveCount; i++)
         {
             var move = moves[i];
-            var learned = move == moveOrderingBestMove || !move.IsQuiet() ? 0 : ThreatScore(whiteToMove, enemyAttacks, move);
+            var learned = move == moveOrderingBestMove || !move.IsQuiet() ? 0 :
+                ThreatScore(whiteToMove, enemyAttacks, move) + ContinuationScore(previousMove, earlierMove, move);
             orderingScores[i] = scores[i] + learned;
         }
 
@@ -636,7 +640,7 @@ public partial class Searcher
                     if (m.IsQuiet())
                     {
                         var moveHistory = *(History + m.GetCounterMoveIndex()) +
-                            ThreatScore(whiteToMove, enemyAttacks, m);
+                            ThreatScore(whiteToMove, enemyAttacks, m) + ContinuationScore(previousMove, earlierMove, m);
                         reduction = HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, moveHistory,
                             SpsaOptions.LateMoveReductionHistoryScale, depth - 1);
                     }
@@ -732,7 +736,10 @@ public partial class Searcher
                     // History
                     HistoryHeuristicExtensions.UpdateMovesHistory(History, searchedQuiets, searchedQuietCount, m, depth);
                     if (!excluding)
+                    {
                         UpdateThreatHistories(whiteToMove, enemyAttacks, m, searchedQuiets, searchedQuietCount, depth);
+                        UpdateContinuations(previousMove, earlierMove, m, searchedQuiets, searchedQuietCount, depth);
+                    }
 
                     *(killers + (depthFromRoot << 1)) = m;
                     if (counterMoveIndex != 0)

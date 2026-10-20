@@ -128,6 +128,7 @@ public unsafe partial class Searcher : IDisposable
 
     public readonly int* History;
     internal readonly short* ThreatHistory;
+    internal readonly short* ContinuationHistory;
     public readonly uint* Counters;
     public readonly uint* killers;
     public readonly int* PawnCorrHist;
@@ -177,6 +178,7 @@ public unsafe partial class Searcher : IDisposable
         Counters = MemoryHelpers.Allocate<uint>(CountersLength);
         History = MemoryHelpers.Allocate<int>(HistoryLength);
         ThreatHistory = MemoryHelpers.Allocate<short>(ThreatHistoryLength);
+        ContinuationHistory = MemoryHelpers.Allocate<short>(ContinuationHistoryLength);
         killers = MemoryHelpers.Allocate<uint>(KillersLength);
         PawnCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
         WhiteMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
@@ -231,6 +233,9 @@ public unsafe partial class Searcher : IDisposable
 
         if (ThreatHistory != null)
             MemoryHelpers.FreeAligned(ThreatHistory);
+
+        if (ContinuationHistory != null)
+            MemoryHelpers.FreeAligned(ContinuationHistory);
 
         if (killers != null)
             MemoryHelpers.FreeAligned(killers);
@@ -383,6 +388,7 @@ public unsafe partial class Searcher : IDisposable
     {
         NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
         NativeMemory.Clear(ThreatHistory, (nuint)ThreatHistoryLength * sizeof(short));
+        NativeMemory.Clear(ContinuationHistory, (nuint)ContinuationHistoryLength * sizeof(short));
     }
 
     public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, Action cancelSearch, List<Searcher>? searchers = null, int nodeLimit = 0,
