@@ -127,6 +127,8 @@ public unsafe partial class Searcher : IDisposable
     public readonly AccumulatorState* Accumulators;
 
     public readonly int* History;
+    internal readonly short* ThreatHistory;
+    internal readonly short* ContinuationHistory;
     public readonly uint* Counters;
     public readonly uint* killers;
     public readonly int* PawnCorrHist;
@@ -175,6 +177,8 @@ public unsafe partial class Searcher : IDisposable
         HashHistory = MemoryHelpers.Allocate<ulong>(GameState.HashHistoryLength);
         Counters = MemoryHelpers.Allocate<uint>(CountersLength);
         History = MemoryHelpers.Allocate<int>(HistoryLength);
+        ThreatHistory = MemoryHelpers.Allocate<short>(ThreatHistoryLength);
+        ContinuationHistory = MemoryHelpers.Allocate<short>(ContinuationHistoryLength);
         killers = MemoryHelpers.Allocate<uint>(KillersLength);
         PawnCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
         WhiteMaterialCorrHist = MemoryHelpers.Allocate<int>(TableElementsSize);
@@ -226,6 +230,12 @@ public unsafe partial class Searcher : IDisposable
 
         if (History != null)
             MemoryHelpers.FreeAligned(History);
+
+        if (ThreatHistory != null)
+            MemoryHelpers.FreeAligned(ThreatHistory);
+
+        if (ContinuationHistory != null)
+            MemoryHelpers.FreeAligned(ContinuationHistory);
 
         if (killers != null)
             MemoryHelpers.FreeAligned(killers);
@@ -374,8 +384,12 @@ public unsafe partial class Searcher : IDisposable
         Unsafe.CopyBlock(HashHistory, inputBoard.HashHistory, sizeof(ulong) * historyToCopy);
     }
 
-    public unsafe void ClearMoveHistory() =>
+    public unsafe void ClearMoveHistory()
+    {
         NativeMemory.Clear(History, (nuint)HistoryLength * sizeof(int));
+        NativeMemory.Clear(ThreatHistory, (nuint)ThreatHistoryLength * sizeof(short));
+        NativeMemory.Clear(ContinuationHistory, (nuint)ContinuationHistoryLength * sizeof(short));
+    }
 
     public (List<uint> pv, int depthSearched, int score, long nodes) Search(GameState inputBoard, Action cancelSearch, List<Searcher>? searchers = null, int nodeLimit = 0,
         int depthLimit = 0, int threadId = -1, DateTime? timeLimit = null)

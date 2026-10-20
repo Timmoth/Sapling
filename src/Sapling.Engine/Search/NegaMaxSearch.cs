@@ -281,6 +281,7 @@ public partial class Searcher
 
         // Data used in move ordering
         var scores = stackalloc int[MaxMovesPerPly];
+        var orderingScores = stackalloc int[MaxMovesPerPly];
 
         var captures = stackalloc short[64];
 
@@ -341,6 +342,21 @@ public partial class Searcher
             *(scores + i) = *(History + move.GetCounterMoveIndex());
         }
 
+        var enemyAttacks = EnemyAttacks(currentBoardState);
+        var previousMove = currentAccumulatorState->Move;
+        // Do not read before the root frame or bridge a null move.
+        var earlierMove = depthFromRoot >= 2 && previousMove != 0 ? currentAccumulatorState[-1].Move : 0;
+
+        // Keep legacy scores for ProbCut eligibility, interesting-move gates and pruning.
+        // The learned component only changes normal ordering and the explicit LMR signal.
+        for (var i = 0; i < psuedoMoveCount; i++)
+        {
+            var move = moves[i];
+            var learned = move == moveOrderingBestMove || !move.IsQuiet() ? 0 :
+                ThreatScore(whiteToMove, enemyAttacks, move) + ContinuationScore(previousMove, earlierMove, move);
+            orderingScores[i] = scores[i] + learned;
+        }
+
         var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
         var probCutSortedUpTo = 0;
 
@@ -372,6 +388,7 @@ public partial class Searcher
                         // Using temporary variables for clarity
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
+                        (orderingScores[probCutSortedUpTo], orderingScores[j]) = (orderingScores[j], orderingScores[probCutSortedUpTo]);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
@@ -466,12 +483,13 @@ public partial class Searcher
                     var compareScorePtr = scores + j;
                     var compareMovePtr = moves + j;
 
-                    if (*compareScorePtr > *currentScorePtr)
+                    if (orderingScores[j] > orderingScores[moveIndex])
                     {
                         // Swap the scores and moves directly using pointers
                         // Using temporary variables for clarity
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
+                        (orderingScores[moveIndex], orderingScores[j]) = (orderingScores[j], orderingScores[moveIndex]);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
@@ -603,7 +621,8 @@ public partial class Searcher
                         : *(SpsaOptions.LateMovePruningReductionTable + depth * 218 + searchedMoves);
                     if (m.IsQuiet())
                     {
-                        var moveHistory = *(History + m.GetCounterMoveIndex());
+                        var moveHistory = *(History + m.GetCounterMoveIndex()) +
+                            ThreatScore(whiteToMove, enemyAttacks, m) + ContinuationScore(previousMove, earlierMove, m);
                         reduction = HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, moveHistory,
                             SpsaOptions.LateMoveReductionHistoryScaleMicros / 1_000_000f, depth - 1);
                     }
@@ -698,6 +717,11 @@ public partial class Searcher
 
                     // History
                     HistoryHeuristicExtensions.UpdateMovesHistory(History, searchedQuiets, searchedQuietCount, m, depth);
+                    if (!excluding)
+                    {
+                        UpdateThreatHistories(whiteToMove, enemyAttacks, m, searchedQuiets, searchedQuietCount, depth);
+                        UpdateContinuations(previousMove, earlierMove, m, searchedQuiets, searchedQuietCount, depth);
+                    }
 
                     *(killers + (depthFromRoot << 1)) = m;
                     if (counterMoveIndex != 0)
