@@ -2,58 +2,52 @@ using System.Runtime.InteropServices;
 
 namespace Sapling.Engine.Transpositions;
 
-// 16-byte stride: 4 entries per cache line, every entry naturally 16B-aligned
-// (the table block is 64B-aligned), so the 64-bit Stamp is always an aligned
-// atomic access. The payload (move/eval/depth/flag) lives entirely inside
-// Stamp, so a reader sees either the whole old payload or the whole new one —
-// no seqlock version counter is needed. The only cross-word race is Stamp vs
-// FullHash; callers always validate snapshot.FullHash against the probe hash,
-// which turns any mixed read into a harmless miss.
-//
-// Stamp layout (little-endian bit packing):
-//   bits  0-31  Move
-//   bits 32-47  Evaluation (signed i16; mate scores stay within +/-29128)
-//   bits 48-55  Depth
-//   bits 56-57  Flag
-//   bits 58-63  Version (seqlock: even = stable, odd = writer claim)
-//
-// The payload (move/eval/depth/flag) lives entirely inside Stamp, so a reader
-// that sees a stable even version has a consistent payload by construction.
-// The Stamp/FullHash pair is bracketed by two Stamp reads: any generation mix
-// shows up as a Stamp mismatch or a FullHash mismatch and becomes a miss.
+// Four 16-byte entries occupy one 64-byte cluster. Moves use only 24 bits in
+// Sapling's encoding, leaving room for an independent generation byte without
+// reducing the six-bit sequence used by coherent shared reads.
+// Stamp: move[0..23], eval[24..39], depth[40..47], bound[48..49],
+// sequence[50..55], replacement generation[56..63].
 [StructLayout(LayoutKind.Explicit, Size = 16)]
-public unsafe struct Transposition
+public struct Transposition
 {
+    internal const int VersionShift = 50;
+    internal const ulong MoveMask = 0x00FF_FFFFUL;
     [FieldOffset(0)] public ulong FullHash;
     [FieldOffset(8)] public ulong Stamp;
 
     public uint Move
     {
-        readonly get => (uint)(Stamp & 0xFFFF_FFFFUL);
-        set => Stamp = (Stamp & ~0xFFFF_FFFFUL) | value;
+        readonly get => (uint)(Stamp & MoveMask);
+        set
+        {
+            if (value > MoveMask) throw new ArgumentOutOfRangeException(nameof(value));
+            Stamp = (Stamp & ~MoveMask) | value;
+        }
     }
-
     public int Evaluation
     {
-        readonly get => (short)(Stamp >> 32);
-        set => Stamp = (Stamp & 0xFFFF_0000_FFFF_FFFFUL) | ((ulong)(ushort)value << 32);
+        readonly get => (short)(Stamp >> 24);
+        set => Stamp = (Stamp & ~(0xFFFFUL << 24)) | ((ulong)(ushort)value << 24);
     }
-
     public byte Depth
     {
-        readonly get => (byte)(Stamp >> 48);
-        set => Stamp = (Stamp & 0x0000_FFFF_FFFF_FFFFUL) | ((ulong)value << 48);
+        readonly get => (byte)(Stamp >> 40);
+        set => Stamp = (Stamp & ~(0xFFUL << 40)) | ((ulong)value << 40);
     }
-
     public TranspositionTableFlag Flag
     {
-        readonly get => (TranspositionTableFlag)(byte)((Stamp >> 56) & 3);
-        set => Stamp = (Stamp & 0x00FF_FFFF_FFFF_FFFFUL) | ((ulong)(byte)value << 56);
+        readonly get => (TranspositionTableFlag)((Stamp >> 48) & 3);
+        set => Stamp = (Stamp & ~(3UL << 48)) | ((ulong)(byte)value << 48);
     }
+    public readonly ushort Version => (ushort)((Stamp >> VersionShift) & 0x3F);
+    public readonly byte Generation => (byte)(Stamp >> 56);
 
-    public readonly ushort Version => (ushort)((Stamp >> 58) & 0x3F);
-
-    public static ulong PackStamp(uint move, int evaluation, byte depth, TranspositionTableFlag flag, int version) =>
-        move | ((ulong)(ushort)evaluation << 32) | ((ulong)depth << 48) | ((ulong)(byte)flag << 56) |
-        ((ulong)(version & 0x3F) << 58);
+    public static ulong PackStamp(uint move, int evaluation, byte depth,
+        TranspositionTableFlag flag, int version, byte generation = 0)
+    {
+        if (move > MoveMask) throw new ArgumentOutOfRangeException(nameof(move));
+        return move | ((ulong)(ushort)evaluation << 24) | ((ulong)depth << 40) |
+            ((ulong)(byte)flag << 48) | ((ulong)(version & 0x3F) << VersionShift) |
+            ((ulong)generation << 56);
+    }
 }

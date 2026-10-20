@@ -16,6 +16,7 @@ public static class TranspositionTableExtensions
         public int Evaluation;
         public TranspositionTableFlag Flag;
         public uint Move;
+        public byte Generation;
     }
 
     // Seqlock over an atomic payload: the whole payload lives in Stamp, so a
@@ -26,7 +27,7 @@ public static class TranspositionTableExtensions
     public static TtSnapshot Probe(ref Transposition entry, bool shared = true)
     {
         var stamp = shared ? Volatile.Read(ref entry.Stamp) : entry.Stamp;
-        if (shared && ((stamp >> 58) & 1UL) != 0)
+        if (shared && ((stamp >> Transposition.VersionShift) & 1UL) != 0)
             return default;
 
         var hash = shared ? Volatile.Read(ref entry.FullHash) : entry.FullHash;
@@ -38,10 +39,11 @@ public static class TranspositionTableExtensions
         {
             Valid = true,
             FullHash = hash,
-            Depth = (byte)(stamp >> 48),
-            Evaluation = (short)(stamp >> 32),
-            Flag = (TranspositionTableFlag)(byte)((stamp >> 56) & 3),
-            Move = (uint)stamp,
+            Depth = (byte)(stamp >> 40),
+            Evaluation = (short)(stamp >> 24),
+            Flag = (TranspositionTableFlag)(byte)((stamp >> 48) & 3),
+            Move = (uint)(stamp & Transposition.MoveMask),
+            Generation = (byte)(stamp >> 56),
         };
     }
 
@@ -69,7 +71,7 @@ public static class TranspositionTableExtensions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Set(this ref Transposition entry, ulong hash, byte depth, int ply,
-        int eval, TranspositionTableFlag nodeType, uint move = default, bool shared = true)
+        int eval, TranspositionTableFlag nodeType, uint move = default, bool shared = true, byte generation = 0)
     {
         var curStamp = shared ? Volatile.Read(ref entry.Stamp) : entry.Stamp;
         var curHash = shared ? Volatile.Read(ref entry.FullHash) : entry.FullHash;
@@ -77,21 +79,21 @@ public static class TranspositionTableExtensions
         // Replacement policy on the snapshot (same rule as before: store when the
         // slot is empty, holds a different hash, is Exact, or is shallower).
         if (curHash != 0 && hash == curHash && nodeType != TranspositionTableFlag.Exact
-            && depth < (byte)(curStamp >> 48))
+            && depth < (byte)(curStamp >> 40) && generation == (byte)(curStamp >> 56))
             return;
 
         // A zero-move store may keep the incumbent move only when it is the SAME
         // position. Across a hash collision the incumbent move belongs to a
         // different position and must not be privileged.
-        var newMove = move != 0 ? move : (curHash == hash ? (uint)curStamp : 0u);
-        var version = (int)((curStamp >> 58) & 0x3F);
+        var newMove = move != 0 ? move : (curHash == hash ? (uint)(curStamp & Transposition.MoveMask) : 0u);
+        var version = (int)((curStamp >> Transposition.VersionShift) & 0x3F);
         var newStamp = Transposition.PackStamp(newMove, RecalculateMateScores(eval, -ply), depth, nodeType,
-            shared ? (version + 2) & 0x3F : version);
+            shared ? (version + 2) & 0x3F : version, generation);
 
         if (shared)
         {
             if ((version & 1) != 0 ||
-                Interlocked.CompareExchange(ref entry.Stamp, curStamp + (1UL << 58), curStamp) != curStamp)
+                Interlocked.CompareExchange(ref entry.Stamp, curStamp + (1UL << Transposition.VersionShift), curStamp) != curStamp)
                 return;
 
             Volatile.Write(ref entry.FullHash, hash);
@@ -102,6 +104,63 @@ public static class TranspositionTableExtensions
             entry.FullHash = hash;
             entry.Stamp = newStamp;
         }
+    }
+
+    public const int EntriesPerCluster = 4;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong ClusterStart(ulong hash, ulong mask) => (hash & mask) & ~3UL;
+
+    public static unsafe TtSnapshot ProbeCluster(Transposition* table, ulong hash, ulong mask,
+        byte generation, out Transposition* slot, bool shared = true)
+    {
+        var count = (int)Math.Min(mask + 1, (ulong)EntriesPerCluster);
+        var first = hash & mask;
+        var start = ClusterStart(hash, mask);
+        slot = table + first;
+        var selected = default(TtSnapshot);
+        var foundEmpty = false;
+        var worstValue = int.MaxValue;
+        for (var offset = 0; offset < count; offset++)
+        {
+            var candidate = table + start + ((first - start + (ulong)offset) & (ulong)(count - 1));
+            var snapshot = Probe(ref *candidate, shared);
+            if (!snapshot.Valid) continue;
+            var empty = snapshot.Flag == TranspositionTableFlag.None &&
+                snapshot.FullHash == 0 && snapshot.Depth == 0 &&
+                snapshot.Move == 0 && snapshot.Evaluation == 0;
+            if (!empty && snapshot.FullHash == hash)
+            {
+                slot = candidate;
+                return snapshot;
+            }
+            if (empty && !foundEmpty)
+            {
+                foundEmpty = true;
+                slot = candidate;
+                selected = snapshot;
+            }
+            var age = (byte)(generation - snapshot.Generation);
+            var value = snapshot.Depth - 8 * age;
+            if (!foundEmpty && value < worstValue)
+            {
+                worstValue = value;
+                slot = candidate;
+                selected = snapshot;
+            }
+        }
+        // A miss returns no usable entry, including hash zero; slot identifies
+        // a replacement candidate only. Stores reselect after recursive search.
+        selected.Valid = false;
+        return selected;
+    }
+
+    public static unsafe void SetCluster(Transposition* table, ulong mask, ulong hash,
+        byte depth, int ply, int evaluation, TranspositionTableFlag flag, uint move,
+        byte generation, bool shared = true)
+    {
+        ProbeCluster(table, hash, mask, generation, out var slot, shared);
+        Set(ref *slot, hash, depth, ply, evaluation, flag, move, shared, generation);
     }
 
     public static unsafe long CalculateTranspositionTableSize(long sizeInMb)

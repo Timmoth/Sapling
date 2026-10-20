@@ -45,10 +45,10 @@ public partial class Searcher
         }
 
         var pHash = boardState->Hash;
-        ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
         uint ttBestMove = default;
 
-        var ttSnapshot = TranspositionTableExtensions.Probe(ref ttEntry, SharedTranspositions);
+        var ttSnapshot = TranspositionTableExtensions.ProbeCluster(Transpositions, pHash, TtMask,
+            _ttGeneration, out _, SharedTranspositions);
         if (ttSnapshot.Valid && pHash == ttSnapshot.FullHash)
         {
             ttBestMove = ttSnapshot.Move;
@@ -105,19 +105,19 @@ public partial class Searcher
                 var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
 
                 // Cache in transposition table
-                StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, finalEval,
+                StoreTransposition(pHash, 0, depthFromRoot, finalEval,
                     TranspositionTableFlag.Exact);
                 return finalEval;
             }
 
             if (!boardState->HasAnyLegalMove())
             {
-                StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, 0,
+                StoreTransposition(pHash, 0, depthFromRoot, 0,
                     TranspositionTableFlag.Exact);
                 return 0;
             }
 
-            StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, alpha,
+            StoreTransposition(pHash, 0, depthFromRoot, alpha,
                 TranspositionTableFlag.Alpha,
                 default);
             return alpha;
@@ -220,7 +220,7 @@ public partial class Searcher
 
             *nextHashHistoryEntry = nextBoardState->Hash;
 
-            PrefetchTransposition(Transpositions + (nextBoardState->Hash & TtMask));
+            PrefetchTransposition(Transpositions + TranspositionTableExtensions.ClusterStart(nextBoardState->Hash, TtMask));
 
             var val = -QuiescenceSearch(nextBoardState, nextAccumulatorState, depthFromRoot + 1, -beta, -alpha);
 
@@ -242,7 +242,7 @@ public partial class Searcher
             if (val >= beta)
             {
                 // Cache in transposition table
-                StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, val,
+                StoreTransposition(pHash, 0, depthFromRoot, val,
                     TranspositionTableFlag.Beta, bestMove);
                 // Beta cut off
                 return val;
@@ -261,7 +261,7 @@ public partial class Searcher
             var finalEval = MoveScoring.EvaluateFinalPosition(depthFromRoot, inCheck);
 
             // Cache in transposition table
-            StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, finalEval,
+            StoreTransposition(pHash, 0, depthFromRoot, finalEval,
                 TranspositionTableFlag.Exact);
             return finalEval;
         }
@@ -272,13 +272,13 @@ public partial class Searcher
         // by PartialApply. Distinguish that from an ordinary quiet position.
         if (!inCheck && !hasValidMove && !boardState->HasAnyLegalMove())
         {
-            StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, 0,
+            StoreTransposition(pHash, 0, depthFromRoot, 0,
                 TranspositionTableFlag.Exact);
             return 0;
         }
 
         // Cache in transposition table
-        StoreTransposition(ref ttEntry, pHash, 0, depthFromRoot, alpha,
+        StoreTransposition(pHash, 0, depthFromRoot, alpha,
             evaluationBound,
             bestMove);
 

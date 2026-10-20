@@ -14,6 +14,7 @@ public unsafe partial class Searcher : IDisposable
     private const nuint _pvTableBytes = _pvTableLength * sizeof(uint);
     private readonly uint* _pVTable;
     public readonly Transposition* Transpositions;
+    private byte _ttGeneration;
     public readonly ulong TtMask;
     private long _lockedUntil;
     private int _disposed;
@@ -353,6 +354,7 @@ public unsafe partial class Searcher : IDisposable
         _sliceNodeBudget = 0;
         _sliceDeadlineTs = 0;
         _sliceStartNodes = 0;
+        _ttGeneration = unchecked((byte)(_ttGeneration + 1));
         NodesVisited = 0;
         BestSoFar = 0;
 
@@ -589,9 +591,10 @@ public unsafe partial class Searcher : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void StoreTransposition(ref Transposition entry, ulong hash, byte depth, int ply,
+    private void StoreTransposition(ulong hash, byte depth, int ply,
         int eval, TranspositionTableFlag flag, uint move = default) =>
-        TranspositionTableExtensions.Set(ref entry, hash, depth, ply, eval, flag, move, SharedTranspositions);
+        TranspositionTableExtensions.SetCluster(Transpositions, TtMask, hash, depth, ply, eval,
+            flag, move, _ttGeneration, SharedTranspositions);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void PrefetchTransposition(void* entry)

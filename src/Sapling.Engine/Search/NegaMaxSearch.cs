@@ -59,8 +59,8 @@ public partial class Searcher
         uint transpositionBestMove = default;
         TranspositionTableFlag transpositionType = default;
         var transpositionEvaluation = TranspositionTableExtensions.NoHashEntry;
-        ref var ttEntry = ref *(Transpositions + (pHash & TtMask));
-        var ttSnapshot = TranspositionTableExtensions.Probe(ref ttEntry, SharedTranspositions);
+        var ttSnapshot = TranspositionTableExtensions.ProbeCluster(Transpositions, pHash, TtMask,
+            _ttGeneration, out _, SharedTranspositions);
 
         if (depthFromRoot > 0)
         {
@@ -261,7 +261,7 @@ public partial class Searcher
                 if (!excluding) UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
             }
 
-            if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
+            if (!excluding) StoreTransposition(pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
@@ -419,7 +419,7 @@ public partial class Searcher
                 }
                 *nextHashHistoryEntry = newBoardState->Hash;
 
-                PrefetchTransposition(Transpositions + (newBoardState->Hash & TtMask));
+                PrefetchTransposition(Transpositions + TranspositionTableExtensions.ClusterStart(newBoardState->Hash, TtMask));
 
                 NodesVisited--;
                 var score = -QuiescenceSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, -probBeta, -probBeta + 1);
@@ -435,7 +435,7 @@ public partial class Searcher
                 if (Interrupted()) return 0;
                 if (score >= probBeta)
                 {
-                    if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
+                    if (!excluding) StoreTransposition(pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
                         score,
                         TranspositionTableFlag.Beta,
                         default);
@@ -606,7 +606,7 @@ public partial class Searcher
             }
             *nextHashHistoryEntry = newBoardState->Hash;
 
-            PrefetchTransposition(Transpositions + (newBoardState->Hash & TtMask));
+            PrefetchTransposition(Transpositions + TranspositionTableExtensions.ClusterStart(newBoardState->Hash, TtMask));
 
             var needsFullSearch = true;
             var score = 0;
@@ -705,7 +705,7 @@ public partial class Searcher
                 }
 
                 // Cache in transposition table
-                if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot,
+                if (!excluding) StoreTransposition(pHash, (byte)depth, depthFromRoot,
                     score,
                     TranspositionTableFlag.Beta,
                     bestMove);
@@ -754,7 +754,7 @@ public partial class Searcher
                 if (!excluding) UpdateCorrectionHistory(pawnChIndex, whiteMaterialChIndex, blackMaterialChIndex, previousMoveIndex, diff, depth);
             }
 
-            if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, eval,
+            if (!excluding) StoreTransposition(pHash, (byte)depth, depthFromRoot, eval,
                 TranspositionTableFlag.Exact);
 
             return eval;
@@ -769,7 +769,7 @@ public partial class Searcher
         }
 
         // Cache in transposition table
-        if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)depth, depthFromRoot, alpha,
+        if (!excluding) StoreTransposition(pHash, (byte)depth, depthFromRoot, alpha,
             evaluationBound, bestMove);
 
         return alpha;
