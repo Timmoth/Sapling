@@ -282,6 +282,7 @@ public partial class Searcher
         // Data used in move ordering
         var scores = stackalloc int[MaxMovesPerPly];
         var seeScores = stackalloc short[MaxMovesPerPly];
+        var orderingScores = stackalloc int[MaxMovesPerPly];
 
         var captures = stackalloc short[64];
 
@@ -344,6 +345,14 @@ public partial class Searcher
             *(scores + i) = *(History + move.GetCounterMoveIndex());
         }
 
+        // Eligibility/pruning continues to use scores; only ordering learns context.
+        for (var i = 0; i < psuedoMoveCount; i++)
+        {
+            var move = moves[i];
+            var learned = move == moveOrderingBestMove ? 0 : (move.IsQuiet() ? QuietContextScore(currentAccumulatorState->Move, currentBoardState->PawnHash, move) : 0);
+            orderingScores[i] = scores[i] + learned;
+        }
+
         var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
         var probCutSortedUpTo = 0;
 
@@ -376,6 +385,7 @@ public partial class Searcher
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
                         short tempSeeScore = *(seeScores + probCutSortedUpTo);
+                        (orderingScores[probCutSortedUpTo], orderingScores[j]) = (orderingScores[j], orderingScores[probCutSortedUpTo]);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
@@ -472,13 +482,14 @@ public partial class Searcher
                     var compareScorePtr = scores + j;
                     var compareMovePtr = moves + j;
 
-                    if (*compareScorePtr > *currentScorePtr)
+                    if (orderingScores[j] > orderingScores[moveIndex])
                     {
                         // Swap the scores and moves directly using pointers
                         // Using temporary variables for clarity
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
                         short tempSeeScore = *(seeScores + moveIndex);
+                        (orderingScores[moveIndex], orderingScores[j]) = (orderingScores[j], orderingScores[moveIndex]);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
@@ -621,7 +632,8 @@ public partial class Searcher
                         : *(SpsaOptions.LateMovePruningReductionTable + depth * 218 + searchedMoves);
                     if (m.IsQuiet())
                     {
-                        var moveHistory = *(History + m.GetCounterMoveIndex());
+                        var moveHistory = *(History + m.GetCounterMoveIndex()) +
+                            QuietContextScore(currentAccumulatorState->Move, currentBoardState->PawnHash, m);
                         reduction = HistoryHeuristicExtensions.AdjustLateMoveReduction(reduction, moveHistory,
                             SpsaOptions.LateMoveReductionHistoryScale, depth - 1);
                     }
@@ -716,6 +728,9 @@ public partial class Searcher
 
                     // History
                     HistoryHeuristicExtensions.UpdateMovesHistory(History, searchedQuiets, searchedQuietCount, m, depth);
+                    if (!excluding)
+                        UpdateQuietContexts(currentAccumulatorState->Move, currentBoardState->PawnHash,
+                            m, searchedQuiets, searchedQuietCount, depth);
 
                     *(killers + (depthFromRoot << 1)) = m;
                     if (counterMoveIndex != 0)
