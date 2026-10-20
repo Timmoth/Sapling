@@ -1,4 +1,4 @@
-﻿using Sapling.Engine.Search;
+using Sapling.Engine.Search;
 using System.Globalization;
 using System.Reflection;
 
@@ -79,6 +79,7 @@ namespace Sapling.Engine.Tuning
         public const int MoveOrderingPromoteBias = 46577;
         public const int MoveOrderingCapturePromoteBias = 35558;
         public const int MoveOrderingKillerABias = 66845;
+        public const int MoveOrderingKillerBBias = 60000;
         public const int MoveOrderingCounterMoveBias = 87003;
         public const int InterestingNegaMaxMoveScore = 40775;
         public const int InterestingQuiescenceMoveScore = 35432;
@@ -188,6 +189,9 @@ namespace Sapling.Engine.Tuning
         public static int MoveOrderingKillerABias = SpsaDefaults.MoveOrderingKillerABias;
 
         [SpsaMinValue("10000"), SpsaMaxValue("100000")]
+        public static int MoveOrderingKillerBBias = SpsaDefaults.MoveOrderingKillerBBias;
+
+        [SpsaMinValue("10000"), SpsaMaxValue("100000")]
         public static int MoveOrderingCounterMoveBias = SpsaDefaults.MoveOrderingCounterMoveBias;
 
         [SpsaMinValue("10000"), SpsaMaxValue("100000")]
@@ -248,6 +252,7 @@ namespace Sapling.Engine.Tuning
         public const int MoveOrderingPromoteBias = SpsaDefaults.MoveOrderingPromoteBias;
         public const int MoveOrderingCapturePromoteBias = SpsaDefaults.MoveOrderingCapturePromoteBias;
         public const int MoveOrderingKillerABias = SpsaDefaults.MoveOrderingKillerABias;
+        public const int MoveOrderingKillerBBias = SpsaDefaults.MoveOrderingKillerBBias;
         public const int MoveOrderingCounterMoveBias = SpsaDefaults.MoveOrderingCounterMoveBias;
         public const int InterestingNegaMaxMoveScore = SpsaDefaults.InterestingNegaMaxMoveScore;
         public const int InterestingQuiescenceMoveScore = SpsaDefaults.InterestingQuiescenceMoveScore;

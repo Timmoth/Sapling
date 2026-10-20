@@ -278,6 +278,7 @@ public partial class Searcher
 
         // Get killer move
         var killerA = *(killers + (depthFromRoot << 1));
+        var killerB = *(killers + (depthFromRoot << 1) + 1);
 
         // Data used in move ordering
         var scores = stackalloc int[MaxMovesPerPly];
@@ -332,6 +333,12 @@ public partial class Searcher
             if (killerA == move)
             {
                 *(scores + i) = SpsaOptions.MoveOrderingKillerABias;
+                continue;
+            }
+
+            if (killerB == move)
+            {
+                *(scores + i) = SpsaOptions.MoveOrderingKillerBBias;
                 continue;
             }
 
@@ -717,7 +724,13 @@ public partial class Searcher
                     // History
                     HistoryHeuristicExtensions.UpdateMovesHistory(History, searchedQuiets, searchedQuietCount, m, depth);
 
-                    *(killers + (depthFromRoot << 1)) = m;
+                    // Read the live slot: a same-ply verification may have updated it.
+                    var killerSlot = killers + (depthFromRoot << 1);
+                    if (killerSlot[0] != m)
+                    {
+                        killerSlot[1] = killerSlot[0];
+                        killerSlot[0] = m;
+                    }
                     if (counterMoveIndex != 0)
                     {
                         *(Counters + counterMoveIndex) = m;
