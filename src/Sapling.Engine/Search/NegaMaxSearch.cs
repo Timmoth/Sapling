@@ -282,6 +282,7 @@ public partial class Searcher
         // Data used in move ordering
         var scores = stackalloc int[MaxMovesPerPly];
         var seeScores = stackalloc short[MaxMovesPerPly];
+        var orderingScores = stackalloc int[MaxMovesPerPly];
 
         var captures = stackalloc short[64];
 
@@ -344,6 +345,14 @@ public partial class Searcher
             *(scores + i) = *(History + move.GetCounterMoveIndex());
         }
 
+        // Eligibility/pruning continues to use scores; only ordering learns context.
+        for (var i = 0; i < psuedoMoveCount; i++)
+        {
+            var move = moves[i];
+            var learned = move == moveOrderingBestMove ? 0 : (move.IsCapture() ? CaptureHistory[CaptureHistoryIndex(move)] / 8 : 0);
+            orderingScores[i] = scores[i] + learned;
+        }
+
         var nextHashHistoryEntry = HashHistory + currentBoardState->TurnCount;
         var probCutSortedUpTo = 0;
 
@@ -376,6 +385,7 @@ public partial class Searcher
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
                         short tempSeeScore = *(seeScores + probCutSortedUpTo);
+                        (orderingScores[probCutSortedUpTo], orderingScores[j]) = (orderingScores[j], orderingScores[probCutSortedUpTo]);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
@@ -457,6 +467,8 @@ public partial class Searcher
         // Keep the searched-quiet history set in a per-node stack buffer.
         var searchedQuiets = stackalloc uint[MaxMovesPerPly];
         var searchedQuietCount = 0;
+        var searchedCaptures = stackalloc uint[MaxMovesPerPly];
+        var searchedCaptureCount = 0;
         // Evaluate each move
         for (var moveIndex = 0; moveIndex < psuedoMoveCount; ++moveIndex)
         {
@@ -472,13 +484,14 @@ public partial class Searcher
                     var compareScorePtr = scores + j;
                     var compareMovePtr = moves + j;
 
-                    if (*compareScorePtr > *currentScorePtr)
+                    if (orderingScores[j] > orderingScores[moveIndex])
                     {
                         // Swap the scores and moves directly using pointers
                         // Using temporary variables for clarity
                         int tempScore = *currentScorePtr;
                         uint tempMove = *currentMovePtr;
                         short tempSeeScore = *(seeScores + moveIndex);
+                        (orderingScores[moveIndex], orderingScores[j]) = (orderingScores[j], orderingScores[moveIndex]);
 
                         *currentScorePtr = *compareScorePtr;
                         *currentMovePtr = *compareMovePtr;
@@ -684,6 +697,8 @@ public partial class Searcher
             // alpha-raising). The cutoff winner is excluded and gets the bonus instead.
             if (m.IsQuiet() && score < beta)
                 searchedQuiets[searchedQuietCount++] = m;
+            if (m.IsCapture() && score < beta)
+                searchedCaptures[searchedCaptureCount++] = m;
 
             if (score <= alpha)
             {
@@ -697,6 +712,9 @@ public partial class Searcher
 
             if (score >= beta)
             {
+                if (!excluding)
+                    UpdateCaptureHistories(m, searchedCaptures, searchedCaptureCount, depth);
+
                 if (!parentInCheck && (bestMove == default || bestMove.IsQuiet())
                                    && (score > staticEval))
                 {
