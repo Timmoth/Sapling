@@ -18,6 +18,11 @@ public partial class Searcher
     public long SingularVerifications;
     public long SingularExtensions;
     public long SingularNegativeExtensions;
+    public long SingularMultiCuts;
+    public long ProbCutCandidates;
+    public long ProbCutQuiescencePasses;
+    public long ProbCutVerificationSearches;
+    public long ProbCutCutoffs;
 
     // cutNode marks a node where a fail-high is expected: the children of a node whose
     // sibling search already failed low. It alternates down the tree (a cut node's child is
@@ -348,11 +353,13 @@ public partial class Searcher
         var probCutSortedUpTo = 0;
 
         // Probcut
-        int probCutMargin = improving ? 97 : 252;
+        int probCutMargin = improving ? SpsaOptions.ProbCutImprovingMargin :
+            SpsaOptions.ProbCutBetaMargin + SpsaOptions.ProbCutNonImprovingOffset;
         int probBeta = beta + probCutMargin;
         if (!pvNode && !parentInCheck
             && currentAccumulatorState->Move != default
             && depth >= SpsaOptions.ProbCutMinDepth
+            && probBeta < TranspositionTableExtensions.PositiveCheckmateDetectionLimit
             && Math.Abs(beta) < TranspositionTableExtensions.PositiveCheckmateDetectionLimit
             && ((!ttSnapshot.Valid || pHash != ttSnapshot.FullHash) || ttSnapshot.Depth < depth - SpsaOptions.ProbCutMinDepth || (ttSnapshot.Evaluation != TranspositionTableExtensions.NoHashEntry && ttSnapshot.Evaluation >= probBeta)))
         {
@@ -421,21 +428,40 @@ public partial class Searcher
 
                 PrefetchTransposition(Transpositions + (newBoardState->Hash & TtMask));
 
+                ProbCutCandidates++;
                 NodesVisited--;
                 var score = -QuiescenceSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, -probBeta, -probBeta + 1);
 
                 if (Interrupted()) return 0;
+                var verifiedDepth = depth - SpsaOptions.ProbCutMinDepth;
+                var verifiedBeta = probBeta;
                 if (score >= probBeta)
                 {
-                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1, depth - SpsaOptions.ProbCutMinDepth,
-                        -probBeta, -probBeta + 1, !cutNode);
+                    ProbCutQuiescencePasses++;
+                    var baseDepth = verifiedDepth;
+                    (verifiedDepth, verifiedBeta) = ProbCutVerificationWindow(baseDepth, probBeta, score);
+                    ProbCutVerificationSearches++;
+                    score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1,
+                        verifiedDepth, -verifiedBeta, -verifiedBeta + 1, !cutNode);
+                    if (Interrupted()) return 0;
 
+                    // An optimistic shallower search must prove a stronger bound.
+                    // On failure, retry the original window/depth before rejecting it.
+                    if (score < verifiedBeta && verifiedDepth < baseDepth)
+                    {
+                        verifiedDepth = baseDepth;
+                        verifiedBeta = probBeta;
+                        ProbCutVerificationSearches++;
+                        score = -NegaMaxSearch(newBoardState, newAccumulatorState, depthFromRoot + 1,
+                            verifiedDepth, -verifiedBeta, -verifiedBeta + 1, !cutNode);
+                    }
                 }
 
                 if (Interrupted()) return 0;
-                if (score >= probBeta)
+                if (score >= verifiedBeta)
                 {
-                    if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)(depth - SpsaOptions.ProbCutMinDepth), depthFromRoot,
+                    ProbCutCutoffs++;
+                    if (!excluding) StoreTransposition(ref ttEntry, pHash, (byte)verifiedDepth, depthFromRoot,
                         score,
                         TranspositionTableFlag.Beta,
                         default);
@@ -539,6 +565,14 @@ public partial class Searcher
                     // Clearly singular: nothing else comes close, so spend two plies.
                     extension = singularScore < singularBeta - SpsaOptions.SingularDoubleMargin ? 2 : 1;
                     SingularExtensions++;
+                }
+                else if (!pvNode && singularBeta >= beta && singularScore >= beta &&
+                    !IsMateBand(singularScore))
+                {
+                    // The excluded-TT-move search found another beta-cutting move.
+                    // Return its bound without publishing a fictitious full-depth TT entry.
+                    SingularMultiCuts++;
+                    return singularScore;
                 }
                 else if (ttScore >= beta)
                 {

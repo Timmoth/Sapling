@@ -1,4 +1,4 @@
-﻿using Sapling.Engine.Search;
+using Sapling.Engine.Search;
 using System.Globalization;
 using System.Reflection;
 
@@ -83,6 +83,10 @@ namespace Sapling.Engine.Tuning
         public const int InterestingNegaMaxMoveScore = 40775;
         public const int InterestingQuiescenceMoveScore = 35432;
         public const int ProbCutBetaMargin = 220;
+        public const int ProbCutImprovingMargin = 97;
+        public const int ProbCutNonImprovingOffset = 32;
+        public const int ProbCutScoreDepthScale = 319;
+        public const int ProbCutDepthBetaScale = 197;
         public const int ProbCutMinDepth = 3;
         public const int AsperationWindowA = 37;
         public const int AsperationWindowB = 59;
@@ -199,6 +203,18 @@ namespace Sapling.Engine.Tuning
         [SpsaMinValue("200"), SpsaMaxValue("300")]
         public static int ProbCutBetaMargin = SpsaDefaults.ProbCutBetaMargin;
 
+        [SpsaMinValue("1"), SpsaMaxValue("400")]
+        public static int ProbCutDepthBetaScale = SpsaDefaults.ProbCutDepthBetaScale;
+
+        [SpsaMinValue("64"), SpsaMaxValue("1024")]
+        public static int ProbCutScoreDepthScale = SpsaDefaults.ProbCutScoreDepthScale;
+
+        [SpsaMinValue("0"), SpsaMaxValue("200")]
+        public static int ProbCutNonImprovingOffset = SpsaDefaults.ProbCutNonImprovingOffset;
+
+        [SpsaMinValue("1"), SpsaMaxValue("400")]
+        public static int ProbCutImprovingMargin = SpsaDefaults.ProbCutImprovingMargin;
+
         [SpsaMinValue("0"), SpsaMaxValue("6")]
         public static int ProbCutMinDepth = SpsaDefaults.ProbCutMinDepth;
 
@@ -252,6 +268,10 @@ namespace Sapling.Engine.Tuning
         public const int InterestingNegaMaxMoveScore = SpsaDefaults.InterestingNegaMaxMoveScore;
         public const int InterestingQuiescenceMoveScore = SpsaDefaults.InterestingQuiescenceMoveScore;
         public const int ProbCutBetaMargin = SpsaDefaults.ProbCutBetaMargin;
+        public const int ProbCutDepthBetaScale = SpsaDefaults.ProbCutDepthBetaScale;
+        public const int ProbCutScoreDepthScale = SpsaDefaults.ProbCutScoreDepthScale;
+        public const int ProbCutNonImprovingOffset = SpsaDefaults.ProbCutNonImprovingOffset;
+        public const int ProbCutImprovingMargin = SpsaDefaults.ProbCutImprovingMargin;
         public const int ProbCutMinDepth = SpsaDefaults.ProbCutMinDepth;
         public const int AsperationWindowA = SpsaDefaults.AsperationWindowA;
         public const int AsperationWindowB = SpsaDefaults.AsperationWindowB;

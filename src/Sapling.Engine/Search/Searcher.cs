@@ -354,6 +354,8 @@ public unsafe partial class Searcher : IDisposable
         _sliceDeadlineTs = 0;
         _sliceStartNodes = 0;
         NodesVisited = 0;
+        SingularVerifications = SingularExtensions = SingularNegativeExtensions = SingularMultiCuts = 0;
+        ProbCutCandidates = ProbCutQuiescencePasses = ProbCutVerificationSearches = ProbCutCutoffs = 0;
         BestSoFar = 0;
 
         // Carry a fading quiet-move ordering signal across successive search calls.
