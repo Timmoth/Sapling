@@ -20,11 +20,24 @@ public class BoardStateLayoutTests
     {
         Assert.Equal(0, Off("Occupancy"));
         Assert.Equal(120, Off("Hash"));
-        Assert.Equal(128, Off("TurnCount"));
-        Assert.Equal(138, Off("PawnHash"));
-        Assert.Equal(146, Off("WhiteMaterialHash"));
-        Assert.Equal(154, Off("BlackMaterialHash"));
+        Assert.Equal(152, Off("TurnCount"));
+        Assert.Equal(128, Off("PawnHash"));
+        Assert.Equal(136, Off("WhiteMaterialHash"));
+        Assert.Equal(144, Off("BlackMaterialHash"));
         Assert.Equal(166, Off("Is960"));
+    }
+
+    [Fact]
+    public unsafe void BoardStateData_HashesRemainAlignedAcrossFrames()
+    {
+        var boards = stackalloc BoardStateData[121];
+        for (var i = 0; i < 121; i++)
+        {
+            Assert.Equal(0UL, (ulong)(&boards[i].Hash) % 8);
+            Assert.Equal(0UL, (ulong)(&boards[i].PawnHash) % 8);
+            Assert.Equal(0UL, (ulong)(&boards[i].WhiteMaterialHash) % 8);
+            Assert.Equal(0UL, (ulong)(&boards[i].BlackMaterialHash) % 8);
+        }
     }
 
     [Fact]

@@ -16,27 +16,20 @@ public unsafe struct BoardStateData
     // 8 bytes, aligned at 120
     [FieldOffset(120)] public ulong Hash;  // 64-bit aligned naturally.
 
-    // Combine all 1-byte fields (byte and bool) together to avoid unnecessary padding.
-    // 8 bytes in total (TurnCount + HalfMoveClock + WhiteToMove + InCheck + CastleRights + WhiteKingSquare + BlackKingSquare + EnPassantFile)
-    [FieldOffset(128)] public ushort TurnCount;  // 16-bit
-    [FieldOffset(130)] public byte HalfMoveClock;  // 8-bit
-    [FieldOffset(131)] public bool WhiteToMove;  // 8-bit
-    [FieldOffset(132)] public bool InCheck;  // 8-bit
-    [FieldOffset(133)] public CastleRights CastleRights;  // 8-bit enum
-    [FieldOffset(134)] public byte WhiteKingSquare;  // 8-bit
-    [FieldOffset(135)] public byte BlackKingSquare;  // 8-bit
-    [FieldOffset(136)] public byte EnPassantFile;  // 8-bit
-    [FieldOffset(137)] public byte PieceCount;  // 8-bit
+    // Keep all four hashes aligned
+    [FieldOffset(128)] public ulong PawnHash;
+    [FieldOffset(136)] public ulong WhiteMaterialHash;
+    [FieldOffset(144)] public ulong BlackMaterialHash;
 
-    // Group additional fields that fit in the next available space:
-    // 8 bytes for PawnHash, aligned at 138.
-    [FieldOffset(138)] public ulong PawnHash;  // 64-bit aligned naturally.
-
-    // 8 bytes for WhiteMaterialHash, aligned at 146.
-    [FieldOffset(146)] public ulong WhiteMaterialHash;  // 64-bit
-
-    // 8 bytes for BlackMaterialHash, aligned at 154.
-    [FieldOffset(154)] public ulong BlackMaterialHash;  // 64-bit
+    [FieldOffset(152)] public ushort TurnCount;
+    [FieldOffset(154)] public byte HalfMoveClock;
+    [FieldOffset(155)] public bool WhiteToMove;
+    [FieldOffset(156)] public bool InCheck;
+    [FieldOffset(157)] public CastleRights CastleRights;
+    [FieldOffset(158)] public byte WhiteKingSquare;
+    [FieldOffset(159)] public byte BlackKingSquare;
+    [FieldOffset(160)] public byte EnPassantFile;
+    [FieldOffset(161)] public byte PieceCount;
 
     // Group remaining small fields together (total 4 bytes):
     [FieldOffset(162)] public byte WhiteKingSideTargetSquare;  // 1 byte
