@@ -17,8 +17,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 11.0.100-rc.2
-          include-prerelease: true
+          global-json-file: global.json
 
       - name: Restore
         run: dotnet restore src/Sapling.sln

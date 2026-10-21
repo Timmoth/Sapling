@@ -4,12 +4,14 @@
 </div>
 </p>
 
-### A strong dotnet UCI Chess engine - My leaf nodes are growing
+### Sapling v2.0.0 — a .NET UCI chess engine
 
 Play it here -> https://iblunder.com/
 
 Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 
+
+Historical results below apply to the listed versions, not v2.0.0.
 
 | Rating pool                                                                   | Version | ELO  |
 |-------------------------------------------------------------------------------|---------|------|
@@ -28,28 +30,26 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-### Latest Release [v1.2.4 21/04/2025](https://github.com/Timmoth/Sapling/releases/tag/Sapling-1.2.4)
+### v2.0.0 (release preparation)
+
+The release tag will be `Sapling-2.0.0`. Version metadata is shared in [`src/Directory.Build.props`](src/Directory.Build.props); builds and publication are defined by the [release workflow](.github/workflows/release-pipeline.yaml). Published downloads are available on the [releases page](https://github.com/Timmoth/Sapling/releases).
+
+The combined v2 build is being measured against v1.2.7 in a fixed 40,000-game match. The Elo difference will be reported with its confidence interval after that match completes.
 
 ## Requirements
-- Sapling makes use of hardware intrinsics to improve performance. Currently your CPU must support: `Avx2`, `Bmi1`, `Bmi2`, `Popcnt`, `Sse`. Most modern hardware shipped after 2013 should be supported.
-- The releases come with a bundled version of the dotnet runtime. To build from source, install the .NET 11.0.100-rc.2 SDK.
+- Use an executable matching your OS and architecture. The normal build selects AVX2, Vector128 or scalar NNUE at runtime and uses magic bitboards when BMI2/PEXT is unavailable. Dedicated AVX512 builds select that backend when supported; explicitly forcing `SAPLING_BACKEND=Avx512` requires AVX512F and AVX512BW.
+- Self-contained release binaries include the .NET runtime. Source builds currently require .NET SDK **11.0.100-rc.2.26504.105**, pinned in `global.json`. This is a release candidate SDK; CI installs its full version number.
 
 ## Running from source
-```bash
-cd ./Scripts
 
-// Windows
-./build_windows_avx256.bat
-./build_windows_avx512.bat
+From the repository root:
 
-// Linux
-./build_linux_avx256.sh
-./build_linux_avx512.sh
-
-// Osx
-./build_osx_avx256.sh
-./build_osx_avx512.sh
+```sh
+dotnet restore src/Sapling.sln
+dotnet run --project src/Sapling/Sapling.csproj --configuration Release
 ```
+
+For self-contained Windows, Linux, Intel macOS and Apple Silicon builds, see the [release workflow](.github/workflows/release-pipeline.yaml). Existing platform helper scripts are in `Scripts/`.
 
 ## Commands
 - `quit` : exit the program
@@ -72,7 +72,7 @@ cd ./Scripts
 <Summary>General</Summary>
   
 - Bitboards 
-- NNUE (768 -> 1024)x2 -> 8
+- SCReLU NNUE: (768 × 4 input buckets → 1024) × 2 perspectives → 8 output buckets
 - Horizontal mirroring
 - Output buckets x8
 - Transposition table
@@ -93,7 +93,7 @@ cd ./Scripts
 - Futility Pruning
 - Razoring
 - Principal Variation Search
-- Check extensions
+- Check, singular, double and negative extensions
 - Internal Iterative Reduction
 - Late Move Reductions
 - Cuckoo filter repetition detection
@@ -107,6 +107,7 @@ cd ./Scripts
 - Killer move heuristic
 - Counter move heuristic
 - History heuristic with malus
+- Threat history and compact continuation history
 - Incremental sorting
 - Magic bitboards
 - PEXT bitboards
@@ -118,7 +119,7 @@ After any changes to the engine a SPRT test must be ran to ensure that the chang
 Run playing-strength SPRTs with CuteChess CLI using fixed engine builds, time control, and opening set. Record the command and result with the experiment.
 
 ## NNUE
-I'm in the process of training a (768x8->1024)x2-8 network starting from random weights using self play data generation and bullet trainer. Expect the engine to get much stronger as I improve the network. Check [here](https://github.com/Timmoth/Sapling/tree/main/src/Sapling.Engine/Resources/WeightsHistory) to see the sequence of networks starting from scratch and the training logs.
+v2.0.0 embeds the **sapling35-600** network, trained with Bullet. It uses SCReLU, four king-input buckets, a 1024-wide accumulator per perspective and eight output buckets. Tiled accumulator refreshes reduce repeated memory traffic. The network is embedded in the executable, so a new network requires rebuilding the engine.
 
 ## Resources:
 - [Chess Programming Wiki](https://www.chessprogramming.org/)

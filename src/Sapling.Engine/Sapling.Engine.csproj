@@ -12,7 +12,6 @@
 
 	  <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 	  <PackageId>SaplingEngine</PackageId>
-	  <PackageVersion>2.0.0</PackageVersion>
 	  <Authors>Tim Jones</Authors>
 	  <Company>Aptacode</Company>
 	  <Description>A strong UCI chess engine</Description>
