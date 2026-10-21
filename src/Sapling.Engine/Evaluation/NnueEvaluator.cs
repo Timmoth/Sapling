@@ -160,154 +160,6 @@ public unsafe partial class Searcher
     }
 
     
-    private static void FullRefreshWhite(BoardStateData* board, int mirrored, int bucket, short* whiteAcc)
-    {
-        Unsafe.CopyBlock(whiteAcc, NnueWeights.FeatureBiases, L1ByteSize);
-
-
-        var wFeaturePtr = NnueWeights.FeatureWeights + bucket * InputBucketWeightCount;
-        var whiteFeatureIndexes = NnueExtensions.WhiteFeatureIndexes + mirrored;
-
-        AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.WhiteKingFeatureIndexOffset + (board->WhiteKingSquare << 1)));
-
-
-        var bitboards = board->Occupancy[Constants.WhitePawn];
-
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.WhitePawnFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteKnight];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.WhiteKnightFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteBishop];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.WhiteBishopFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteRook];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.WhiteRookFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteQueen];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.WhiteQueenFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.BlackKingFeatureIndexOffset + (board->BlackKingSquare << 1)));
-
-        bitboards = board->Occupancy[Constants.BlackPawn];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.BlackPawnFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackKnight];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.BlackKnightFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackBishop];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.BlackBishopFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackRook];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.BlackRookFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackQueen];
-        while (bitboards != 0)
-        {
-            AddWeights(whiteAcc, wFeaturePtr + *(whiteFeatureIndexes + Constants.BlackQueenFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-    }
-
-    private static void FullRefreshBlack(BoardStateData* board, int mirrored, int bucket, short* blackAcc)
-    {
-        Unsafe.CopyBlock(blackAcc, NnueWeights.FeatureBiases, L1ByteSize);
-
-        var bFeaturePtr = NnueWeights.FeatureWeights + bucket * InputBucketWeightCount;
-        var blackFeatureIndexes = NnueExtensions.BlackFeatureIndexes + mirrored;
-
-        AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.WhiteKingFeatureIndexOffset + (board->WhiteKingSquare << 1)));
-
-        var bitboards = board->Occupancy[Constants.WhitePawn];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.WhitePawnFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteKnight];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.WhiteKnightFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteBishop];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.WhiteBishopFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteRook];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.WhiteRookFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.WhiteQueen];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.WhiteQueenFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.BlackKingFeatureIndexOffset + (board->BlackKingSquare << 1)));
-
-        bitboards = board->Occupancy[Constants.BlackPawn];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.BlackPawnFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackKnight];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.BlackKnightFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackBishop];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.BlackBishopFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackRook];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.BlackRookFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-
-        bitboards = board->Occupancy[Constants.BlackQueen];
-        while (bitboards != 0)
-        {
-            AddWeights(blackAcc, bFeaturePtr + *(blackFeatureIndexes + Constants.BlackQueenFeatureIndexOffset + (bitboards.PopLSB() << 1)));
-        }
-    }
-
-    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void UpdateWhiteAccumulator(BoardStateData* board, AccumulatorState* accumulator, int depthFromRoot)
     {
@@ -500,134 +352,31 @@ public unsafe partial class Searcher
         accumulatorState->BlackAccumulatorUpToDate = true;
     }
 
-    public void RefreshAccumulatorWhite(BoardStateData* boards, AccumulatorState* accumulators, int depthFromRoot)
+    public void RefreshAccumulatorWhite(BoardStateData* board, AccumulatorState* state, int ply)
     {
-        short* accumulator = WhiteAccumulators[depthFromRoot];
-
-        accumulators->Evaluation = TranspositionTableExtensions.NoHashEntry;
-        accumulators->WhiteNeedsRefresh = false;
-        accumulators->WhiteMirrored = boards->WhiteKingSquare.IsMirroredSide();
-        accumulators->WhiteInputBucket = *(NnueWeights.BucketLayout + boards->WhiteKingSquare);
-        accumulators->WhiteAccumulatorUpToDate = true;
-
-        var mirrored = accumulators->WhiteMirrored ? 1 : 0;
-        var bucketCacheIndex = (accumulators->WhiteInputBucket<< 1) + mirrored;
-        var cachedBoard = BucketCacheWhiteBoards + bucketCacheIndex;
-        var cachedAccumulator = BucketCacheWhiteAccumulators[bucketCacheIndex];
-
-        if (cachedBoard->PieceCount == 0)
-        {
-            FullRefreshWhite(boards, mirrored, accumulators->WhiteInputBucket, accumulator);
-            Unsafe.CopyBlock(cachedAccumulator, accumulator, L1ByteSize);
-            Unsafe.CopyBlock(cachedBoard, boards, BoardStateData.BoardStateSize);
-            return;
-        }
-
-        var featureIndexes = NnueExtensions.WhiteFeatureIndexes + mirrored;
-        var bucketOffset = NnueWeights.FeatureWeights + accumulators->WhiteInputBucket * InputBucketWeightCount;
-        if (boards->BlackKingSquare != cachedBoard->BlackKingSquare)
-        {
-            var subKing = bucketOffset + *(featureIndexes + Constants.BlackKingFeatureIndexOffset + (cachedBoard->BlackKingSquare<< 1));
-            var addKing = bucketOffset + *(featureIndexes + Constants.BlackKingFeatureIndexOffset + (boards->BlackKingSquare<< 1));
-
-            SubAdd(cachedAccumulator, cachedAccumulator, subKing, addKing);
-
-        }
-
-        if (boards->WhiteKingSquare != cachedBoard->WhiteKingSquare)
-        {
-            var subKing = bucketOffset + *(featureIndexes + Constants.WhiteKingFeatureIndexOffset + (cachedBoard->WhiteKingSquare<< 1));
-            var addKing = bucketOffset + *(featureIndexes + Constants.WhiteKingFeatureIndexOffset + (boards->WhiteKingSquare<< 1));
-            SubAdd(cachedAccumulator, cachedAccumulator, subKing, addKing);
-        }
-
-        for (int i = Constants.BlackPawn; i < Constants.BlackKing; i++)
-        {
-            var prev = cachedBoard->Occupancy[i];
-            var curr = boards->Occupancy[i];
-
-            var added = curr & ~prev;
-            var removed = prev & ~curr;
-
-            while (added != 0)
-            {
-                AddWeights(cachedAccumulator, bucketOffset + *(featureIndexes + (i << 7) + (added.PopLSB() << 1)));
-            }
-
-            while (removed != 0)
-            {
-                Sub(cachedAccumulator, cachedAccumulator, bucketOffset + *(featureIndexes + (i << 7) + (removed.PopLSB() << 1)));
-            }
-
-        }
-
-        Unsafe.CopyBlock(accumulator, cachedAccumulator, L1ByteSize);
-        Unsafe.CopyBlock(cachedBoard, boards, BoardStateData.BoardStateSize);
+        state->Evaluation = TranspositionTableExtensions.NoHashEntry;
+        state->WhiteNeedsRefresh = false;
+        state->WhiteMirrored = board->WhiteKingSquare.IsMirroredSide();
+        state->WhiteInputBucket = *(NnueWeights.BucketLayout + board->WhiteKingSquare);
+        state->WhiteAccumulatorUpToDate = true;
+        var mirrored = state->WhiteMirrored ? 1 : 0;
+        var index = (state->WhiteInputBucket << 1) + mirrored;
+        RefreshAccumulatorTiled(board, BucketCacheWhiteBoards + index,
+            BucketCacheWhiteAccumulators[index], WhiteAccumulators[ply],
+            NnueExtensions.WhiteFeatureIndexes + mirrored, state->WhiteInputBucket);
     }
 
-
-    public void RefreshAccumulatorBlack(BoardStateData* board, AccumulatorState* accumulatorState, int depthFromRoot)
+    public void RefreshAccumulatorBlack(BoardStateData* board, AccumulatorState* state, int ply)
     {
-        short* accumulator = BlackAccumulators[depthFromRoot];
-
-        accumulatorState->Evaluation = TranspositionTableExtensions.NoHashEntry;
-        accumulatorState->BlackNeedsRefresh = false;
-        accumulatorState->BlackMirrored = board->BlackKingSquare.IsMirroredSide();
-        accumulatorState->BlackInputBucket = *(NnueWeights.BucketLayout + (board->BlackKingSquare ^ 0x38));
-        accumulatorState->BlackAccumulatorUpToDate = true;
-
-        var mirrored = accumulatorState->BlackMirrored ? 1 : 0;
-        var bucketCacheIndex = (accumulatorState->BlackInputBucket<< 1) + mirrored;
-
-        var cachedBoard = BucketCacheBlackBoards + bucketCacheIndex;
-        var cachedAccumulator = BucketCacheBlackAccumulators[bucketCacheIndex];
-
-        if (cachedBoard->PieceCount == 0)
-        {
-            FullRefreshBlack(board, mirrored, accumulatorState->BlackInputBucket, accumulator);
-            Unsafe.CopyBlock(cachedAccumulator, accumulator, L1ByteSize);
-            Unsafe.CopyBlock(cachedBoard, board, BoardStateData.BoardStateSize);
-            return;
-        }
-
-        var featureIndexes = NnueExtensions.BlackFeatureIndexes + mirrored;
-        var bucketOffset = NnueWeights.FeatureWeights + accumulatorState->BlackInputBucket * InputBucketWeightCount;
-        if (board->BlackKingSquare != cachedBoard->BlackKingSquare)
-        {
-            var subKing = bucketOffset + *(featureIndexes + Constants.BlackKingFeatureIndexOffset + (cachedBoard->BlackKingSquare<< 1)); 
-            var addKing = bucketOffset + *(featureIndexes + Constants.BlackKingFeatureIndexOffset + (board->BlackKingSquare<< 1));
-
-            SubAdd(cachedAccumulator, cachedAccumulator, subKing, addKing);
-        }
-
-        if (board->WhiteKingSquare != cachedBoard->WhiteKingSquare)
-        {
-            var subKing = bucketOffset + *(featureIndexes + Constants.WhiteKingFeatureIndexOffset + (cachedBoard->WhiteKingSquare << 1));
-            var addKing = bucketOffset + *(featureIndexes + Constants.WhiteKingFeatureIndexOffset + (board->WhiteKingSquare << 1));
-            SubAdd(cachedAccumulator, cachedAccumulator, subKing, addKing);
-
-        }
-
-        for (int i = Constants.BlackPawn; i < Constants.BlackKing; i++)
-        {
-            var prev = cachedBoard->Occupancy[i];
-            var curr = board->Occupancy[i];
-
-            var added = curr & ~prev;
-            var removed = prev & ~curr;
-
-            while (added != 0)
-            {
-                AddWeights(cachedAccumulator, bucketOffset + *(featureIndexes + (i << 7) + (added.PopLSB() << 1)));
-            }
-
-            while (removed != 0)
-            {
-                Sub(cachedAccumulator, cachedAccumulator, bucketOffset + *(featureIndexes + (i << 7) + (removed.PopLSB() << 1)));
-            }
-        }
-
-        Unsafe.CopyBlock(accumulator, cachedAccumulator, L1ByteSize);
-        Unsafe.CopyBlock(cachedBoard, board, BoardStateData.BoardStateSize);
+        state->Evaluation = TranspositionTableExtensions.NoHashEntry;
+        state->BlackNeedsRefresh = false;
+        state->BlackMirrored = board->BlackKingSquare.IsMirroredSide();
+        state->BlackInputBucket = *(NnueWeights.BucketLayout + (board->BlackKingSquare ^ 0x38));
+        state->BlackAccumulatorUpToDate = true;
+        var mirrored = state->BlackMirrored ? 1 : 0;
+        var index = (state->BlackInputBucket << 1) + mirrored;
+        RefreshAccumulatorTiled(board, BucketCacheBlackBoards + index,
+            BucketCacheBlackAccumulators[index], BlackAccumulators[ply],
+            NnueExtensions.BlackFeatureIndexes + mirrored, state->BlackInputBucket);
     }
 }
