@@ -162,7 +162,7 @@ public unsafe class TranspositionTableTests
         }
     }
 
-    [Fact]
+    [NativeThreadsFact]
     public void ConcurrentReaders_CanProbeStableEntryWithoutClaimingExclusiveAccess()
     {
         var entry = new Transposition[1];
@@ -185,6 +185,7 @@ public unsafe class TranspositionTableTests
     }
 
     [NativeThreadsFact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public void ConcurrentProbe_NeverReturnsTornSnapshot()
     {
         // All threads contend on one slot (hash & 1023 == 0). Writers publish self-consistent

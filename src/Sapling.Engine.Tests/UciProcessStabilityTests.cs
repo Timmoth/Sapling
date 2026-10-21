@@ -9,6 +9,7 @@ namespace Sapling.Engine.Tests;
 /// UCI surface of the Sapling app binary. Serialized in one collection so SMP
 /// engines don't oversubscribe the machine in parallel.
 /// </summary>
+[System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
 public class UciProcessStabilityTests
 {
     private const string ErrorPrefix = "info string error";
@@ -306,6 +307,7 @@ public class UciProcessStabilityTests
     }
 }
 
+[System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
 internal sealed class UciProcess : IDisposable
 {
     private readonly Process _p;

@@ -2,19 +2,29 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net11.0</TargetFramework>
+    <!-- Qualify the same runtime as Sapling.WebHost and the portable engine. -->
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>preview</LangVersion>
     <IsPackable>false</IsPackable>
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <UseMonoRuntime>true</UseMonoRuntime>
+    <SelfContained>true</SelfContained>
+    <WasmGenerateAppBundle>true</WasmGenerateAppBundle>
     <WasmEnableSIMD Condition="'$(WasmNoSIMD)' == 'true'">false</WasmEnableSIMD>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="../Sapling.Engine.Tests/Data/search_puzzles.csv" LogicalName="TestFixtures.search_puzzles.csv" />
+    <EmbeddedResource Include="../../tools/human-policy/tests/golden_cases.json" LogicalName="TestFixtures.human_policy_golden_cases.json" />
+    <EmbeddedResource Include="../../tools/human-policy/tests/inference_golden.json" LogicalName="TestFixtures.human_policy_inference_golden.json" />
+  </ItemGroup>
+
   <!-- Compiles the shared test sources and drives them without vstest, which has no
        browser-wasm test host. xunit Assert throws on failure, so a reflection driver
-       over [Fact]/[Theory]+[InlineData] is sufficient for lane qualification. -->
+       over [Fact]/[Theory] with InlineData or MemberData is sufficient for lane qualification. -->
   <ItemGroup>
     <Compile Include="../Sapling.Engine.Tests/**/*.cs" Exclude="../Sapling.Engine.Tests/bin/**;../Sapling.Engine.Tests/obj/**" />
   </ItemGroup>

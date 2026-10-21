@@ -58,6 +58,9 @@ public class SearchPuzzleTests
     }
 
     // ---------------------------------------------------------------------------
+    // Full-depth dataset searches are native qualifications: Mono WASM has a fixed
+    // interpreter stack that can overflow on these recursive searches. Browser search
+    // is covered separately by SearchResumableTests and the host integration suite.
     // Dataset-driven puzzles from the Lichess open puzzle database (CC0,
     // https://database.lichess.org, 2026-10-02 export). Mate-in-1..5 positions were
     // re-verified with an independent brute-force mate solver (mate in exactly N);
@@ -103,6 +106,7 @@ public class SearchPuzzleTests
 
     [Theory]
     [MemberData(nameof(MatePuzzleData))]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public void MateInPuzzle_FindsForcedMateAndPvDeliversTheWholeLine(string id, string fen, int depth,
         int n, string solution)
     {
@@ -127,6 +131,7 @@ public class SearchPuzzleTests
 
     [Theory]
     [MemberData(nameof(TacticPuzzleData))]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public void TacticalPuzzle_FindsTheOnlyWinningMove(string id, string category, string fen,
         int depth, string solution)
     {
@@ -137,11 +142,13 @@ public class SearchPuzzleTests
 
         Assert.NotEmpty(result.move);
         Assert.Contains(result.move[0], state.LegalMoves);
-        Assert.True(result.move[0].ToUciMoveName() == solution.Split(' ')[0], $"{id} ({category}): engine must find the unique winning move");
+        Assert.True(result.move[0].ToUciMoveName() == solution.Split(' ')[0],
+            $"{id} ({category}): expected {solution.Split(' ')[0]}, got {result.move[0].ToUciMoveName()} at depth {depth}, score {result.score}");
     }
 
     [Theory]
     [MemberData(nameof(MatePuzzleCoreData))]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public void MatePuzzle_IsDeterministicAcrossFreshSearchers(string id, string fen, int depth)
     {
         using var stateA = new GameState(BoardStateExtensions.CreateBoardFromFen(fen));
@@ -158,6 +165,7 @@ public class SearchPuzzleTests
 
     [Theory]
     [MemberData(nameof(MatePuzzleCoreData))]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public void MateScore_PersistsAndDoesNotWorsenWithExtraDepth(string id, string fen, int depth)
     {
         using var stateA = new GameState(BoardStateExtensions.CreateBoardFromFen(fen));
@@ -175,6 +183,7 @@ public class SearchPuzzleTests
 
     [Theory]
     [MemberData(nameof(MatePuzzleShallowData))]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public void MatePuzzle_FoundWithTwoThreadsAndPvStillDeliversMate(string id, string fen, int depth)
     {
         using var state = new GameState(BoardStateExtensions.CreateBoardFromFen(fen));

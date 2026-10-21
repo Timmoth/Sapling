@@ -12,8 +12,11 @@ if [[ $# -gt 1 ]]; then echo 'Too many arguments' >&2; exit 2; fi
 # Isolate intermediates AND outputs for every referenced project. BaseOutputPath
 # alone still shares obj/, which can reuse the other profile's runtime assets.
 artifacts="$(pwd)/src/Sapling.WasmRunner/bin/qualification-$suffix"
-dotnet build src/Sapling.WasmRunner -c Release --artifacts-path "$artifacts" \
-  -p:WasmEnableSIMD="$simd"
+# Native relink intermediates cannot be reused across SDK/runtime upgrades.
+rm -rf "$artifacts"
+# Publish creates the runnable AppBundle; retain reflection-discovered test methods.
+dotnet publish src/Sapling.WasmRunner -c Release --artifacts-path "$artifacts" \
+  -p:WasmEnableSIMD="$simd" -p:PublishTrimmed=false -p:RunAOTCompilation=false
 shopt -s nullglob
 bundles=("$artifacts/bin/Sapling.WasmRunner/"*/AppBundle)
 if [[ ${#bundles[@]} -ne 1 ]]; then

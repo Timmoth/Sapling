@@ -1,9 +1,18 @@
 using System.Reflection;
+using System.Runtime.Versioning;
 using Xunit;
 
 // Runs the supported xUnit Fact/Theory subset in browser Wasm.
 
 var assembly = Assembly.GetEntryAssembly()!;
+// Native tests read these files beside their assembly. Supply the same fixtures
+// through the browser runtime's virtual filesystem before MemberData discovery.
+foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("TestFixtures.")))
+{
+    using var input = assembly.GetManifestResourceStream(name)!;
+    using var output = File.Create(Path.Combine(AppContext.BaseDirectory, name["TestFixtures.".Length..]));
+    input.CopyTo(output);
+}
 var passed = 0;
 var failed = 0;
 var skipped = 0;
@@ -11,7 +20,7 @@ var skipped = 0;
 // Inventory floor: the shared suite is large; an empty or truncated discovery means
 // the lane is broken, not that the engine is. Fail loudly rather than reporting a
 // vacuous pass.
-const int ExpectedTestCases = 332; // Update deliberately alongside the native discovered-case count.
+const int ExpectedTestCases = 650; // Update deliberately alongside the native discovered-case count.
 
 foreach (var type in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
 {
@@ -25,7 +34,7 @@ foreach (var type in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
         // Explicit rejection: anything the driver cannot execute must fail the lane,
         // never be silently ignored. (TheoryAttribute derives from FactAttribute, so
         // Theory+InlineData already runs through the Fact path below.)
-        if (method.GetCustomAttributes().Any(a => a is Xunit.Sdk.DataAttribute && a is not InlineDataAttribute)
+        if (method.GetCustomAttributes().Any(a => a is Xunit.Sdk.DataAttribute && a is not InlineDataAttribute && a is not MemberDataAttribute)
             || method.GetCustomAttributes().Any(a => a is Xunit.Sdk.BeforeAfterTestAttribute)
             || type.GetCustomAttributes().Any(a => a is Xunit.Sdk.BeforeAfterTestAttribute)
             || type.GetInterfaces().Any(i => i == typeof(IAsyncLifetime)
@@ -40,14 +49,8 @@ foreach (var type in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
             continue;
         }
 
-        if (fact?.Skip != null)
-        {
-            skipped++;
-            Console.WriteLine($"SKIP {label}: {fact.Skip}");
-            continue;
-        }
-
-        var inlineDatas = method.GetCustomAttributes<InlineDataAttribute>()
+        var dataAttributes = method.GetCustomAttributes<Xunit.Sdk.DataAttribute>().ToList();
+        var inlineDatas = dataAttributes
             .SelectMany(a => a.GetData(method) ?? Array.Empty<object[]>())
             .ToList();
 
@@ -56,11 +59,21 @@ foreach (var type in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
             if (method.GetCustomAttribute<TheoryAttribute>() != null)
             {
                 failed++;
-                Console.WriteLine($"FAIL {label}: Theory without InlineData is not supported by this driver");
+                Console.WriteLine($"FAIL {label}: Theory must supply at least one data row");
                 continue;
             }
-
             inlineDatas.Add(Array.Empty<object>());
+        }
+
+        var nativeOnly = type.GetCustomAttributes<UnsupportedOSPlatformAttribute>()
+            .Concat(method.GetCustomAttributes<UnsupportedOSPlatformAttribute>())
+            .Any(a => a.PlatformName == "browser");
+        var skipReason = fact?.Skip ?? (nativeOnly ? "requires native execution (processes, threads or full-depth recursive search); covered by the native suite" : null);
+        if (skipReason != null)
+        {
+            skipped += inlineDatas.Count;
+            Console.WriteLine($"SKIP {label}: {skipReason} ({inlineDatas.Count} cases)");
+            continue;
         }
 
         var parameters = method.GetParameters();
