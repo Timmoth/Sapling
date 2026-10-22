@@ -104,6 +104,7 @@ public class UciProcessStabilityTests
         var options = e.ParseOptions();
         Assert.Contains("Threads", options);
         Assert.Contains("Hash", options);
+        Assert.Contains("UCI_Chess960", options);
         foreach (var (name, (kind, lo, hi, dflt)) in options)
         {
             if (kind == "spin")
@@ -134,6 +135,22 @@ public class UciProcessStabilityTests
         }
         e.Send("position startpos");
         Assert.True(e.Bestmove("go depth 4").Length > 0, "engine must still search after option stress");
+    }
+
+    [Theory]
+    [InlineData("4k3/8/8/8/8/8/8/1K5R w H - 0 1", "b1h1", "4k3/8/8/8/8/8/8/5RK1 b - - 1 2")]
+    [InlineData("4k3/8/8/8/8/8/8/6KR w H - 0 1", "g1h1", "4k3/8/8/8/8/8/8/5RK1 b - - 1 2")]
+    [InlineData("4k3/8/8/8/8/8/8/R3K3 w A - 0 1", "e1a1", "4k3/8/8/8/8/8/8/2KR4 b - - 1 2")]
+    [InlineData("1k5r/8/8/8/8/8/8/4K3 b h - 0 1", "b8h8", "5rk1/8/8/8/8/8/8/4K3 w - - 1 2")]
+    public void Chess960_UciCastlingMovesApplyIncludingStationaryKing(string fen, string castleMove, string expectedFen)
+    {
+        using var e = StartEngine();
+        e.Send("setoption name UCI_Chess960 value true");
+        e.Ready();
+        e.Send($"position fen {fen} moves {castleMove}");
+        e.Ready();
+        e.Send("d");
+        Assert.Equal($"Fen         : {expectedFen}", e.Expect("Fen         :"));
     }
 
     [Fact]

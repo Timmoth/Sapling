@@ -138,9 +138,24 @@ def smoke_lane(exe, work):
 def protocol_lane(exe, work):
     engine = Engine(exe, cwd=work)
     try:
-        # castling is only verified for standard chess, so Chess960 must not be offered.
         engine.send('uci')
-        assert not any('UCI_Chess960' in line for line in engine.read_until('uciok'))
+        options = engine.read_until('uciok')
+        assert any(line.startswith('option name UCI_Chess960 type check') for line in options), options
+        engine.send('setoption name UCI_Chess960 value true')
+        engine.send('isready')
+        engine.expect('readyok', 5)
+
+        # Chess960 UCI castling uses king-to-rook notation. Cover a king that moves
+        # across the board and a king that stays on g1 while the rook relocates.
+        for fen, move, expected in [
+            ('4k3/8/8/8/8/8/8/1K5R w H - 0 1', 'b1h1', '4k3/8/8/8/8/8/8/5RK1 b - - 1 2'),
+            ('4k3/8/8/8/8/8/8/6KR w H - 0 1', 'g1h1', '4k3/8/8/8/8/8/8/5RK1 b - - 1 2'),
+        ]:
+            engine.send(f'position fen {fen} moves {move}')
+            engine.send('isready')
+            engine.expect('readyok', 5)
+            engine.send('d')
+            assert engine.expect('Fen         :', 5) == f'Fen         : {expected}'
 
         for fen in BAD_FENS:
             engine.send(f'position fen {fen}')
@@ -301,7 +316,7 @@ def main():
         protocol_lane(exe, work)
         quit_race_lane(exe, work)
         stability_lane(exe, work)
-    print('PASS: perft depth 1, timed search progress, FEN/go validation, Chess960 not advertised, '
+    print('PASS: perft depth 1, timed search progress, FEN/go validation, Chess960 UCI castling, '
           'divide promotion suffixes, phantom castling, go depth N, EOF exit, quit races, '
           'stop-mid-search, bestmove legality replay, mate score, determinism, Threads option')
 

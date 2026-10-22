@@ -6,14 +6,10 @@
 
 ### Sapling v2.0.0 — a .NET UCI chess engine
 
-Play it here -> https://iblunder.com/
+Play it here -> https://timmoth.com/sapling/play/
 
-Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
+Or challenge it on Lichess / playstrategy -> https://lichess.org/@/sapling-bot | https://playstrategy.org/@/timmoth
 
-
-## Ratings and tournament results
-
-Sources checked on **21 October 2026**. Results belong to the versions shown; v2.0.0 has no published external rating verified here yet. Ratings from different pools are not directly comparable.
 
 ### Rating lists
 
