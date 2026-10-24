@@ -76,6 +76,7 @@ public class ViriformatRoundTripTests
     }
 
     [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public unsafe void GeneratedGame_ReplaysLegallyThroughEngineApply()
     {
         var ttSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(16);
@@ -126,6 +127,7 @@ public class ViriformatRoundTripTests
     }
 
     [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public unsafe void GeneratedChess960Game_ReplaysLegallyThroughEngineApply()
     {
         var ttSize = (int)TranspositionTableExtensions.CalculateTranspositionTableSize(16);

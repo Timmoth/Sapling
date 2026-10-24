@@ -5,13 +5,14 @@ namespace Sapling.Engine.Search;
 
 public unsafe partial class Searcher
 {
-    private const int MoveContextCount = 13 * 64;
+    private const int MoveContextCount = 12 * 64;
     internal const int ContinuationHistoryLength = MoveContextCount * MoveContextCount;
     private const int ContinuationLimit = 8192;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int ContinuationIndex(uint previous, uint move) =>
-        (int)previous.GetCounterMoveIndex() * MoveContextCount + (int)move.GetCounterMoveIndex();
+        ((int)previous.GetCounterMoveIndex() - 64) * MoveContextCount +
+        ((int)move.GetCounterMoveIndex() - 64);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal int ContinuationScore(uint previous, uint earlier, uint move)

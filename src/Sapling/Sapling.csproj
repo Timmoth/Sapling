@@ -7,9 +7,6 @@
     <Nullable>enable</Nullable>
     <ApplicationIcon>logo.ico</ApplicationIcon>
     <Title>Sapling</Title>
-	  <AssemblyVersion>2.0.0.0</AssemblyVersion>
-	  <FileVersion>2.0.0.0</FileVersion>
-	  <Version>2.0.0.0</Version>
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	  <TieredPGO>true</TieredPGO>
 	  <TieredCompilation>true</TieredCompilation>
@@ -34,17 +31,16 @@
     <ProjectReference Include="..\Sapling.Engine\Sapling.Engine.csproj" />
   </ItemGroup>
 
-	<Target Name="Rename" AfterTargets="Publish">
-		<!-- Windows rename logic -->
-		<PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
-			<ExeExtension>.exe</ExeExtension>
-		</PropertyGroup>
-		<PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
-			<ExeExtension></ExeExtension>
-			<!-- No extension for Linux/OSX -->
-		</PropertyGroup>
-		<Message Text="Attempting to rename executable file from $(PublishDir)/$(AssemblyName)$(ExeExtension) to $(PublishDir)/$(ExecutableName)$(ExeExtension)" Importance="high" />
-		<Move SourceFiles="$(PublishDir)/$(AssemblyName)$(ExeExtension)" DestinationFiles="$(PublishDir)/$(ExecutableName)$(ExeExtension)" ContinueOnError="true" />
-	</Target>
+  <Target Name="Rename" AfterTargets="Publish"
+          Condition="'$(ExecutableName)' != '' And '$(ExecutableName)' != '$(AssemblyName)'">
+    <!-- The apphost extension follows the target RID, including cross-publishes. -->
+    <PropertyGroup>
+      <ExeExtension></ExeExtension>
+      <ExeExtension Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And '$(OS)' == 'Windows_NT')">.exe</ExeExtension>
+    </PropertyGroup>
+    <Message Text="Renaming $(AssemblyName)$(ExeExtension) to $(ExecutableName)$(ExeExtension)" Importance="high" />
+    <Move SourceFiles="$(PublishDir)/$(AssemblyName)$(ExeExtension)"
+          DestinationFiles="$(PublishDir)/$(ExecutableName)$(ExeExtension)" />
+  </Target>
 
 </Project>

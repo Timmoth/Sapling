@@ -155,6 +155,12 @@ public static class BoardStateExtensions
     {
         boardState.CastleRights = CastleRights.None;
         boardState.Is960 = false;
+        // Keep the unused side's target distinct from a Chess960 rook file such as
+        // A/a. Castling application dispatches by comparing the encoded target square.
+        boardState.WhiteKingSideTargetSquare = 6;
+        boardState.WhiteQueenSideTargetSquare = 2;
+        boardState.BlackKingSideTargetSquare = 62;
+        boardState.BlackQueenSideTargetSquare = 58;
 
         foreach (char right in castleRights)
         {
@@ -433,7 +439,7 @@ public static class BoardStateExtensions
 
                 if (board.Is960)
                 {
-                    if (toSquare == board.WhiteKingSideTargetSquare)
+                    if (toSquare > m.GetFromSquare())
                     {
                         // White king side castle
                         const ulong kingTo = 1UL << 6;
@@ -447,7 +453,7 @@ public static class BoardStateExtensions
                         board.WhiteKingSquare = 6;
 
                     }
-                    else if (toSquare == board.WhiteQueenSideTargetSquare)
+                    else
                     {                        
                         // White queen side castle
                         const ulong kingTo = 1UL << 2;
@@ -641,7 +647,7 @@ public static class BoardStateExtensions
                 if (board.Is960)
                 {
                     // Castle move
-                    if (toSquare == board.BlackKingSideTargetSquare)
+                    if (toSquare > m.GetFromSquare())
                     {
                         // Black king side castle
                         var fromSquare = 1UL << m.GetFromSquare();
@@ -656,7 +662,7 @@ public static class BoardStateExtensions
 
                         board.BlackKingSquare = 62;
                     }
-                    else if (toSquare == board.BlackQueenSideTargetSquare)
+                    else
                     {
                         // Black queen side castle
                         var fromSquare = 1UL << m.GetFromSquare();
@@ -863,14 +869,15 @@ public static class BoardStateExtensions
 
             if (board.Is960)
             {
-                if (toSquare == board.WhiteKingSideTargetSquare)
+                if (toSquare > m.GetFromSquare())
                 {
                     // White king side castle
                     var fromSquare = (ushort)m.GetFromSquare();
-                    accumulatorState.ApplyCastle(Constants.WhiteKingFeatureIndexOffset + (fromSquare << 1), Constants.WhiteKingFeatureIndexOffset + (toSquare << 1),
+                    const ushort kingToSquare = 6;
+                    accumulatorState.ApplyCastle(Constants.WhiteKingFeatureIndexOffset + (fromSquare << 1), Constants.WhiteKingFeatureIndexOffset + (kingToSquare << 1),
                         Constants.WhiteRookFeatureIndexOffset + (board.WhiteKingSideTargetSquare << 1), Constants.WhiteRookFeatureIndexOffset + (5 << 1));
                     var deltaHash = Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
-                                    Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
+                                    Zobrist.PiecesArray[Constants.WhiteKing * 64 + kingToSquare] ^
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + board.WhiteKingSideTargetSquare] ^
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + 5];
                     board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
@@ -879,14 +886,15 @@ public static class BoardStateExtensions
                     board.WhiteMaterialHash ^= deltaHash;
 
                 }
-                else if (toSquare == board.WhiteQueenSideTargetSquare)
+                else
                 {
                     // White queen side castle
                     var fromSquare = (ushort)m.GetFromSquare();
-                    accumulatorState.ApplyCastle(Constants.WhiteKingFeatureIndexOffset + (fromSquare << 1), Constants.WhiteKingFeatureIndexOffset + (toSquare << 1),
+                    const ushort kingToSquare = 2;
+                    accumulatorState.ApplyCastle(Constants.WhiteKingFeatureIndexOffset + (fromSquare << 1), Constants.WhiteKingFeatureIndexOffset + (kingToSquare << 1),
                         Constants.WhiteRookFeatureIndexOffset + (board.WhiteQueenSideTargetSquare << 1), Constants.WhiteRookFeatureIndexOffset + (3 << 1));
                     var deltaHash = Zobrist.PiecesArray[Constants.WhiteKing * 64 + fromSquare] ^
-                                    Zobrist.PiecesArray[Constants.WhiteKing * 64 + toSquare] ^
+                                    Zobrist.PiecesArray[Constants.WhiteKing * 64 + kingToSquare] ^
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + board.WhiteQueenSideTargetSquare] ^
                                     Zobrist.PiecesArray[Constants.WhiteRook * 64 + 3];
                     board.Hash ^= deltaHash ^ Zobrist.SideToMove ^
@@ -1080,14 +1088,15 @@ public static class BoardStateExtensions
             if (board.Is960)
             {
                 // Castle move
-                if (toSquare == board.BlackKingSideTargetSquare)
+                if (toSquare > m.GetFromSquare())
                 {
                     // Black king side castle
                     var fromSquare = m.GetFromSquare();
-                    accumulatorState.ApplyCastle(Constants.BlackKingFeatureIndexOffset + (fromSquare << 1), Constants.BlackKingFeatureIndexOffset + (toSquare << 1),
+                    const ushort kingToSquare = 62;
+                    accumulatorState.ApplyCastle(Constants.BlackKingFeatureIndexOffset + (fromSquare << 1), Constants.BlackKingFeatureIndexOffset + (kingToSquare << 1),
                         Constants.BlackRookFeatureIndexOffset + (board.BlackKingSideTargetSquare << 1), Constants.BlackRookFeatureIndexOffset + (61 << 1));
                     var deltaHash = Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
-                                               Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare] ^
+                                               Zobrist.PiecesArray[Constants.BlackKing * 64 + kingToSquare] ^
                                                Zobrist.PiecesArray[Constants.BlackRook * 64 + board.BlackKingSideTargetSquare] ^
                                                Zobrist.PiecesArray[Constants.BlackRook * 64 + 61];
 
@@ -1096,14 +1105,15 @@ public static class BoardStateExtensions
                                   *(Zobrist.DeltaCastleRights + (int)(prevCastle ^ board.CastleRights));
                     board.BlackMaterialHash ^= deltaHash;
                 }
-                else if (toSquare == board.BlackQueenSideTargetSquare)
+                else
                 {
                     // Black queen side castle
                     var fromSquare = m.GetFromSquare();
-                    accumulatorState.ApplyCastle(Constants.BlackKingFeatureIndexOffset + (fromSquare << 1), Constants.BlackKingFeatureIndexOffset + (toSquare << 1),
+                    const ushort kingToSquare = 58;
+                    accumulatorState.ApplyCastle(Constants.BlackKingFeatureIndexOffset + (fromSquare << 1), Constants.BlackKingFeatureIndexOffset + (kingToSquare << 1),
                         Constants.BlackRookFeatureIndexOffset + (board.BlackQueenSideTargetSquare << 1), Constants.BlackRookFeatureIndexOffset + (59 << 1));
                     var deltaHash = Zobrist.PiecesArray[Constants.BlackKing * 64 + fromSquare] ^
-                                    Zobrist.PiecesArray[Constants.BlackKing * 64 + toSquare] ^
+                                    Zobrist.PiecesArray[Constants.BlackKing * 64 + kingToSquare] ^
                                     Zobrist.PiecesArray[Constants.BlackRook * 64 + board.BlackQueenSideTargetSquare] ^
                                     Zobrist.PiecesArray[Constants.BlackRook * 64 + 59];
 

@@ -174,3 +174,27 @@ Data: 2bn positions (400m FRC)
 WDL: 0.3
 LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
 SuperBatches: 300
+
+----------------------------------
+21_(768x4-1024)x2-8
+----------------------------------
+Data: 2.5bn positions (1b FRC)
+WDL: 0.3
+LR: CosineDecayLR 0.001 * 0.3 * 0.3 * 0.3
+SuperBatches: 600
+
+~74M FRC" with the caveat.
+
+Corrected entry:
+
+----------------------------------
+21_(768x4-1024)x2-8
+----------------------------------
+Arch: (768x4 -> 1024)x2 -> 8, SCReLU, QA=255 QB=64, eval scale 400
+Data: 2.55bn positions / 18.5m games (1bn FRC)
+Filter: min_ply 8
+WDL: 0.3 (constant)
+LR: CosineDecayLR 0.001 -> 0.001 * 0.3^4 (= 0.0000081)
+SuperBatches: 600 x 6104 batches x 16384 = 60.0bn positions seen (23.5 epochs)
+Final loss: 0.007587
+Training time: 4h 18m (RTX 3080)

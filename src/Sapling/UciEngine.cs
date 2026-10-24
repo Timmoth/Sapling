@@ -30,6 +30,7 @@ public class UciEngine : IDisposable
     private readonly DataGenerator _dataGen = new();
 
     private bool _ponderEnabled = false;
+    private bool _chess960Enabled;
     private volatile bool _aborted;
     private int _threadCount = 1;
     private readonly Random _humanRng = new();
@@ -74,6 +75,13 @@ public class UciEngine : IDisposable
                     }
                     break;
                 }
+
+            case "uci_chess960":
+                if (tokens[3] == "value" && bool.TryParse(tokens[4], out var chess960))
+                {
+                    _chess960Enabled = chess960;
+                }
+                break;
 
             case "threads":
                 if (tokens[3] == "value" && int.TryParse(tokens[4], out var searchThreads))
@@ -202,10 +210,9 @@ public class UciEngine : IDisposable
                 Respond("id author Tim Jones");
                 Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                 Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
+                Respond($"option name UCI_Chess960 type check default {_chess960Enabled.ToString().ToLower()}");
                 Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max {MaxHashMb()}");
                 Respond($"option name HumanElo type spin default 0 min 0 max {HumanPlay.MaxElo}");
-                // UCI_Chess960 is deliberately not advertised: castling is only verified for
-                // standard chess, so advertising it would let GUIs start unsupported games.
 #if OpenBench
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)
                 {

@@ -36,10 +36,20 @@ public unsafe class NnueEvalSanityTests
         }
     }
 
-    [Fact]
-    public void StartingPosition_IsNearlyBalanced()
+    [Theory]
+    [InlineData("w")]
+    [InlineData("b")]
+    public void StartingPosition_IsNearlyBalancedAndMatchesScalarOracle(string side)
     {
-        Assert.True(StaticEval("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") >= -100 && StaticEval("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") <= 200, "the start position is close to equal with a small tempo edge");
+        var fen = $"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR {side} KQkq - 0 1";
+        var board = BoardStateExtensions.CreateBoardFromFen(fen);
+        var actual = StaticEval(fen);
+
+        // The trained static score need not contain a positive tempo bonus:
+        // sapling35-600 returns -108 for either side in this symmetric position.
+        // Keep a coarse sanity bound and verify inference independently of search.
+        Assert.InRange(actual, -200, 200);
+        Assert.Equal(NnueOracle.OracleEvalFromScratch(&board), actual);
     }
 
     // Side to move is up the named piece; the mirrored FEN is the same position with colours

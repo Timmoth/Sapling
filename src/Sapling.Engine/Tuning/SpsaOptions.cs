@@ -45,14 +45,14 @@ namespace Sapling.Engine.Tuning
     internal static class SpsaDefaults
     {
         public const int ReverseFutilityPruningMargin = 67;
-        public const int ReverseFutilityPruningDepth = 7;
+        public const int ReverseFutilityPruningDepth = 8;
         public const int NullMovePruningDepth = 2;
         public const float NullMovePruningReductionA = 3;
         public const float NullMovePruningReductionB = 4;
         public const float NullMovePruningReductionC = 3;
         public const int RazorMarginA = 58;
         public const int RazorMarginB = 378;
-        public const int InternalIterativeDeepeningDepth = 2;
+        public const int InternalIterativeDeepeningDepth = 4;
 
         // Singular / double / negative extensions. These four were hand-picked and never
         // tuned; a manual sweep moved the node count non-monotonically, so local reasoning
@@ -61,7 +61,7 @@ namespace Sapling.Engine.Tuning
         public const int SingularTtDepthMargin = 3;
         public const int SingularMarginScale = 16;
         public const int SingularDoubleMargin = 20;
-        public const int LateMovePruningConstant = 8;
+        public const int LateMovePruningConstant = 5;
         public const int LateMoveReductionMinDepth = 3;
         public const int LateMoveReductionMinMoves = 2;
         public const float LateMoveReductionInterestingA = 0.188786f;
@@ -85,7 +85,7 @@ namespace Sapling.Engine.Tuning
         public const int InterestingNegaMaxMoveScore = 40775;
         public const int InterestingQuiescenceMoveScore = 35432;
         public const int ProbCutBetaMargin = 220;
-        public const int ProbCutMinDepth = 3;
+        public const int ProbCutMinDepth = 4;
         public const int AsperationWindowA = 37;
         public const int AsperationWindowB = 59;
         public const int AsperationWindowC = 279;

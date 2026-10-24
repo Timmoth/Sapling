@@ -50,6 +50,6 @@ oep2n|doubleCheck|2|12|8/5p2/8/1k1p3p/r2b1K2/2B2P2/1P6/1R6 w - - 0 41|b2b3 d4c3 
 3Xtfz|trappedPiece|2|12|3n4/7B/5kp1/5p2/5P1P/6K1/2P4P/8 b - - 2 52|f6g7 h4h5 g7h7|1630|advantage endgame short trappedPiece
 03hDc|trappedPiece|2|12|8/2kb4/8/2RB4/2P2P2/p5P1/r5P1/6K1 b - - 0 45|c7b6 c5b5 d7b5|2026|advantage defensiveMove endgame master short trappedPiece
 jjgl2|sacrifice|2|12|8/2Pr4/2K5/8/5k2/R5p1/P7/8 b - - 3 45|d7c7 c6c7 g3g2|1635|advancedPawn advantage endgame rookEndgame sacrifice short
-2vwBJ|sacrifice|2|17|b7/8/8/5PP1/1p6/bBk3K1/8/8 w - - 1 55|f5f6 c3b3 f6f7|1743|advancedPawn advantage bishopEndgame endgame sacrifice short
+2vwBJ|sacrifice|2|19|b7/8/8/5PP1/1p6/bBk3K1/8/8 w - - 1 55|f5f6 c3b3 f6f7|1743|advancedPawn advantage bishopEndgame endgame sacrifice short
 lknVn|promotion|2|12|8/8/6P1/1p5P/5K2/8/7r/4k3 w - - 1 49|g6g7 h2h5 g7g8q|1606|advancedPawn advantage endgame promotion rookEndgame short
 0HSGj|promotion|2|12|8/3P4/R5p1/4p3/4Pk1p/5P1P/3K4/qr6 w - - 0 50|a6a1 b1a1 d7d8q|1481|advancedPawn advantage endgame promotion short

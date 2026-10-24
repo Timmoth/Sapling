@@ -190,6 +190,7 @@ public class AllocationFaultInjectionTests
     }
 
     [NativeThreadsFact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
     public void ConcurrentStructuralChanges_SerializeAgainstActiveSearches()
     {
         using var tracker = new BalanceTracker();

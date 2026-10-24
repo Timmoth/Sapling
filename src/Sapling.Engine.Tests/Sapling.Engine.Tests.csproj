@@ -28,6 +28,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sapling.Engine\Sapling.Engine.csproj" />
+    <!-- Process-level UCI tests require the CLI apphost even on a clean checkout. -->
+    <ProjectReference Include="..\Sapling\Sapling.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

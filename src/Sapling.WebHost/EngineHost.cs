@@ -15,6 +15,7 @@ namespace Sapling.WebHost;
 /// Managed boundary between the browser worker and engine. Methods return JSON strings;
 /// search runs in bounded slices so the worker can process cancellation between calls.
 /// </summary>
+[System.Runtime.Versioning.SupportedOSPlatform("browser")]
 public static partial class EngineHost
 {
     private static ParallelSearcher? _ps;
