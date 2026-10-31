@@ -85,14 +85,20 @@ public class UciProcessStabilityTests
     }
 
     [Theory]
+    [InlineData(16)]
     [InlineData(32)]
     [InlineData(256)]
     [InlineData(1024)]
     public void Hash_Sizes_Work(int mb)
     {
         using var e = StartEngine();
+        var options = e.ParseOptions();
+        Assert.Equal("16", options["Hash"].lo);
+        Assert.Equal("16", options["Hash"].dflt);
         e.Send($"setoption name Hash value {mb}");
-        e.Ready();
+        e.Send("isready");
+        var response = e.ReadUntil("readyok");
+        Assert.DoesNotContain(response, line => line.StartsWith(ErrorPrefix));
         e.Send("position startpos");
         Assert.True(e.Bestmove("go depth 6").Length > 0, $"Hash={mb} must produce a bestmove");
     }
@@ -167,7 +173,7 @@ public class UciProcessStabilityTests
             var mv = e.Bestmove($"go wtime {wtime} btime {btime} winc 4 binc 4");
             var dt = (int)sw.ElapsedMilliseconds;
             if (mv.Length == 0 || mv == "(none)") break;
-            Assert.True(dt < clock + 500, $"ply {ply} overran its clock");
+            Assert.True(dt < clock, $"ply {ply} flagged: spent {dt} ms with {clock} ms on the clock");
             if (white) wtime = Math.Max(1, wtime - dt + 4); else btime = Math.Max(1, btime - dt + 4);
             moves.Add(mv);
             e.Send("position startpos moves " + string.Join(' ', moves));
@@ -175,6 +181,45 @@ public class UciProcessStabilityTests
         e.Ready();
         Assert.True(moves.Count >= 20);
         ReplayLegal(string.Join(' ', moves));
+    }
+
+    [Fact]
+    public void LongZeroIncrementBulletGame_DoesNotFlagWithoutHumanElo()
+    {
+        using var e = StartEngine();
+        e.Send("setoption name Threads value 1");
+        e.Send("setoption name Hash value 16");
+        e.Ready();
+
+        var moves = new List<string>();
+        double whiteTimeMs = 1_000;
+        double blackTimeMs = 1_000;
+        for (var ply = 0; ply < 140; ply++)
+        {
+            var whiteToMove = ply % 2 == 0;
+            var clockMs = whiteToMove ? whiteTimeMs : blackTimeMs;
+            Assert.True(clockMs > 0, $"flagged before ply {ply + 1}");
+
+            e.Send(moves.Count == 0
+                ? "position startpos"
+                : "position startpos moves " + string.Join(' ', moves));
+            var wtime = Math.Max(0, (int)Math.Floor(whiteTimeMs));
+            var btime = Math.Max(0, (int)Math.Floor(blackTimeMs));
+            var timer = Stopwatch.StartNew();
+            var move = e.Bestmove($"go wtime {wtime} btime {btime} winc 0 binc 0");
+            Assert.True(timer.Elapsed.TotalMilliseconds < clockMs,
+                $"flagged on ply {ply + 1}: spent {timer.Elapsed.TotalMilliseconds:F2} ms with {clockMs:F2} ms left");
+            Assert.NotEmpty(move);
+            Assert.NotEqual("(none)", move);
+
+            moves.Add(move);
+            if (whiteToMove)
+                whiteTimeMs -= timer.Elapsed.TotalMilliseconds;
+            else
+                blackTimeMs -= timer.Elapsed.TotalMilliseconds;
+        }
+
+        Assert.Equal(140, moves.Count);
     }
 
     [Fact]
@@ -288,6 +333,41 @@ public class UciProcessStabilityTests
         e.Ready();
         e.Send("position startpos");
         Assert.NotEmpty(e.Bestmove("go wtime 2000 btime 2000"));
+    }
+
+    [Fact]
+    public void HumanElo_RootRankingStaysInsideMoveTimeBudget()
+    {
+        using var e = StartEngine();
+        e.Send("setoption name HumanElo value 1500");
+        e.Ready();
+        e.Send("position startpos");
+
+        var timer = Stopwatch.StartNew();
+        Assert.NotEmpty(e.Bestmove("go movetime 100"));
+
+        Assert.True(timer.Elapsed < TimeSpan.FromMilliseconds(600),
+            $"HumanElo ranking must respect the 100 ms move budget; took {timer.Elapsed.TotalMilliseconds:F0} ms");
+    }
+
+    [Fact]
+    public void HumanTemperatureOption_AcceptsPositiveFloatAndRejectsZero()
+    {
+        using var e = StartEngine();
+        var options = e.ParseOptions();
+        Assert.Equal("string", options["HumanTemperature"].kind);
+
+        e.Send("setoption name HumanElo value 1500");
+        e.Send("setoption name HumanTemperature value 0.8");
+        e.Ready();
+        Assert.False(e.SawPrefixWithin(ErrorPrefix, TimeSpan.FromMilliseconds(200)));
+
+        e.Send("setoption name HumanTemperature value 0");
+        Assert.True(e.SawPrefixWithin(ErrorPrefix, TimeSpan.FromSeconds(2)));
+
+        e.Send("setoption name HumanTemperature value 1");
+        e.Send("setoption name HumanElo value 0");
+        e.Ready();
     }
 
     [Fact]

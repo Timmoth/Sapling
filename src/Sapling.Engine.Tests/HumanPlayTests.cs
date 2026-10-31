@@ -14,6 +14,7 @@ public class HumanPlayTests
         using var fixture = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "human_policy_inference_golden.json")));
         Assert.Equal(1, fixture.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(fixture.RootElement.GetProperty("model_sha256").GetString(), HumanMovePolicy.ModelSha256);
 
         foreach (var testCase in fixture.RootElement.GetProperty("cases").EnumerateArray())
         {
@@ -48,6 +49,59 @@ public class HumanPlayTests
     }
 
     [Fact]
+    public void EmbeddedPolicy_MultiRatingScoringMatchesSingleRatingScoring()
+    {
+        using var state = GameState.InitialState();
+        var board = state.Board;
+        var boardFeatures = HumanPolicyEncoding.EncodeBoard(ref board);
+        var legalMoves = new List<uint>();
+        board.GenerateLegalMoves(legalMoves, captureOnly: false);
+        var moveFeatures = new float[legalMoves.Count * HumanPolicyEncoding.MoveFeatures];
+        var ratings = new[] { 500, 800, 1500, 2200 };
+        var multiRatingLogits = HumanMovePolicy.ScoreCandidatesForRatings(
+            boardFeatures, moveFeatures, legalMoves.Count, ratings);
+
+        Assert.Equal(ratings.Length, multiRatingLogits.Length);
+        for (var i = 0; i < ratings.Length; i++)
+            Assert.Equal(HumanMovePolicy.ScoreCandidates(boardFeatures, moveFeatures,
+                legalMoves.Count, ratings[i]), multiRatingLogits[i]);
+        Assert.Throws<ArgumentException>(() => HumanMovePolicy.ScoreCandidatesForRatings(
+            boardFeatures, moveFeatures, legalMoves.Count, Array.Empty<int>()));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HumanMovePolicy.ScoreCandidatesForRatings(
+            boardFeatures, moveFeatures, legalMoves.Count, new[] { 499 }));
+    }
+
+    [Fact]
+    public void HumanPlayCalibration_AppliesStaticDepthEightHumanDataCalibration()
+    {
+        Assert.True(HumanPlayCalibration.AppliesToCurrentModel);
+        Assert.Equal(new HumanPlaySettings(500, 1f, .5f), HumanPlayCalibration.ForDisplayElo(500));
+        Assert.Equal(new HumanPlaySettings(875, 1f, .6875f), HumanPlayCalibration.ForDisplayElo(800));
+        Assert.Equal(new HumanPlaySettings(1000, 1f, .75f), HumanPlayCalibration.ForDisplayElo(900));
+        Assert.Equal(new HumanPlaySettings(1088, 1f, .75f), HumanPlayCalibration.ForDisplayElo(1000));
+        Assert.Equal(new HumanPlaySettings(1500, 1f, .625f), HumanPlayCalibration.ForDisplayElo(1500));
+        Assert.Equal(new HumanPlaySettings(1700, 1f, .375f), HumanPlayCalibration.ForDisplayElo(1700));
+        Assert.Equal(new HumanPlaySettings(1750, 1.0125f, .5625f), HumanPlayCalibration.ForDisplayElo(1800));
+        Assert.Equal(new HumanPlaySettings(2050, 1.05f, .75f), HumanPlayCalibration.ForDisplayElo(2200));
+        Assert.Equal(new HumanPlaySettings(0, 1f, 0f), HumanPlayCalibration.ForDisplayElo(0));
+    }
+
+    [Theory]
+    [InlineData("6rk/8/8/8/8/8/4R3/K7 w - - 0 1", "e2g2", true)]
+    [InlineData("6rk/8/8/8/8/8/4R3/5K2 w - - 0 1", "e2g2", false)]
+    public void DirectCaptureRisk_RequiresLegalCaptureWithoutImmediateRecapture(string fen, string uci, bool expected)
+    {
+        var board = BoardStateExtensions.CreateBoardFromFen(fen);
+        var originalHash = board.Hash;
+        var legalMoves = new List<uint>();
+        board.GenerateLegalMoves(legalMoves, captureOnly: false);
+        var move = Assert.Single(legalMoves, candidate => candidate.ToUciMoveName() == uci);
+
+        Assert.Equal(expected, DirectCaptureRisk.IsRiskAfterMove(ref board, move));
+        Assert.Equal(originalHash, board.Hash);
+    }
+
+    [Fact]
     public void DisabledHumanPlay_LeavesEngineBestMoveSelected()
     {
         HumanPlay.Reset();
@@ -58,6 +112,24 @@ public class HumanPlayTests
 
         Assert.Equal(0, HumanPlay.PickMove(new Random(1), ref board, ranked, out var probability));
         Assert.Equal(1f, probability);
+    }
+
+    [Fact]
+    public void SelectMove_PreservesThePolicyChoiceWhenItIsRankZero()
+    {
+        HumanPlay.Reset();
+        HumanPlay.SetElo(1500);
+        using var state = GameState.InitialState();
+        using var searcher = new ParallelSearcher(1024);
+        var ranked = searcher.RankRootMoves(state, 2);
+        var board = state.Board;
+
+        var selection = HumanPlay.SelectMove(new ZeroRandom(), ref board, ranked);
+
+        Assert.Equal(0, selection.Rank);
+        Assert.Equal(ranked[0].Move, selection.Move);
+        Assert.True(selection.Probability > 0f);
+        HumanPlay.Reset();
     }
 
     [Fact]
@@ -125,6 +197,63 @@ public class HumanPlayTests
     }
 
     [Fact]
+    public void PolicyProbabilities_TemperatureChangesEntropyAndStayNormalized()
+    {
+        var logits = new float[] { 2f, 1f, -1f };
+        var cool = HumanMovePolicy.Probabilities(logits, 0.5f);
+        var baseLine = HumanMovePolicy.Probabilities(logits);
+        var warm = HumanMovePolicy.Probabilities(logits, 2f);
+
+        Assert.InRange(cool.Sum(), 0.99999f, 1.00001f);
+        Assert.InRange(baseLine.Sum(), 0.99999f, 1.00001f);
+        Assert.InRange(warm.Sum(), 0.99999f, 1.00001f);
+        Assert.True(cool[0] > baseLine[0]);
+        Assert.True(baseLine[0] > warm[0]);
+    }
+
+    [Fact]
+    public void PolicySampler_SoftPenaltyReducesMarkedCandidateProbability()
+    {
+        var board = BoardStateExtensions.CreateBoardFromFen(Constants.InitialState);
+        var boardFeatures = HumanPolicyEncoding.EncodeBoard(ref board);
+        var moves = new List<uint>();
+        board.GenerateLegalMoves(moves, captureOnly: false);
+        var moveFeatures = new float[moves.Count * HumanPolicyEncoding.MoveFeatures];
+        var penaltyMask = new bool[moves.Count];
+        penaltyMask[0] = true;
+
+        var baselineIndex = HumanMovePolicy.Sample(new ZeroRandom(), boardFeatures, moveFeatures,
+            moves.Count, 1500, 1f, out var baselineProbability);
+        var penalizedIndex = HumanMovePolicy.Sample(new ZeroRandom(), boardFeatures, moveFeatures,
+            moves.Count, 1500, 1f, out var penalizedProbability, penaltyMask, 1f);
+
+        Assert.Equal(0, baselineIndex);
+        Assert.Equal(0, penalizedIndex);
+        Assert.True(penalizedProbability < baselineProbability);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public void PolicyProbabilities_RejectInvalidTemperature(float temperature)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => HumanMovePolicy.Probabilities(new float[] { 1f, 0f }, temperature));
+    }
+
+    [Fact]
+    public void HumanPlay_ResetRestoresDefaultTemperature()
+    {
+        HumanPlay.SetTemperature(1.75f);
+        Assert.Equal(1.75f, HumanPlay.Temperature);
+
+        HumanPlay.Reset();
+
+        Assert.Equal(1f, HumanPlay.Temperature);
+    }
+
+    [Fact]
     public void EmbeddedPolicySampler_IsSeededAndReturnsSelectedSoftmaxProbability()
     {
         var board = BoardStateExtensions.CreateBoardFromFen(Constants.InitialState);
@@ -146,6 +275,13 @@ public class HumanPlayTests
         Assert.Equal(repeated, selected);
         Assert.Equal(repeatedProbability, probability, 1e-7f);
         Assert.Equal(expectedProbabilities[selected], probability, 1e-6f);
+
+        const float temperature = 1.6f;
+        var temperatureProbabilities = HumanMovePolicy.Probabilities(
+            HumanMovePolicy.ScoreCandidates(boardFeatures, moveFeatures, legalMoves.Count, 1500), temperature);
+        var temperatureSelected = HumanMovePolicy.Sample(new Random(8128), boardFeatures, moveFeatures,
+            legalMoves.Count, 1500, temperature, out var temperatureProbability);
+        Assert.Equal(temperatureProbabilities[temperatureSelected], temperatureProbability, 1e-6f);
     }
 
     [Fact]
@@ -156,7 +292,7 @@ public class HumanPlayTests
 
         var shortBoard = () => HumanMovePolicy.ScoreCandidates(board.AsSpan(1), moves, 1, 1500);
         var wrongMoveCount = () => HumanMovePolicy.ScoreCandidates(board, moves, 2, 1500);
-        var invalidRating = () => HumanMovePolicy.ScoreCandidates(board, moves, 1, 799);
+        var invalidRating = () => HumanMovePolicy.ScoreCandidates(board, moves, 1, 499);
 
         Assert.Throws<ArgumentException>(shortBoard);
         Assert.Throws<ArgumentException>(wrongMoveCount);
@@ -166,8 +302,8 @@ public class HumanPlayTests
     [Theory]
     [InlineData(-100, 0)]
     [InlineData(0, 0)]
-    [InlineData(1, 800)]
-    [InlineData(300, 800)]
+    [InlineData(1, 500)]
+    [InlineData(300, 500)]
     [InlineData(1500, 1500)]
     [InlineData(3000, 2200)]
     public void HumanElo_MapsToTheTrainedPolicyRange(int requested, int expected)
@@ -202,5 +338,10 @@ public class HumanPlayTests
         var values = logits.Select(value => Math.Exp(value - maximum)).ToArray();
         var sum = values.Sum();
         return values.Select(value => (float)(value / sum)).ToArray();
+    }
+
+    private sealed class ZeroRandom : Random
+    {
+        public override double NextDouble() => 0d;
     }
 }

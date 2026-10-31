@@ -1,4 +1,4 @@
-### Sapling v2.0.0 — a .NET UCI chess engine
+### Sapling v2.1.0 — a .NET UCI chess engine
 
 Play it here -> https://iblunder.com/
 
@@ -7,9 +7,9 @@ Or challenge it on Lichess -> https://lichess.org/@/sapling-bot
 ## Releases
 You can browse all windows, linux or mac releases [here](https://github.com/Timmoth/Sapling/releases)
 
-## v2.0.0
+## v2.1.0
 
-The planned release tag is `Sapling-2.0.0`. Version metadata is shared in [`Directory.Build.props`](Directory.Build.props); see the [release workflow](../.github/workflows/release-pipeline.yaml).
+The planned release tag is `Sapling-2.1.0`. Version metadata is shared in [`Directory.Build.props`](Directory.Build.props); see the [release workflow](../.github/workflows/release-pipeline.yaml).
 
 ## Requirements
 - Use an executable matching your OS and architecture. The normal build selects AVX2, Vector128 or scalar NNUE at runtime and uses magic bitboards when BMI2/PEXT is unavailable. Dedicated AVX512 builds select that backend when supported; explicitly forcing `SAPLING_BACKEND=Avx512` requires AVX512F and AVX512BW.

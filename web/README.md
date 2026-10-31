@@ -41,9 +41,14 @@ restore, hint scoring and Elo restoration. Run the built static app in a browser
 interaction checks before release.
 
 The trained policy's weights are embedded in `Sapling.Engine` and its inference runs in the
-same C# engine code for native UCI and browser WASM builds. Human Elo values from 800 to 2200
+same C# engine code for native UCI and browser WASM builds. Human Elo values from 500 to 2200
 select the policy; zero disables it. The web build ships no separate policy model or inference
 runtime.
+
+Move hints use full-strength analysis of all legal moves. Ordinary badges show `Best` or the
+pawn-equivalent evaluation lost against the best move, regardless of whether the position is winning
+or losing. Mate labels keep their existing format and resulting-position distance; only move-quality
+comparisons substitute ±20 pawns for mate scores.
 
 ## Wasm profiles (4.6)
 

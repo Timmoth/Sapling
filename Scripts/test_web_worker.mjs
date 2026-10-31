@@ -84,6 +84,24 @@ assert.equal(hintsDone.hintId, 12);
 const hintUpdates = backlog.filter((message) => message.type === 'hint-progress' && message.hintId === 12);
 assert.ok(hintUpdates.some((message) => message.scores.some((score) => score.move === 'e2e4')));
 assert.ok(hintUpdates.some((message) => message.scores.some((score) => score.move === 'd2d4')));
+for (const update of hintUpdates) {
+  for (const score of update.scores) {
+    assert.ok(Number.isFinite(score.lossCp) && score.lossCp >= 0, 'hint supplies global move-quality loss');
+  }
+}
+
+
+const mateHintTask = self.onmessage({ data: {
+  type: 'hints', hintId: 13, fen: '7k/5Q2/6K1/8/8/8/8/8 w - - 0 1',
+  moves: ['f7g7'], history: [],
+} });
+await waitFor('hints-done', (message) => message.hintId === 13);
+await mateHintTask;
+const mateHint = backlog.filter((message) => message.type === 'hint-progress' && message.hintId === 13)
+  .flatMap((message) => message.scores).find((score) => score.move === 'f7g7');
+assert.equal(mateHint.scoreType, 'mate');
+assert.equal(mateHint.score, 0, 'a move delivering checkmate retains the resulting-position M0 distance');
+assert.equal(mateHint.lossCp, 0);
 
 const interruptedSearch = self.onmessage({ data: {
   type: 'search', requestId: 20, maxDepth: 120, sliceNodes: 12_000,

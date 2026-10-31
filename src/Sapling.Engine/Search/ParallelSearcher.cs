@@ -265,7 +265,7 @@ public unsafe class ParallelSearcher : IDisposable
     /// Root ranking for human-like difficulty. Single worker, direct table access. Only reached
     /// when HumanPlay is enabled; the normal search paths are unaffected.
     /// </summary>
-    public List<(uint Move, int Score, int Feat)> RankRootMoves(GameState state, int depth)
+    public List<(uint Move, int Score, int Feat)> RankRootMoves(GameState state, int depth, int timeLimitMs = 0)
     {
         lock (_operationGate)
         {
@@ -283,7 +283,7 @@ public unsafe class ParallelSearcher : IDisposable
             }
             try
             {
-                return worker.RankRootMoves(state, depth);
+                return worker.RankRootMoves(state, depth, timeLimitMs);
             }
             finally
             {

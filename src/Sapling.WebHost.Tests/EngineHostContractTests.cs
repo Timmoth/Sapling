@@ -19,6 +19,27 @@ public class EngineHostContractTests
     }
 
     [Fact]
+    public void ScoreHints_ScoresEveryLegalMoveAgainstTheGlobalBest()
+    {
+        EngineHost.Initialize(1);
+        EngineHost.SetPosition(Constants.InitialState);
+        EngineHost.SetHumanElo(500);
+        using var result = JsonDocument.Parse(EngineHost.ScoreHints());
+        var root = result.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        var moves = root.GetProperty("moves").EnumerateArray().Select(x => x.GetString()).ToArray();
+        var scores = root.GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).ToArray();
+        var loss = root.GetProperty("lossCp").EnumerateArray().Select(x => x.GetInt32()).ToArray();
+        Assert.Equal(20, moves.Length);
+        Assert.Equal(moves.Length, loss.Length);
+        Assert.Contains("e2e4", moves);
+        Assert.Contains("g1f3", moves);
+        for (var i = 0; i < scores.Length; i++) Assert.Equal(scores.Max() - scores[i], loss[i]);
+        Assert.Contains(0, loss);
+        Assert.Contains("\"ok\":true", EngineHost.ApplyMove("e2e4"));
+    }
+
+    [Fact]
     public void SearchSlice_CapsToTotalNodeBudget()
     {
         EngineHost.Initialize(1);
@@ -83,7 +104,7 @@ public class EngineHostContractTests
 
     [Theory]
     [InlineData(0, 0)]
-    [InlineData(300, 800)]
+    [InlineData(300, 500)]
     [InlineData(1500, 1500)]
     [InlineData(3000, 2200)]
     public void SetHumanElo_UsesEmbeddedPolicyRange(int requested, int expected)

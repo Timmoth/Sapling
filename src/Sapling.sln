@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sapling.Bench", "Sapling.Be
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sapling.WebHost.Tests", "Sapling.WebHost.Tests\Sapling.WebHost.Tests.csproj", "{4D9300EC-CDA9-4537-A1C1-C97085F488F2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sapling.Mobile", "Sapling.Mobile\Sapling.Mobile.csproj", "{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{4D9300EC-CDA9-4537-A1C1-C97085F488F2}.Release|x64.Build.0 = Release|x64
 		{4D9300EC-CDA9-4537-A1C1-C97085F488F2}.Release|x86.ActiveCfg = Release|Any CPU
 		{4D9300EC-CDA9-4537-A1C1-C97085F488F2}.Release|x86.Build.0 = Release|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Debug|x64.Build.0 = Debug|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Debug|x86.Build.0 = Debug|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Release|x64.ActiveCfg = Release|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Release|x64.Build.0 = Release|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Release|x86.ActiveCfg = Release|Any CPU
+		{C4C82A5D-A68A-44C6-BE7A-C5CC60FBA611}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

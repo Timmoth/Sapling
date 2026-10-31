@@ -176,32 +176,21 @@ async function runHints(req) {
     const scores = [];
     let error = '';
 
-    for (const move of req.moves || []) {
-      if (activeHintId !== id) return;
-      let result = parse(host.SetPosition(String(req.fen || '')));
-      if (result.ok) result = parse(host.ApplyMove(String(move)));
-      if (!result.ok) { error = result.message || result.error || 'Could not apply move.'; break; }
-
-      const searchId = ++currentRequest;
-      stopFlags.delete(searchId);
-      result = parse(host.StartSearch(searchId, 5, 1800, 5000, 45));
-      if (!result.ok) { error = result.message || result.error || 'Could not start analysis.'; break; }
-
-      while (true) {
-        if (activeHintId !== id) return;
-        result = parse(host.SearchSlice(searchId));
-        if (!result.ok || result.done) break;
-        await new Promise((resolve) => setTimeout(resolve, 0));
+    let result = parse(host.SetPosition(String(req.fen || '')));
+    if (result.ok) result = parse(host.ScoreHints());
+    if (!result.ok) {
+      error = result.message || result.error || 'Move analysis failed.';
+    } else {
+      const requested = new Set(req.moves || []);
+      for (let i = 0; i < result.moves.length; i++) {
+        const move = result.moves[i];
+        if (!requested.has(move)) continue;
+        // Root mate distance includes this move; badges describe the resulting position.
+        const score = result.scoreTypes[i] === 'mate' && result.scores[i] > 0
+          ? result.scores[i] - 1 : result.scores[i];
+        scores.push({ move, score, scoreType: result.scoreTypes[i],
+          rankScore: result.rankScores[i], lossCp: result.lossCp[i] });
       }
-      if (!result.ok) { error = result.message || result.error || 'Move analysis failed.'; break; }
-
-      const score = -(result.score || 0);
-      const scoreType = result.scoreType || 'cp';
-      const rankScore = scoreType === 'mate'
-        ? score > 0 ? 100000 - Math.abs(score) : -100000 + Math.abs(score)
-        : score;
-      scores.push({ move, score, scoreType, rankScore });
-      scores.sort((a, b) => b.rankScore - a.rankScore);
       post({ type: 'hint-progress', hintId: id, scores });
     }
 

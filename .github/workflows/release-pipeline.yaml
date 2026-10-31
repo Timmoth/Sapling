@@ -15,18 +15,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Require the default branch for releases
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo "Release workflow must be dispatched from the default branch ($DEFAULT_BRANCH)." >&2
+            exit 1
+          fi
+
       - name: Setup .NET Core
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
-      # Get the version from the .csproj file
+      # Read the release version from shared Directory.Build.props via MSBuild.
       - name: Get .NET application version
         working-directory: src/Sapling
         id: get_version
         run: |
           VERSION=$(dotnet msbuild Sapling.csproj -getProperty:Version)
-          # Assembly-style 2.0.0.0 maps to the release tag Sapling-2.0.0.
+          # The three-part application version maps directly to the release tag.
           if [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\.0$ ]]; then
             VERSION="${BASH_REMATCH[1]}"
           fi

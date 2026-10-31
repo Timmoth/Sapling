@@ -101,7 +101,11 @@ namespace Sapling.Engine
 
             // Parallel zero-init. Runtimes without blocking waits (browser-wasm) must
             // zero the block inline; Task.WaitAll throws "Cannot wait on monitors" there.
-            int threadCount = Environment.ProcessorCount;
+            // TT allocation is independent of UCI search Threads. Using the full logical CPU
+            // count here can make even a single-threaded search create hundreds of runtime
+            // worker threads on large tournament hosts. A small fixed fan-out is sufficient
+            // to clear the table quickly without scaling the process thread count with the host.
+            int threadCount = Math.Min(Environment.ProcessorCount, 8);
             if (threadCount <= 1 || OperatingSystem.IsBrowser())
             {
                 ZeroBytes((byte*)block, totalSize);

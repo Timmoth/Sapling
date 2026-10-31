@@ -4,7 +4,7 @@
 </div>
 </p>
 
-### Sapling v2.0.0 — a .NET UCI chess engine
+### Sapling v2.1.0 — a .NET UCI chess engine
 
 Play it here -> https://timmoth.com/sapling/play/
 

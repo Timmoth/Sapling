@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using Sapling.Engine.MoveGen;
 
@@ -17,26 +18,63 @@ public static class HumanMovePolicy
     private const int BoardEmbedding = 128;
     private const int MoveHidden = 64;
     private const string ResourceName = "Sapling.Engine.HumanPolicy.weights";
+    public static string ModelSha256 { get; private set; } = string.Empty;
     private static readonly Weights Model = LoadWeights();
 
     /// <summary>Returns one raw policy logit per candidate; the input feature layout is schema v1.</summary>
     public static float[] ScoreCandidates(ReadOnlySpan<float> board, ReadOnlySpan<float> moves,
         int candidateCount, int rating)
     {
+        ValidateFeatures(board, moves, candidateCount);
+        if (rating is < HumanPolicyEncoding.MinRating or > HumanPolicyEncoding.MaxRating)
+            throw new ArgumentOutOfRangeException(nameof(rating));
+
+        var embedding = EncodeBoardEmbedding(board);
+        return ScoreCandidatesFromEmbedding(moves, candidateCount, rating, embedding);
+    }
+
+    /// <summary>Scores multiple rating conditions while encoding the position once.</summary>
+    public static float[][] ScoreCandidatesForRatings(ReadOnlySpan<float> board,
+        ReadOnlySpan<float> moves, int candidateCount, ReadOnlySpan<int> ratings)
+    {
+        ValidateFeatures(board, moves, candidateCount);
+        if (ratings.IsEmpty)
+            throw new ArgumentException("At least one target rating is required.", nameof(ratings));
+        foreach (var rating in ratings)
+            if (rating is < HumanPolicyEncoding.MinRating or > HumanPolicyEncoding.MaxRating)
+                throw new ArgumentOutOfRangeException(nameof(ratings), rating,
+                    $"Ratings must be in [{HumanPolicyEncoding.MinRating}, {HumanPolicyEncoding.MaxRating}].");
+
+        var embedding = EncodeBoardEmbedding(board);
+        var logitsByRating = new float[ratings.Length][];
+        for (var i = 0; i < ratings.Length; i++)
+            logitsByRating[i] = ScoreCandidatesFromEmbedding(moves, candidateCount, ratings[i], embedding);
+        return logitsByRating;
+    }
+
+    private static void ValidateFeatures(ReadOnlySpan<float> board, ReadOnlySpan<float> moves,
+        int candidateCount)
+    {
         if (board.Length != BoardLength)
             throw new ArgumentException($"Board tensor must have length {BoardLength}.", nameof(board));
         if (candidateCount < 1 || moves.Length != checked(candidateCount * CandidateFeatures))
             throw new ArgumentException("Move tensor size does not match the candidate count.", nameof(moves));
-        if (rating is < HumanPolicyEncoding.MinRating or > HumanPolicyEncoding.MaxRating)
-            throw new ArgumentOutOfRangeException(nameof(rating));
+    }
 
+    private static float[] EncodeBoardEmbedding(ReadOnlySpan<float> board)
+    {
         var first = new float[ConvChannels * 64];
         var second = new float[ConvChannels * 64];
         var embedding = new float[BoardEmbedding];
         Convolve(board, Model.Conv1Weight, Model.Conv1Bias, 18, first);
         Convolve(first, Model.Conv2Weight, Model.Conv2Bias, ConvChannels, second);
         DenseRelu(second, Model.BoardWeight, Model.BoardBias, embedding);
+        return embedding;
+    }
 
+    private static float[] ScoreCandidatesFromEmbedding(ReadOnlySpan<float> moves, int candidateCount,
+        int rating, float[] embedding)
+    {
         var ratingFeature = HumanPolicyEncoding.EncodeRating(rating);
         var logits = new float[candidateCount];
         Span<float> hidden = stackalloc float[MoveHidden];
@@ -66,36 +104,76 @@ public static class HumanMovePolicy
     /// <summary>Samples one candidate from the policy softmax and reports its probability.</summary>
     public static int Sample(Random random, ReadOnlySpan<float> board, ReadOnlySpan<float> moves,
         int candidateCount, int rating, out float probability)
+        => Sample(random, board, moves, candidateCount, rating, 1f, out probability);
+
+    /// <summary>Samples at the supplied temperature and reports probability under that distribution.</summary>
+    public static int Sample(Random random, ReadOnlySpan<float> board, ReadOnlySpan<float> moves,
+        int candidateCount, int rating, float temperature, out float probability)
+        => Sample(random, board, moves, candidateCount, rating, temperature, out probability,
+            ReadOnlySpan<bool>.Empty, 0f);
+
+    /// <summary>Samples with an optional soft logit penalty for candidates marked by a safety signal.</summary>
+    public static int Sample(Random random, ReadOnlySpan<float> board, ReadOnlySpan<float> moves,
+        int candidateCount, int rating, float temperature, out float probability,
+        ReadOnlySpan<bool> penalizedCandidates, float logitPenalty)
     {
         ArgumentNullException.ThrowIfNull(random);
+        if (!float.IsFinite(logitPenalty) || logitPenalty < 0f)
+            throw new ArgumentOutOfRangeException(nameof(logitPenalty), "Logit penalty must be finite and non-negative.");
+        if (!penalizedCandidates.IsEmpty && penalizedCandidates.Length != candidateCount)
+            throw new ArgumentException("Penalty mask length must match candidate count.", nameof(penalizedCandidates));
+        if (logitPenalty > 0f && penalizedCandidates.IsEmpty)
+            throw new ArgumentException("A non-empty penalty mask is required when the logit penalty is positive.", nameof(penalizedCandidates));
         var logits = ScoreCandidates(board, moves, candidateCount, rating);
+        if (logitPenalty > 0f)
+            for (var i = 0; i < logits.Length; i++)
+                if (!penalizedCandidates.IsEmpty && penalizedCandidates[i]) logits[i] -= logitPenalty;
+        var probabilities = Probabilities(logits, temperature);
         if (candidateCount == 1)
         {
             probability = 1f;
             return 0;
         }
 
-        var max = logits.Max();
-        var total = 0.0;
-        for (var i = 0; i < logits.Length; i++)
-            total += Math.Exp((double)logits[i] - max);
-        if (!double.IsFinite(total) || total <= 0)
-            throw new InvalidOperationException("Human policy scores cannot be normalized.");
-
-        var target = random.NextDouble() * total;
+        var target = random.NextDouble();
         var selected = logits.Length - 1;
         for (var i = 0; i < logits.Length; i++)
         {
-            var weight = Math.Exp((double)logits[i] - max);
-            target -= weight;
+            target -= probabilities[i];
             if (target < 0)
             {
                 selected = i;
                 break;
             }
         }
-        probability = (float)(Math.Exp((double)logits[selected] - max) / total);
+        probability = probabilities[selected];
         return selected;
+    }
+
+    /// <summary>Returns a numerically stable softmax distribution over logits.</summary>
+    public static float[] Probabilities(ReadOnlySpan<float> logits, float temperature = 1f)
+    {
+        if (logits.IsEmpty)
+            throw new ArgumentException("At least one candidate logit is required.", nameof(logits));
+        if (!float.IsFinite(temperature) || temperature <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(temperature), "Temperature must be finite and positive.");
+
+        var max = logits[0];
+        for (var i = 1; i < logits.Length; i++)
+            if (logits[i] > max) max = logits[i];
+        var probabilities = new float[logits.Length];
+        var total = 0.0;
+        for (var i = 0; i < logits.Length; i++)
+        {
+            var weight = Math.Exp(((double)logits[i] - max) / temperature);
+            probabilities[i] = (float)weight;
+            total += weight;
+        }
+        if (!double.IsFinite(total) || total <= 0)
+            throw new InvalidOperationException("Human policy scores cannot be normalized.");
+        for (var i = 0; i < probabilities.Length; i++)
+            probabilities[i] = (float)(probabilities[i] / total);
+        return probabilities;
     }
 
     private static void Convolve(ReadOnlySpan<float> input, float[] weights, float[] bias,
@@ -142,6 +220,8 @@ public static class HumanMovePolicy
     {
         using var stream = typeof(HumanMovePolicy).Assembly.GetManifestResourceStream(ResourceName)
             ?? throw new InvalidDataException($"Embedded human policy resource '{ResourceName}' was not found.");
+        ModelSha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        stream.Position = 0;
         using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
         if (!reader.ReadBytes(8).AsSpan().SequenceEqual("SAPHPW01"u8))
             throw new InvalidDataException("Embedded human policy has an invalid header.");

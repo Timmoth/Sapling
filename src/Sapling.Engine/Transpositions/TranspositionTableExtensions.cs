@@ -177,23 +177,11 @@ public static class TranspositionTableExtensions
             throw new ArgumentException("Invalid transposition count, must be a power of 2.");
         }
 
-        // Reverse the potential shift caused by rounding up in the original function
-        ulong adjustedTranspositionCount = (ulong)transpositionCount << 1;
-
-        // Calculate the size in MB
-        var sizeInMb = (int)(adjustedTranspositionCount * (ulong)sizeof(Transposition) / (1024 * 1024));
-
-        // Check if the original function would have produced the same transposition count
-        // for this sizeInMb, if not, decrement the size until it matches.
-        while (CalculateTranspositionTableSize(sizeInMb) != transpositionCount)
-        {
-            sizeInMb--;
-            if (sizeInMb < 0)
-            {
-                throw new ArgumentException("Could not invert the function, invalid input.");
-            }
-        }
-
-        return sizeInMb;
+        // Report the bytes this table actually occupies. The size-to-count conversion retains
+        // a historical 20-byte divisor for search-tree compatibility, but entries now have a
+        // 16-byte stride. Reversing that conversion reports a larger Hash setting than the
+        // allocated table and can cause UCI clients to write back an inflated default.
+        var allocatedBytes = (ulong)transpositionCount * (ulong)sizeof(Transposition);
+        return checked((int)(allocatedBytes / (1024 * 1024)));
     }
 }

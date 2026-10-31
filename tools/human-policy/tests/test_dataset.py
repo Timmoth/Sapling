@@ -10,8 +10,9 @@ import chess
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from dataset import encode_board, encode_move, encode_position, encode_rating
 from extract_pgn import (
-    headers_from_pgn_text, is_standard_rated_rapid, iter_pgn_text_games, iter_processed_games, open_pgn,
-    rapid_time_control, split_for,
+    game_window, headers_from_pgn_text, is_standard_rated_rapid, iter_pgn_text_games,
+    iter_processed_games, open_pgn,
+    rapid_time_control, rating_band, split_for,
 )
 
 
@@ -73,11 +74,16 @@ class DatasetEncodingTests(unittest.TestCase):
             encode_position(board, moves, selected, 1500, {"e2e4": 0})
 
     def test_rating_range_is_explicit(self):
+        self.assertAlmostEqual(encode_rating(500), -1.4285714285714286)
         self.assertEqual(encode_rating(800), -1.0)
         self.assertEqual(encode_rating(2200), 1.0)
-        for rating in (799, 2201):
+        for rating in (499, 2201):
             with self.subTest(rating=rating), self.assertRaises(ValueError):
                 encode_rating(rating)
+
+    def test_inclusive_maximum_rating_stays_in_final_calibration_band(self):
+        self.assertEqual(rating_band(2199), "2000-2199")
+        self.assertEqual(rating_band(2200), "2000-2199")
 
     def test_chess960_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Chess960 is excluded"):
@@ -121,6 +127,12 @@ class DatasetEncodingTests(unittest.TestCase):
         self.assertEqual(is_standard_rated_rapid(headers_from_pgn_text(games[1]))[1],
                          "not_rapid_or_unknown_time_control")
 
+    def test_game_window_skips_and_limits_archive_order_without_reordering(self):
+        games = iter(("game-0", "game-1", "game-2", "game-3", "game-4"))
+        self.assertEqual(list(game_window(games, skip_games=2, max_games=2)),
+                         ["game-2", "game-3"])
+        self.assertEqual(list(game_window(iter(range(4)), skip_games=4, max_games=0)), [])
+
     def test_parallel_game_parsing_matches_serial_and_preserves_archive_order(self):
         text = (
             '[Event "Rated Rapid game"]\n[Site "https://lichess.org/rapid-a"]\n'
@@ -142,6 +154,21 @@ class DatasetEncodingTests(unittest.TestCase):
         self.assertEqual(parallel, serial)
         self.assertEqual([rows[0]["game_id"] if rows else reason for rows, reason in parallel],
                          ["rapid-a", "skip_not_rated", "rapid-c"])
+        self.assertEqual(parallel[0][0][0]["game_date"], "")
+
+    def test_rating_filter_retains_in_range_mover_against_out_of_range_opponent(self):
+        text = ('[Event "Rated Rapid game"]\n[Site "https://lichess.org/boundary"]\n'
+                '[WhiteElo "2100"]\n[BlackElo "2300"]\n[TimeControl "600+0"]\n\n'
+                '1. e4 e5 2. Nf3 Nc6 1/2-1/2\n')
+        rows, reason = list(iter_processed_games([text], workers=1, minimum=500, maximum=2200))[0]
+        self.assertEqual(reason, "")
+        self.assertEqual([row["move"] for row in rows], ["e2e4", "g1f3"])
+        self.assertEqual([row["ply"] for row in rows], [0, 2])
+        self.assertTrue(all(row["rating"] == 2100 for row in rows))
+        rejected, reason = list(iter_processed_games(
+            [text.replace('"2100"', '"2400"')], workers=1, minimum=500, maximum=2200))[0]
+        self.assertIsNone(rejected)
+        self.assertEqual(reason, "skip_missing_or_out_of_range_rating")
 
     def test_standard_rated_rapid_header_filter(self):
         game = chess.pgn.Game()

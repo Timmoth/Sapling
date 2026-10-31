@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Sapling.Engine;
 using Sapling.Engine.DataGen;
 using Sapling.Engine.Evaluation;
@@ -14,7 +15,7 @@ public class UciEngine : IDisposable
     private readonly object _commandGate = new();
     private bool _disposed;
 
-    public long TranspositionSize = (long)TranspositionTableExtensions.CalculateTranspositionTableSize(256);
+    public long TranspositionSize = TranspositionTableExtensions.CalculateTranspositionTableSize(16);
 
     public static int MaxHashMb()
     {
@@ -100,9 +101,9 @@ public class UciEngine : IDisposable
                         break;
                     }
 
-                    if (transpositionSize < 32)
+                    if (transpositionSize < 16)
                     {
-                        ReportProtocolError($"Hash must be at least 32 MB, got {transpositionSize}");
+                        ReportProtocolError($"Hash must be at least 16 MB, got {transpositionSize}");
                         break;
                     }
 
@@ -114,6 +115,8 @@ public class UciEngine : IDisposable
                     }
 
                     var size = TranspositionTableExtensions.CalculateTranspositionTableSize(transpositionSize);
+                    if (size == TranspositionSize)
+                        break;
                     var replacement = new ParallelSearcher(size);
                     try { replacement.SetThreads(_threadCount); }
                     catch { replacement.Dispose(); throw; }
@@ -129,6 +132,20 @@ public class UciEngine : IDisposable
                 {
                     HumanPlay.SetElo(humanElo);
                     LogToFile($"[Debug] Set HumanElo '{HumanPlay.Elo}'");
+                }
+
+                break;
+
+            case "humantemperature":
+                if (tokens[3] == "value"
+                    && float.TryParse(tokens[4], NumberStyles.Float, CultureInfo.InvariantCulture, out var humanTemperature))
+                {
+                    HumanPlay.SetTemperature(humanTemperature);
+                    LogToFile($"[Debug] Set HumanTemperature '{HumanPlay.Temperature.ToString(CultureInfo.InvariantCulture)}'");
+                }
+                else
+                {
+                    ReportProtocolError("HumanTemperature expects a positive finite number");
                 }
 
                 break;
@@ -211,8 +228,9 @@ public class UciEngine : IDisposable
                 Respond($"option name Threads type spin default {_threadCount} min 1 max 1024");
                 Respond($"option name Ponder type check default {_ponderEnabled.ToString().ToLower()}");
                 Respond($"option name UCI_Chess960 type check default {_chess960Enabled.ToString().ToLower()}");
-                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 32 max {MaxHashMb()}");
+                Respond($"option name Hash type spin default {TranspositionTableExtensions.CalculateSizeInMb((uint)TranspositionSize)} min 16 max {MaxHashMb()}");
                 Respond($"option name HumanElo type spin default 0 min 0 max {HumanPlay.MaxElo}");
+                Respond("option name HumanTemperature type string default 1");
 #if OpenBench
                 foreach (var spsaParameters in SpsaTuner.TuningParameters.Values)
                 {
@@ -546,14 +564,15 @@ public class UciEngine : IDisposable
             tokens.Contains("infinite", StringComparer.OrdinalIgnoreCase) ||
             (_ponderEnabled && tokens.Contains("ponder", StringComparer.OrdinalIgnoreCase)));
 
-        OnMoveChosen(ApplyHumanLevel(_parallelSearcher.TimeBoundSearch(
-            _gameState, timeBudget.SoftLimitMs, timeBudget.HardLimitMs)));
+        var timedResult = _parallelSearcher.TimeBoundSearch(
+            _gameState, timeBudget.SoftLimitMs, timeBudget.HardLimitMs);
+        OnMoveChosen(ApplyHumanLevel(timedResult, timeBudget.HardLimitMs));
     }
 
     private static string[] Tokenize(string message) =>
         message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
     private const float MinSearchTimeMs = 10f;
-    private const float OverheadBufferMs = 50f;
+    private const float OverheadBufferMs = 100f;
     private const float IncrementUsageFactorLong = 0.6f;
     private const float SoftLimitFactorLong = 0.75f;
     private const float HardLimitFactorLong = 0.90f;
@@ -616,28 +635,31 @@ public class UciEngine : IDisposable
     /// unchanged. When active, the embedded policy samples from fixed-depth root candidates.
     /// </summary>
     private (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) ApplyHumanLevel(
-        (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) result)
+        (List<uint> move, int depthSearched, int score, long nodes, TimeSpan duration) result,
+        int hardLimitMs = 0)
     {
         if (!HumanPlay.Enabled || result.move.Count == 0)
             return result;
 
-        var ranked = _parallelSearcher.RankRootMoves(_gameState, HumanPlay.RankDepth);
+        var rankTimeLimitMs = 0;
+        if (hardLimitMs > 0)
+        {
+            rankTimeLimitMs = (int)Math.Floor(hardLimitMs - result.duration.TotalMilliseconds);
+            if (rankTimeLimitMs < 1)
+                return result;
+        }
+
+        var ranked = _parallelSearcher.RankRootMoves(_gameState, HumanPlay.RankDepth, rankTimeLimitMs);
         if (ranked.Count == 0)
             return result;
 
         var board = _gameState.Board;
-        var rank = HumanPlay.PickMove(_humanRng, ref board, ranked, out _);
-        if (rank <= 0)
-            return result; // play the engine's own best move (keeps PV + ponder)
-
-        if (rank >= ranked.Count)
-            rank = ranked.Count - 1;
-
-        var chosen = ranked[rank].Move;
+        var selection = HumanPlay.SelectMove(_humanRng, ref board, ranked);
+        var chosen = selection.Move;
         if (chosen == result.move[0])
             return result;
 
-        return (new List<uint> { chosen }, result.depthSearched, ranked[rank].Score, result.nodes, result.duration);
+        return (new List<uint> { chosen }, result.depthSearched, ranked[selection.Rank].Score, result.nodes, result.duration);
     }
 
     private void OnMoveChosen(
