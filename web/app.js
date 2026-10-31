@@ -1,6 +1,6 @@
 // Web UI controller; chess rules and game history come from the engine.
 
-import { eloFromSliderValue, eloLabelForSliderValue, formatEngineEval, formatMoveScore,
+import { eloFromSliderValue, eloLabelForSliderValue, formatEngineEval, formatMoveScore, formatHintScore,
   FULL_ENGINE_SLIDER_VALUE } from './ui-model.js';
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -178,6 +178,7 @@ function render() {
         const badge = document.createElement('span');
         badge.className = 'hint-score';
         badge.textContent = hint.label;
+        badge.title = hint.scoreType === 'mate' ? hint.label : `${(hint.lossCp / 100).toFixed(2)} pawns lost versus the best legal move`;
         cell.appendChild(badge);
       }
 
@@ -432,10 +433,6 @@ function updateHintScores(msg) {
   render();
 }
 
-function formatHintScore(score) {
-  if (score.scoreType === 'mate') return score.score > 0 ? `M${Math.abs(score.score)}` : `-M${Math.abs(score.score)}`;
-  return (score.score >= 0 ? '+' : '') + (score.score / 100).toFixed(1);
-}
 
 function toggleHintMode() {
   if (hinting || restoring) return;

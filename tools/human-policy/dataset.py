@@ -9,7 +9,7 @@ import chess
 SCHEMA_VERSION = 1
 BOARD_CHANNELS = 18
 MOVE_FEATURES = 134
-MIN_RATING = 800
+MIN_RATING = 500
 MAX_RATING = 2200
 _PIECE_ORDER = (chess.PAWN, chess.KNIGHT, chess.BISHOP,
                 chess.ROOK, chess.QUEEN, chess.KING)

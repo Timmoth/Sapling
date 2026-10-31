@@ -19,17 +19,28 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Restore
-        run: dotnet restore src/Sapling.sln
+      - name: Restore test projects
+        run: |
+          dotnet restore src/Sapling.Engine.Tests/Sapling.Engine.Tests.csproj
+          dotnet restore src/Sapling.WebHost.Tests/Sapling.WebHost.Tests.csproj
 
-      - name: Test with coverage
+      - name: Test engine and UCI with coverage
         run: >-
-          dotnet test src/Sapling.sln
+          dotnet test src/Sapling.Engine.Tests/Sapling.Engine.Tests.csproj
           --no-restore
           --configuration Release
           --collect:"XPlat Code Coverage"
           --settings .github/coverlet.runsettings
-          --results-directory artifacts/TestResults
+          --results-directory artifacts/TestResults/engine
+
+      - name: Test web host with coverage
+        run: >-
+          dotnet test src/Sapling.WebHost.Tests/Sapling.WebHost.Tests.csproj
+          --no-restore
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --settings .github/coverlet.runsettings
+          --results-directory artifacts/TestResults/webhost
 
       - name: Upload Cobertura coverage reports
         if: always()

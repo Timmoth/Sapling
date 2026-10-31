@@ -9,7 +9,6 @@ from pathlib import Path
 
 import chess
 import numpy as np
-import onnxruntime as ort
 import torch
 
 from dataset import (
@@ -87,6 +86,8 @@ def policy_probability_total_variation(expected: np.ndarray, actual: np.ndarray)
 
 
 def main() -> int:
+    import onnxruntime as ort
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)

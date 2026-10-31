@@ -8,6 +8,7 @@ import {
   eloLabelForSliderValue,
   formatEngineEval,
   formatMoveScore,
+  formatHintScore,
   FULL_ENGINE_SLIDER_VALUE,
 } from '../ui-model.js';
 
@@ -15,19 +16,19 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (name) => readFile(path.join(webRoot, name), 'utf8');
 
 test('Human Elo slider maps endpoints and all configured ratings', () => {
-  assert.equal(eloFromSliderValue(0), 800);
-  assert.equal(eloFromSliderValue(140), 2200);
+  assert.equal(eloFromSliderValue(0), 500);
+  assert.equal(eloFromSliderValue(170), 2200);
   assert.equal(eloFromSliderValue(FULL_ENGINE_SLIDER_VALUE), 0);
-  assert.deepEqual(Array.from({ length: 141 }, (_, step) => eloFromSliderValue(step)),
-    Array.from({ length: 141 }, (_, step) => 800 + step * 10));
+  assert.deepEqual(Array.from({ length: 171 }, (_, step) => eloFromSliderValue(step)),
+    Array.from({ length: 171 }, (_, step) => 500 + step * 10));
   assert.throws(() => eloFromSliderValue(-1), RangeError);
-  assert.throws(() => eloFromSliderValue(142), RangeError);
+  assert.throws(() => eloFromSliderValue(172), RangeError);
   assert.throws(() => eloFromSliderValue(1.5), RangeError);
 });
 
 test('Human Elo labels distinguish trained ratings from full engine', () => {
-  assert.equal(eloLabelForSliderValue(0), '≈800 Elo');
-  assert.equal(eloLabelForSliderValue(140), '≈2200 Elo');
+  assert.equal(eloLabelForSliderValue(0), '≈500 Elo');
+  assert.equal(eloLabelForSliderValue(170), '≈2200 Elo');
   assert.equal(eloLabelForSliderValue(FULL_ENGINE_SLIDER_VALUE), '3000+ · Full engine');
 });
 
@@ -68,4 +69,13 @@ test('all piece image paths used by the board are present', async () => {
       await readFile(path.join(webRoot, 'assets', 'pieces', `${color}_${piece}.svg`));
     }
   }
+});
+
+test('hints show move quality independently of position advantage and preserve mates', () => {
+  assert.equal(formatHintScore({ scoreType: 'cp', score: -900, lossCp: 0 }), 'Best');
+  assert.equal(formatHintScore({ scoreType: 'cp', score: 900, lossCp: 150 }), '−1.5');
+  assert.equal(formatHintScore({ scoreType: 'cp', score: 30, lossCp: 1 }), '−0.01');
+  assert.equal(formatHintScore({ scoreType: 'mate', score: 2, lossCp: 0 }), 'M2');
+  assert.equal(formatHintScore({ scoreType: 'mate', score: -1, lossCp: 0 }), '-M1');
+  assert.equal(formatHintScore({ scoreType: 'mate', score: 0, lossCp: 0 }), '-M0');
 });

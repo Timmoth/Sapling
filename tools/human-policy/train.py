@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Train the Sapling human move policy on CUDA using pre-analyzed JSONL splits."""
+"""Train the Sapling human move policy on a GPU or CPU using scored JSONL splits."""
 
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import math
 import random
@@ -15,9 +16,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
-from dataset import SCHEMA_VERSION, encode_position
+from dataset import MAX_RATING, SCHEMA_VERSION, encode_position
 from model import HumanMovePolicy
 
 
@@ -55,8 +56,22 @@ class PositionDataset(Dataset):
             "rating": np.asarray([rating], dtype=np.float32),
             "target": target,
             "ply": int(row["ply"]),
-            "rating_band": f"{(int(row['rating']) // 200) * 200}-{(int(row['rating']) // 200) * 200 + 199}",
+            "rating_band": rating_band(int(row["rating"])),
         }
+
+
+def rating_band(rating: int) -> str:
+    # The configured maximum is inclusive and belongs to the final calibration band.
+    bounded = min(rating, MAX_RATING - 1)
+    lower = (bounded // 200) * 200
+    return f"{lower}-{lower + 199}"
+
+
+def rating_balanced_weights(rows):
+    """Give each represented rating band equal total sampling weight."""
+    bands = [rating_band(int(row["rating"])) for row in rows]
+    counts = Counter(bands)
+    return [1.0 / counts[band] for band in bands]
 
 
 def collate_positions(rows):
@@ -90,6 +105,7 @@ def evaluate(model, loader, device):
     total_top1 = 0
     total_top3 = 0
     total_uniform_nll = 0.0
+    total_expected_match = 0.0
     by_rating = {}
     by_stage = {"opening": {}, "middlegame": {}, "endgame": {}}
     with torch.no_grad():
@@ -108,13 +124,15 @@ def evaluate(model, loader, device):
             valid_counts = mask.sum(dim=1).float()
             uniform = valid_counts.log()
 
+            total_expected_match += (-losses).exp().sum().item()
             total_nll += losses.sum().item()
             total_positions += len(target)
             total_top1 += top1.sum().item()
             total_top3 += top3.sum().item()
             total_uniform_nll += uniform.sum().item()
             for i, band in enumerate(batch["rating_band"]):
-                row = by_rating.setdefault(band, {"nll": 0.0, "top1": 0, "top3": 0, "count": 0})
+                row = by_rating.setdefault(band, {"nll": 0.0, "top1": 0, "top3": 0, "expected_match": 0.0, "count": 0})
+                row["expected_match"] += float((-losses[i]).exp().item())
                 row["nll"] += losses[i].item()
                 row["top1"] += int(top1[i].item())
                 row["top3"] += int(top3[i].item())
@@ -129,7 +147,7 @@ def evaluate(model, loader, device):
             band: {
                 "positions": row["count"],
                 "nll": row["nll"] / row["count"],
-                **({"top1": row["top1"] / row["count"], "top3": row["top3"] / row["count"]}
+                **({"top1": row["top1"] / row["count"], "top3": row["top3"] / row["count"], "expected_match": row["expected_match"] / row["count"]}
                    if "top1" in row else {}),
             }
             for band, row in sorted(rows.items())
@@ -138,6 +156,7 @@ def evaluate(model, loader, device):
     return {
         "positions": total_positions,
         "nll": total_nll / total_positions,
+        "expected_match": total_expected_match / total_positions,
         "top1": total_top1 / total_positions,
         "top3": total_top3 / total_positions,
         "uniform_legal_move_nll": total_uniform_nll / total_positions,
@@ -153,9 +172,13 @@ def main() -> int:
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     if config.get("ablation", "none") not in ("none", "rating", "engine"):
         parser.error("ablation must be none, rating, or engine")
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required for this training run; torch.cuda.is_available() is false")
-    device = torch.device("cuda")
+    device_name = str(config.get("device", "cuda"))
+    if device_name == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but torch.cuda.is_available() is false")
+    if device_name not in {"cuda", "cpu"}:
+        raise ValueError("device must be 'cuda' or 'cpu'")
+    device = torch.device(device_name)
+    torch.set_num_threads(int(config.get("torch_num_threads", torch.get_num_threads())))
     dataset_dir = Path(config["dataset_dir"])
     manifest = json.loads((dataset_dir / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("encoder_schema_version") != SCHEMA_VERSION or "engine_analysis" not in manifest:
@@ -165,7 +188,8 @@ def main() -> int:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if device.type == "cuda":
+        torch.cuda.manual_seed_all(seed)
     if config.get("deterministic", False):
         torch.use_deterministic_algorithms(True)
 
@@ -175,12 +199,23 @@ def main() -> int:
     loader_options = {
         "batch_size": int(config.get("batch_size", 128)),
         "num_workers": workers,
-        "pin_memory": True,
+        "pin_memory": device.type == "cuda",
         "collate_fn": collate_positions,
     }
-    train_loader = DataLoader(train_data, shuffle=True, **loader_options)
+    sampler = None
+    if config.get("rating_balanced_sampling", False):
+        sampler = WeightedRandomSampler(rating_balanced_weights(train_data.rows),
+                                        len(train_data), replacement=True)
+    train_loader = DataLoader(train_data, shuffle=sampler is None, sampler=sampler, **loader_options)
     validation_loader = DataLoader(validation_data, shuffle=False, **loader_options)
-    model = HumanMovePolicy().to(device)
+    model = HumanMovePolicy()
+    initial_checkpoint = config.get("initial_checkpoint")
+    if initial_checkpoint:
+        initial = torch.load(Path(initial_checkpoint), map_location="cpu", weights_only=False)
+        if initial.get("schema_version") != SCHEMA_VERSION:
+            raise ValueError("initial checkpoint schema version does not match")
+        model.load_state_dict(initial["model_state_dict"], strict=True)
+    model = model.to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(config.get("learning_rate", 1e-3)),
@@ -193,7 +228,8 @@ def main() -> int:
     history = []
     patience = int(config.get("early_stopping_patience", 3))
 
-    print(json.dumps({"config": config, "device": torch.cuda.get_device_name(0),
+    resolved_device = torch.cuda.get_device_name(0) if device.type == "cuda" else "CPU"
+    print(json.dumps({"config": config, "device": resolved_device,
                       "train_positions": len(train_data), "validation_positions": len(validation_data)}, sort_keys=True),
           file=sys.stderr)
     for epoch in range(1, int(config.get("epochs", 10)) + 1):
@@ -221,6 +257,7 @@ def main() -> int:
                 "model_state_dict": model.state_dict(),
                 "schema_version": SCHEMA_VERSION,
                 "config": config,
+                "initial_checkpoint": str(initial_checkpoint) if initial_checkpoint else None,
                 "epoch": epoch,
                 "validation_metrics": metrics,
                 "engine_analysis": manifest["engine_analysis"],

@@ -86,6 +86,15 @@ def iter_pgn_text_games(stream, chunk_size: int = 1024 * 1024):
         yield "".join(current)
 
 
+def game_window(games, skip_games: int, max_games: int):
+    """Return a bounded archive-order window without parsing skipped games."""
+    if skip_games:
+        games = itertools.islice(games, skip_games, None)
+    if max_games:
+        games = itertools.islice(games, max_games)
+    return games
+
+
 def headers_from_pgn_text(pgn_text: str):
     separator = re.search(r"\r?\n\s*\r?\n", pgn_text)
     if separator is None:
@@ -149,8 +158,11 @@ def is_standard_rated_rapid(headers) -> tuple[bool, str]:
     return True, ""
 
 
-def rating_band(rating: int) -> str:
-    lower = (rating // RATING_BAND_WIDTH) * RATING_BAND_WIDTH
+def rating_band(rating: int, maximum: int = 2200) -> str:
+    # The configured maximum is inclusive, not the start of another band. Keep it
+    # with the preceding rating range to align extraction and calibration buckets.
+    bounded_rating = min(rating, maximum - 1)
+    lower = (bounded_rating // RATING_BAND_WIDTH) * RATING_BAND_WIDTH
     return f"{lower}-{lower + RATING_BAND_WIDTH - 1}"
 
 
@@ -158,11 +170,14 @@ def collect_game_positions(game: chess.pgn.Game, minimum: int, maximum: int):
     headers = game.headers
     white_rating = parse_rating(headers.get("WhiteElo"), minimum, maximum)
     black_rating = parse_rating(headers.get("BlackElo"), minimum, maximum)
-    if white_rating is None or black_rating is None:
+    if white_rating is None and black_rating is None:
         return None, "missing_or_out_of_range_rating"
 
     key = game_id(game)
     split = split_for(key)
+    date = headers.get("UTCDate") or headers.get("Date", "")
+    if not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}", date):
+        date = ""
     board = game.board()
     if board.chess960 or not board.is_valid():
         return None, "invalid_start_position"
@@ -175,15 +190,17 @@ def collect_game_positions(game: chess.pgn.Game, minimum: int, maximum: int):
             mover_rating = white_rating if board.turn == chess.WHITE else black_rating
             # Keep the FEN target square even if no legal en-passant capture exists.
             fen = board.fen(en_passant="fen")
-            rows.append({
-                "game_id": key,
-                "ply": ply,
-                "fen": fen,
-                "move": move.uci(),
-                "rating": mover_rating,
-                "pool": "rapid",
-                "split": split,
-            })
+            if mover_rating is not None:
+                rows.append({
+                    "game_id": key,
+                    "game_date": date,
+                    "ply": ply,
+                    "fen": fen,
+                    "move": move.uci(),
+                    "rating": mover_rating,
+                    "pool": "rapid",
+                    "split": split,
+                })
             board.push(move)
     except (ValueError, AssertionError):
         return None, "corrupt_game"
@@ -202,7 +219,7 @@ def process_pgn_text(pgn_text: str, minimum: int, maximum: int):
     if not keep:
         return None, f"skip_{reason}"
     if (parse_rating(headers.get("WhiteElo"), minimum, maximum) is None
-            or parse_rating(headers.get("BlackElo"), minimum, maximum) is None):
+            and parse_rating(headers.get("BlackElo"), minimum, maximum) is None):
         return None, "skip_missing_or_out_of_range_rating"
     try:
         game = chess.pgn.read_game(io.StringIO(pgn_text))
@@ -259,8 +276,10 @@ def main() -> int:
     parser.add_argument("--input", required=True, type=Path,
                         help="Monthly .pgn.zst or plain .pgn archive; '-' reads PGN text from stdin")
     parser.add_argument("--pool", choices=("rapid",), default="rapid")
-    parser.add_argument("--min-rating", type=int, default=800)
+    parser.add_argument("--min-rating", type=int, default=500)
     parser.add_argument("--max-rating", type=int, default=2200)
+    parser.add_argument("--skip-games", type=int, default=0,
+                        help="Skip this many archive-order games before the sample window")
     parser.add_argument("--max-games", type=int, default=10000, help="Maximum games scanned; 0 means no limit")
     parser.add_argument("--max-positions-per-band", type=int, default=30000,
                         help="Reservoir limit for each 200-point mover-rating band")
@@ -278,8 +297,8 @@ def main() -> int:
 
     if args.min_rating < 0 or args.max_rating <= args.min_rating:
         parser.error("require 0 <= --min-rating < --max-rating")
-    if args.max_games < 0 or args.max_positions_per_band < 1 or args.workers < 1 or args.batch_size < 1:
-        parser.error("--max-games must be >= 0, --max-positions-per-band, --workers, and --batch-size must be >= 1")
+    if args.skip_games < 0 or args.max_games < 0 or args.max_positions_per_band < 1 or args.workers < 1 or args.batch_size < 1:
+        parser.error("--skip-games and --max-games must be >= 0; --max-positions-per-band, --workers, and --batch-size must be >= 1")
     if str(args.input) != "-" and not args.input.is_file():
         parser.error(f"input archive does not exist: {args.input}")
 
@@ -287,6 +306,7 @@ def main() -> int:
         "input": str(args.input), "pool": args.pool,
         "rating_range": [args.min_rating, args.max_rating],
         "max_games": args.max_games,
+        "skip_games": args.skip_games,
         "max_positions_per_band": args.max_positions_per_band,
         "workers": args.workers,
         "batch_size": args.batch_size,
@@ -301,9 +321,9 @@ def main() -> int:
     started = time.monotonic()
     try:
         with open_pgn(args.input) as stream:
-            pgn_texts = iter_pgn_text_games(stream)
-            if args.max_games:
-                pgn_texts = itertools.islice(pgn_texts, args.max_games)
+            pgn_texts = game_window(
+                iter_pgn_text_games(stream), args.skip_games, args.max_games
+            )
             for rows, reason in iter_processed_games(
                     pgn_texts, args.workers, args.min_rating, args.max_rating, args.batch_size):
                 scanned += 1
@@ -319,7 +339,7 @@ def main() -> int:
                 accepted_games += 1
                 counters["accepted_games"] += 1
                 for row in rows:
-                    band = rating_band(row["rating"])
+                    band = rating_band(row["rating"], args.max_rating)
                     seen_by_band[band] += 1
                     row["rating_band"] = band
                     bucket = samples[band]
@@ -366,11 +386,14 @@ def main() -> int:
             "rating_tags": ["WhiteElo", "BlackElo"],
             "rating_range": [args.min_rating, args.max_rating],
             "mover_rating": True,
+            "rating_range_applies_to": "side_to_move_only",
+            "opponent_may_be_out_of_range": True,
             "exclude_bot_title": True,
             "starting_position": "standard chess start only",
             "plies": "all nonterminal pre-move positions",
         },
         "sampling": {
+            "skip_games_before_window": args.skip_games,
             "max_games_scanned": args.max_games,
             "compressed_input_bytes": args.input.stat().st_size if args.input.name.endswith(".zst") else None,
             "allow_truncated_zstd": args.allow_truncated_zstd,
@@ -386,6 +409,12 @@ def main() -> int:
             "sampled_games_by_split": {split: len(ids) for split, ids in final_games.items()},
         },
         "files": {split: path.name for split, path in paths.items()},
+        "sampled_position_game_date_range": {
+            "min": min((row["game_date"] for bucket in samples.values() for row in bucket
+                        if row.get("game_date")), default=None),
+            "max": max((row["game_date"] for bucket in samples.values() for row in bucket
+                        if row.get("game_date")), default=None),
+        },
         "preprocessing_commit": args.preprocessing_commit,
         "encoder_schema_version": 1,
     }

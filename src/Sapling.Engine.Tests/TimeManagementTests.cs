@@ -32,6 +32,18 @@ public class TimeManagementTests
     }
 
     [Theory]
+    [InlineData(100, 1, 4)]
+    [InlineData(200, 10, 40)]
+    [InlineData(1_000, 23, 92)]
+    public void LowBulletClock_LeavesLargerResponseReserve(int timeMs, int softMs, int hardMs)
+    {
+        var budget = TimeManagement.Calculate(timeMs, 0, 0, 20, true);
+
+        Assert.Equal(softMs, budget.SoftLimitMs);
+        Assert.Equal(hardMs, budget.HardLimitMs);
+    }
+
+    [Theory]
     [InlineData(10_000, 0, 0)]
     [InlineData(10_000, 100, 10)]
     [InlineData(300_000, 1_000, 40)]
@@ -53,6 +65,15 @@ public class TimeManagementTests
         var thirtyMoves = TimeManagement.Calculate(60_000, 0, 30, 20, true);
 
         Assert.True(fiveMoves.SoftLimitMs > thirtyMoves.SoftLimitMs);
+    }
+
+    [Fact]
+    public void HardLimit_IsBoundedByFourSoftBudgetsOnLongClock()
+    {
+        var budget = TimeManagement.Calculate(287_710, 2_000, 0, 98, true);
+
+        Assert.Equal(10_706, budget.SoftLimitMs);
+        Assert.Equal(42_824, budget.HardLimitMs);
     }
 
     [Fact]

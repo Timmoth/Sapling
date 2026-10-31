@@ -139,6 +139,43 @@ public static partial class EngineHost
     }
 
     [JSExport]
+    public static string ScoreHints()
+    {
+        if (_state != HostState.Idle) return Busy();
+        if (_game is null || _ps is null) return NotReady();
+        try
+        {
+            var ranked = _ps.RankRootMoves(_game, HumanPlay.RankDepth);
+            // Mate labels retain their distance; only quality comparisons use a fixed pawn value.
+            static int QualityScore(int score) => MoveScoring.IsMateScore(score)
+                ? Math.Sign(score) * 2000 : score;
+            var best = ranked.Count == 0 ? 0 : ranked.Max(item => QualityScore(item.Score));
+            var j = new Json();
+            j.Start();
+            j.Bool("ok", true);
+            j.ArrStart("moves");
+            foreach (var item in ranked) j.StrItem(item.Move.ToUciMoveName());
+            j.ArrEnd();
+            j.ArrStart("scores");
+            foreach (var item in ranked) j.NumItem(MoveScoring.IsMateScore(item.Score)
+                ? Math.Sign(item.Score) * MoveScoring.GetMateDistance(item.Score) : item.Score);
+            j.ArrEnd();
+            j.ArrStart("scoreTypes");
+            foreach (var item in ranked) j.StrItem(MoveScoring.IsMateScore(item.Score) ? "mate" : "cp");
+            j.ArrEnd();
+            j.ArrStart("rankScores");
+            foreach (var item in ranked) j.NumItem(item.Score);
+            j.ArrEnd();
+            j.ArrStart("lossCp");
+            foreach (var item in ranked) j.NumItem(best - QualityScore(item.Score));
+            j.ArrEnd();
+            j.End();
+            return j.Done();
+        }
+        catch (Exception ex) { return Error(ex); }
+    }
+
+    [JSExport]
     public static string ScoreMove(string uci)
     {
         if (_state != HostState.Idle) return Busy();
@@ -533,16 +570,13 @@ public static partial class EngineHost
             return;
 
         var board = _game.Board;
-        var rank = HumanPlay.PickMove(_humanRng, ref board, ranked, out _);
-        if (rank <= 0 || rank >= ranked.Count)
-            return;
-
-        var chosen = ranked[rank].Move;
+        var selection = HumanPlay.SelectMove(_humanRng, ref board, ranked);
+        var chosen = selection.Move;
         if (chosen == _bestMove)
             return;
 
         _bestMove = chosen;
-        _bestScore = ranked[rank].Score;
+        _bestScore = ranked[selection.Rank].Score;
         _bestPv = new List<uint> { chosen };
     }
 

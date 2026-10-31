@@ -66,6 +66,7 @@ public class HumanPolicyEncodingTests
     }
 
     [Theory]
+    [InlineData(500, -1.4285715f)]
     [InlineData(800, -1f)]
     [InlineData(1500, 0f)]
     [InlineData(2200, 1f)]
@@ -75,7 +76,7 @@ public class HumanPolicyEncodingTests
     }
 
     [Theory]
-    [InlineData(799)]
+    [InlineData(499)]
     [InlineData(2201)]
     public void RatingEncoder_RejectsOutOfRangeValues(int rating)
     {

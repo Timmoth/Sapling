@@ -94,11 +94,12 @@ public class AllocationHelperTests
     [Fact]
     public void CalculateSizeInMb_RoundTripsKnownSizes()
     {
-        foreach (var mb in new[] { 64L, 256, 1024 })
+        foreach (var mb in new[] { 16L, 32, 64, 256, 1024 })
         {
             var count = TranspositionTableExtensions.CalculateTranspositionTableSize(mb);
             var inverted = TranspositionTableExtensions.CalculateSizeInMb((uint)count);
             Assert.Equal(count, TranspositionTableExtensions.CalculateTranspositionTableSize(inverted));
+            Assert.Equal(mb, inverted);
         }
     }
 

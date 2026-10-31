@@ -9,7 +9,7 @@ public static unsafe class HumanPolicyEncoding
     public const int BoardChannels = 18;
     public const int SquaresPerBoard = 64;
     public const int MoveFeatures = 134;
-    public const int MinRating = 800;
+    public const int MinRating = 500;
     public const int MaxRating = 2200;
 
     private static readonly byte[] PieceChannels =

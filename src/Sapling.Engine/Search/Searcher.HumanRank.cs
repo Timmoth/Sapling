@@ -16,7 +16,7 @@ namespace Sapling.Engine.Search;
 /// </summary>
 public unsafe partial class Searcher
 {
-    public List<(uint Move, int Score, int Feat)> RankRootMoves(GameState inputBoard, int depth)
+    public List<(uint Move, int Score, int Feat)> RankRootMoves(GameState inputBoard, int depth, int timeLimitMs = 0)
     {
         lock (_lifecycleGate)
         {
@@ -25,7 +25,7 @@ public unsafe partial class Searcher
 
             ResetCore(inputBoard);
             _nodeLimit = 0;
-            _deadlineTimestamp = 0;
+            SetTimeLimits(timeLimitMs, timeLimitMs);
             _sliceActive = false;
             _sliceExhausted = false;
 
@@ -61,6 +61,8 @@ public unsafe partial class Searcher
 
                 var score = -NegaMaxSearch(newBoardState, newAccumulatorState, 1, depth - 1,
                     Constants.MinScore, Constants.MaxScore);
+                if (Interrupted())
+                    break;
 
                 var feat = (m.IsCapture() ? 1 : 0)
                          | (m.IsCastle() ? 2 : 0)

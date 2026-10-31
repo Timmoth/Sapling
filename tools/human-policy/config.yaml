@@ -8,4 +8,5 @@ weight_decay: 0.0001
 num_workers: 4
 early_stopping_patience: 3
 deterministic: false
+rating_balanced_sampling: false # true gives each represented rating band equal sampling weight
 ablation: none # none, rating, or engine
